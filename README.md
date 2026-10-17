@@ -3,7 +3,7 @@
 [![Minecraft 1.21.2+](https://img.shields.io/badge/Minecraft-1.21.2%20--%201.21.11-brightgreen.svg)](https://fabricmc.net/)
 [![Fabric Loader](https://img.shields.io/badge/Fabric-0.16.0+-blue.svg)](https://fabricmc.net/)
 [![GeckoLib](https://img.shields.io/badge/GeckoLib-5.4.5+-orange.svg)](https://geckolib.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: CC0-1.0](https://img.shields.io/badge/License-CC0--1.0-lightgrey.svg)](LICENSE)
 
 A standalone, community-maintained, and heavily patched edition of the legendary Minecraft mod **Mystical Terrain**, originally conceived and developed by **Vexira**.
 
@@ -101,8 +101,9 @@ The compiled, remapped JAR will be generated in `build/libs/mysticalterrain-<ver
 
 ---
 
-## 📜 Credits & Attribution
+## 📜 License & Attribution
 
 - **Original Mod Creator**: **Vexira** — Designer and creator of Mystical Terrain, its bosses, models, world generation features, and core mechanics.
 - **Community Maintainers & Contributors**: Bug fixes, Minecraft 1.21.2+ modernization, mixin remappings, ritual stability improvements, and standalone packaging.
+- **License**: Dedicated to the public domain under [CC0-1.0](LICENSE). This repository was established to provide an open, accessible codebase and community patches for anyone to freely build upon, modify, and redistribute.
 - **Dependencies**: Built on [Fabric Loader & Fabric API](https://fabricmc.net/) and [GeckoLib 5](https://geckolib.com/).
