@@ -1,6 +1,7 @@
 # Mystical Terrain (Community Patch Edition)
 
-[![Release](https://img.shields.io/badge/Version-v1.0.9--(Unofficial)--Patch-purple.svg)](README.md)
+[![Release](https://img.shields.io/badge/Version-v1.0.9--(Unofficial)--Patch-purple.svg)](https://github.com/shufunk-dev/Mystical-Terrain)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-181717.svg?logo=github)](https://github.com/shufunk-dev/Mystical-Terrain)
 [![Minecraft 1.21.2+](https://img.shields.io/badge/Minecraft-1.21.2%20--%201.21.11-brightgreen.svg)](https://fabricmc.net/)
 [![Fabric Loader](https://img.shields.io/badge/Fabric-0.16.0+-blue.svg)](https://fabricmc.net/)
 [![GeckoLib](https://img.shields.io/badge/GeckoLib-5.4.5+-orange.svg)](https://geckolib.com/)

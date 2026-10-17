@@ -8,7 +8,9 @@
     "Vexira (Original Author)",
     "Community Contributors"
   ],
-  "contact": {},
+  "contact": {
+    "sources": "https://github.com/shufunk-dev/Mystical-Terrain"
+  },
   "license": "CC0-1.0",
   "icon": "assets/mysticalterrain/icon.png",
   "environment": "*",
