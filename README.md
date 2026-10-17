@@ -7,9 +7,9 @@
 [![GeckoLib](https://img.shields.io/badge/GeckoLib-5.4.5+-orange.svg)](https://geckolib.com/)
 [![License: CC0-1.0](https://img.shields.io/badge/License-CC0--1.0-lightgrey.svg)](LICENSE)
 
-A standalone, community-maintained, and heavily patched edition of the legendary Minecraft mod **Mystical Terrain**, originally conceived and developed by **Vexira**.
+A standalone, community-maintained, and heavily patched edition of the legendary Minecraft mod **Mystical Terrain**, originally conceived and developed by [Vexira](https://github.com/VexiraRBX/Mystical-Terrain).
 
-This repository serves as the unofficial **v1.0.9** patch release, succeeding the latest official CurseForge release (v1.0.8, Sept 30, 2026). It captures all modern assets, worldgen structures, and combat mechanics missing from outdated upstream source trees while resolving critical crashes, dedicated server mixin leaks, and 1.21.2+ / 1.21.11 Fabric syntax requirements.
+This repository serves as the unofficial **v1.0.9** patch release, succeeding the latest official CurseForge release (v1.0.8, Sept 30, 2026). It captures all modern assets, worldgen structures, and combat mechanics missing from the original [VexiraRBX/Mystical-Terrain](https://github.com/VexiraRBX/Mystical-Terrain) repository while resolving critical crashes, dedicated server mixin leaks, and 1.21.2+ / 1.21.11 Fabric syntax requirements.
 
 ---
 
@@ -105,7 +105,7 @@ The compiled, remapped JAR will be generated in `build/libs/mysticalterrain-<ver
 
 ## 📜 License & Attribution
 
-- **Original Mod Creator**: **Vexira** — Designer and creator of Mystical Terrain, its bosses, models, world generation features, and core mechanics.
+- **Original Mod Creator**: **Vexira** ([VexiraRBX](https://github.com/VexiraRBX)) — Designer and creator of the original [Mystical-Terrain](https://github.com/VexiraRBX/Mystical-Terrain) codebase, its bosses, models, world generation features, and core mechanics.
 - **Community Maintainers & Contributors**: Bug fixes, Minecraft 1.21.2+ modernization, mixin remappings, ritual stability improvements, and standalone packaging.
 - **License**: Dedicated to the public domain under [CC0-1.0](LICENSE). This repository was established to provide an open, accessible codebase and community patches for anyone to freely build upon, modify, and redistribute.
 - **Dependencies**: Built on [Fabric Loader & Fabric API](https://fabricmc.net/) and [GeckoLib 5](https://geckolib.com/).
