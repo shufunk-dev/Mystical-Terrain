@@ -1,5 +1,6 @@
 # Mystical Terrain (Community Patch Edition)
 
+[![Release](https://img.shields.io/badge/Version-v1.0.9--(Unofficial)--Patch-purple.svg)](README.md)
 [![Minecraft 1.21.2+](https://img.shields.io/badge/Minecraft-1.21.2%20--%201.21.11-brightgreen.svg)](https://fabricmc.net/)
 [![Fabric Loader](https://img.shields.io/badge/Fabric-0.16.0+-blue.svg)](https://fabricmc.net/)
 [![GeckoLib](https://img.shields.io/badge/GeckoLib-5.4.5+-orange.svg)](https://geckolib.com/)
@@ -7,7 +8,7 @@
 
 A standalone, community-maintained, and heavily patched edition of the legendary Minecraft mod **Mystical Terrain**, originally conceived and developed by **Vexira**.
 
-This repository was established from the authoritative, decompiled CurseForge release JAR—capturing thousands of assets, world generation structures, and combat mechanics missing from outdated public git trees—and incorporates an exhaustive suite of stability, rendering, and gameplay patches for modern Minecraft 1.21.2+ / 1.21.11 on Fabric.
+This repository serves as the unofficial **v1.0.9** patch release, succeeding the latest official CurseForge release (v1.0.8, Sept 30, 2026). It captures all modern assets, worldgen structures, and combat mechanics missing from outdated upstream source trees while resolving critical crashes, dedicated server mixin leaks, and 1.21.2+ / 1.21.11 Fabric syntax requirements.
 
 ---
 
