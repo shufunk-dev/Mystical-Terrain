@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "mysticalterrain",
+  "version": "${version}",
+  "name": "Mystical Terrain (Community Patch Edition)",
+  "description": "Standalone community-patched edition of Mystical Terrain. Expanding Minecraft's Overworld, Nether, and The End with colossal trees, mysterious structures, epic bosses, and mythical gear. Originally created by Vexira.",
+  "authors": [
+    "Vexira (Original Author)",
+    "Community Contributors"
+  ],
+  "contact": {},
+  "license": "CC0-1.0",
+  "icon": "assets/mysticalterrain/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.vexira.mysticalterrain.MysticalTerrain"
+    ],
+    "client": [
+      "com.vexira.mysticalterrain.client.MysticalTerrainClient"
+    ]
+  },
+  "mixins": [
+    "mysticalterrain.mixins.json",
+    {
+      "config": "mysticalterrain.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": ">=1.21.2",
+    "java": ">=21",
+    "fabric-api": "*",
+    "geckolib": ">=5.4.5"
+  },
+  "suggests": {
+    "terrablender": "*"
+  }
+}

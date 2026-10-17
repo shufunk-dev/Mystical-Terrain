@@ -1,0 +1,37 @@
+# Gradle Build & Cache
+.gradle/
+build/
+bin/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+!libs/geckolib-fabric-1.21.11-5.4.5.jar
+
+# Minecraft Runtime & Fabric Loom
+run/
+runs/
+server/
+.fabric/
+mappings/
+*.tiny
+
+# IDE & Editor Files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+.settings/
+.classpath
+.project
+
+# AI Agents & Workspace Customizations
+.agents/
+AGENTS.md
+
+# OS & Temp Files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+*.swp
