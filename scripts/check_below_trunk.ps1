@@ -1,0 +1,19 @@
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$jar = "C:\Users\shufu\.gradle\caches\fabric-loom\minecraftMaven\net\minecraft\minecraft-merged-deobf\26.3\minecraft-merged-deobf-26.3.jar"
+$zip = [System.IO.Compression.ZipFile]::OpenRead($jar)
+$providers = @{}
+foreach ($e in $zip.Entries) {
+    if ($e.FullName -match "data/minecraft/worldgen/feature/.*\.json") {
+        $s = $e.Open()
+        $r = New-Object System.IO.StreamReader($s)
+        $content = $r.ReadToEnd()
+        $r.Close()
+        $s.Close()
+        if ($content -match '"below_trunk_provider":\s*("[^"]+"|\{[^\}]+\})') {
+            $val = $matches[1]
+            $providers[$val] = 1
+        }
+    }
+}
+$zip.Dispose()
+$providers.Keys | ForEach-Object { Write-Host $_ }

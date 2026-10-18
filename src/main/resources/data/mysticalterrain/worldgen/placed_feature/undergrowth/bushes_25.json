@@ -8,13 +8,6 @@
           "feature": {
             "type": "minecraft:tree",
             "decorators": [],
-            "dirt_provider": {
-              "type": "minecraft:simple",
-              "state": {
-                "id": "minecraft:dirt"
-              }
-            },
-            "force_dirt": false,
             "ignore_vines": true,
             "foliage_placer": {
               "type": "minecraft:bush_foliage_placer",
@@ -69,7 +62,8 @@
                   "axis": "y"
                 }
               }
-            }
+            },
+            "below_trunk_provider": "minecraft:soil_beneath_tree"
           },
           "placement": [
             {
@@ -93,13 +87,6 @@
           "feature": {
             "type": "minecraft:tree",
             "decorators": [],
-            "dirt_provider": {
-              "type": "minecraft:simple",
-              "state": {
-                "id": "minecraft:dirt"
-              }
-            },
-            "force_dirt": false,
             "ignore_vines": true,
             "foliage_placer": {
               "type": "minecraft:bush_foliage_placer",
@@ -154,7 +141,8 @@
                   "axis": "y"
                 }
               }
-            }
+            },
+            "below_trunk_provider": "minecraft:soil_beneath_tree"
           },
           "placement": [
             {
@@ -177,13 +165,6 @@
       "feature": {
         "type": "minecraft:tree",
         "decorators": [],
-        "dirt_provider": {
-          "type": "minecraft:simple",
-          "state": {
-            "id": "minecraft:dirt"
-          }
-        },
-        "force_dirt": false,
         "ignore_vines": true,
         "foliage_placer": {
           "type": "minecraft:bush_foliage_placer",
@@ -238,7 +219,8 @@
               "axis": "y"
             }
           }
-        }
+        },
+        "below_trunk_provider": "minecraft:soil_beneath_tree"
       },
       "placement": [
         {

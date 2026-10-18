@@ -8,12 +8,6 @@
           "feature": {
             "type": "minecraft:tree",
             "decorators": [],
-            "dirt_provider": {
-              "type": "minecraft:simple",
-              "state": {
-                "id": "minecraft:mud"
-              }
-            },
             "foliage_placer": {
               "type": "minecraft:fancy_foliage_placer",
               "height": 4,
@@ -26,7 +20,6 @@
                 "id": "minecraft:air"
               }
             },
-            "force_dirt": false,
             "ignore_vines": true,
             "minimum_size": {
               "type": "minecraft:two_layers_feature_size",
@@ -81,6 +74,9 @@
                   "weight": 1
                 }
               ]
+            },
+            "below_trunk_provider": {
+              "id": "minecraft:mud"
             }
           },
           "placement": [
@@ -105,12 +101,6 @@
           "feature": {
             "type": "minecraft:tree",
             "decorators": [],
-            "dirt_provider": {
-              "type": "minecraft:simple",
-              "state": {
-                "id": "minecraft:mud"
-              }
-            },
             "foliage_placer": {
               "type": "minecraft:blob_foliage_placer",
               "height": 3,
@@ -123,7 +113,6 @@
                 "id": "minecraft:air"
               }
             },
-            "force_dirt": false,
             "ignore_vines": true,
             "minimum_size": {
               "type": "minecraft:two_layers_feature_size",
@@ -177,6 +166,9 @@
                   "weight": 1
                 }
               ]
+            },
+            "below_trunk_provider": {
+              "id": "minecraft:mud"
             }
           },
           "placement": [
@@ -200,12 +192,6 @@
       "feature": {
         "type": "minecraft:tree",
         "decorators": [],
-        "dirt_provider": {
-          "type": "minecraft:simple",
-          "state": {
-            "id": "minecraft:mud"
-          }
-        },
         "foliage_placer": {
           "type": "minecraft:spruce_foliage_placer",
           "offset": {
@@ -230,7 +216,6 @@
             "id": "minecraft:air"
           }
         },
-        "force_dirt": false,
         "ignore_vines": true,
         "minimum_size": {
           "type": "minecraft:two_layers_feature_size",
@@ -252,6 +237,9 @@
               "axis": "y"
             }
           }
+        },
+        "below_trunk_provider": {
+          "id": "minecraft:mud"
         }
       },
       "placement": [

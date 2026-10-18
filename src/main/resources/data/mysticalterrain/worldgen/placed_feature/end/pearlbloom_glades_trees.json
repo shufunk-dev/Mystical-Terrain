@@ -8,12 +8,6 @@
           "feature": {
             "type": "minecraft:tree",
             "decorators": [],
-            "dirt_provider": {
-              "type": "minecraft:simple",
-              "state": {
-                "id": "minecraft:pale_moss_block"
-              }
-            },
             "foliage_placer": {
               "type": "minecraft:cherry_foliage_placer",
               "corner_hole_chance": 0.25,
@@ -35,7 +29,6 @@
                 }
               }
             },
-            "force_dirt": false,
             "ignore_vines": true,
             "minimum_size": {
               "type": "minecraft:two_layers_feature_size",
@@ -88,6 +81,9 @@
                   "axis": "y"
                 }
               }
+            },
+            "below_trunk_provider": {
+              "id": "minecraft:pale_moss_block"
             }
           },
           "placement": [
@@ -111,12 +107,6 @@
       "feature": {
         "type": "minecraft:tree",
         "decorators": [],
-        "dirt_provider": {
-          "type": "minecraft:simple",
-          "state": {
-            "id": "minecraft:pale_moss_block"
-          }
-        },
         "foliage_placer": {
           "type": "minecraft:random_spread_foliage_placer",
           "foliage_height": 2,
@@ -135,7 +125,6 @@
             }
           }
         },
-        "force_dirt": true,
         "ignore_vines": false,
         "minimum_size": {
           "type": "minecraft:two_layers_feature_size",
@@ -163,6 +152,9 @@
               "axis": "y"
             }
           }
+        },
+        "below_trunk_provider": {
+          "id": "minecraft:pale_moss_block"
         }
       },
       "placement": [

@@ -8,13 +8,6 @@
           "feature": {
             "type": "minecraft:tree",
             "decorators": [],
-            "dirt_provider": {
-              "type": "minecraft:simple",
-              "state": {
-                "id": "minecraft:sand"
-              }
-            },
-            "force_dirt": false,
             "ignore_vines": true,
             "foliage_placer": {
               "type": "minecraft:acacia_foliage_placer",
@@ -58,6 +51,9 @@
                   "axis": "y"
                 }
               }
+            },
+            "below_trunk_provider": {
+              "id": "minecraft:sand"
             }
           },
           "placement": [
@@ -89,12 +85,6 @@
       "feature": {
         "type": "minecraft:tree",
         "decorators": [],
-        "dirt_provider": {
-          "type": "minecraft:simple",
-          "state": {
-            "id": "minecraft:dirt"
-          }
-        },
         "foliage_placer": {
           "type": "minecraft:acacia_foliage_placer",
           "offset": 0,
@@ -111,7 +101,6 @@
             }
           }
         },
-        "force_dirt": false,
         "ignore_vines": true,
         "minimum_size": {
           "type": "minecraft:two_layers_feature_size",
@@ -133,7 +122,8 @@
               "axis": "y"
             }
           }
-        }
+        },
+        "below_trunk_provider": "minecraft:soil_beneath_tree"
       },
       "placement": [
         {

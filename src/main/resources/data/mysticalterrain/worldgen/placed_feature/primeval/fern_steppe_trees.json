@@ -12,12 +12,6 @@
           "feature": {
             "type": "minecraft:tree",
             "decorators": [],
-            "dirt_provider": {
-              "type": "minecraft:simple",
-              "state": {
-                "id": "minecraft:dirt"
-              }
-            },
             "foliage_placer": {
               "type": "minecraft:dark_oak_foliage_placer",
               "offset": 0,
@@ -34,7 +28,6 @@
                 }
               }
             },
-            "force_dirt": false,
             "ignore_vines": true,
             "minimum_size": {
               "type": "minecraft:three_layers_feature_size",
@@ -58,7 +51,8 @@
                   "axis": "y"
                 }
               }
-            }
+            },
+            "below_trunk_provider": "minecraft:soil_beneath_tree"
           },
           "placement": [
             {
@@ -89,12 +83,6 @@
       "feature": {
         "type": "minecraft:tree",
         "decorators": [],
-        "dirt_provider": {
-          "type": "minecraft:simple",
-          "state": {
-            "id": "minecraft:dirt"
-          }
-        },
         "foliage_placer": {
           "type": "minecraft:fancy_foliage_placer",
           "height": 4,
@@ -112,7 +100,6 @@
             }
           }
         },
-        "force_dirt": false,
         "ignore_vines": true,
         "minimum_size": {
           "type": "minecraft:two_layers_feature_size",
@@ -135,7 +122,8 @@
               "axis": "y"
             }
           }
-        }
+        },
+        "below_trunk_provider": "minecraft:soil_beneath_tree"
       },
       "placement": [
         {
