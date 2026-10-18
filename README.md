@@ -2,14 +2,21 @@
 
 [![Release](https://img.shields.io/badge/Version-v1.0.9--(Unofficial)--Patch-purple.svg)](https://github.com/shufunk-dev/Mystical-Terrain)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-181717.svg?logo=github)](https://github.com/shufunk-dev/Mystical-Terrain)
-[![Minecraft 1.21.2+](https://img.shields.io/badge/Minecraft-1.21.2%20--%201.21.11-brightgreen.svg)](https://fabricmc.net/)
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11%20%7C%2026.3-brightgreen.svg)](https://fabricmc.net/)
 [![Fabric Loader](https://img.shields.io/badge/Fabric-0.16.0+-blue.svg)](https://fabricmc.net/)
-[![GeckoLib](https://img.shields.io/badge/GeckoLib-5.4.5+-orange.svg)](https://geckolib.com/)
+[![GeckoLib](https://img.shields.io/badge/GeckoLib-Confirmed%20Working-orange.svg)](https://geckolib.com/)
+[![TerraBlender](https://img.shields.io/badge/TerraBlender-Confirmed%20Working-darkgreen.svg)](https://curseforge.com/minecraft/mc-mods/terrablender-fabric)
 [![License: CC0-1.0](https://img.shields.io/badge/License-CC0--1.0-lightgrey.svg)](LICENSE)
 
 A standalone, community-maintained, and heavily patched edition of the legendary Minecraft mod **Mystical Terrain**, originally conceived and developed by [VexiraRBX](https://github.com/VexiraRBX/Mystical-Terrain).
 
-This repository serves as the unofficial **v1.0.9** patch release, succeeding the latest official CurseForge release (v1.0.8, Sept 30, 2026). It captures all modern assets, worldgen structures, and combat mechanics missing from the original [VexiraRBX/Mystical-Terrain](https://github.com/VexiraRBX/Mystical-Terrain) repository while resolving critical crashes, dedicated server mixin leaks, and 1.21.2+ / 1.21.11 Fabric syntax requirements.
+> [!NOTE]
+> **Version Compatibility & Dependencies**:
+> Mystical Terrain can be played on both **Minecraft 1.21.11** and **Minecraft 26.3**. The latest versions of all required dependencies (**Fabric API**, **GeckoLib**, and **TerraBlender**) are confirmed to work seamlessly on both versions:
+> - **Minecraft 26.3**: Available on the `26.3` branch (`mysticalterrain-1.0.9-26.3.jar`).
+> - **Minecraft 1.21.11**: Available on the `main` branch (`mysticalterrain-1.0.9.jar`).
+
+This repository serves as the unofficial **v1.0.9** patch release, succeeding the latest official CurseForge release (v1.0.8, Sept 30, 2026). It captures all modern assets, worldgen structures, and combat mechanics missing from the original [VexiraRBX/Mystical-Terrain](https://github.com/VexiraRBX/Mystical-Terrain) repository while resolving critical crashes, dedicated server mixin leaks, and modern Fabric syntax requirements.
 
 ---
 
