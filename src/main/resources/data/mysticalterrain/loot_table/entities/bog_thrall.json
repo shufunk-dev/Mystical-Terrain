@@ -38,15 +38,18 @@
           ]
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.4,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.4,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     },
     {
       "rolls": 1,
@@ -56,15 +59,18 @@
           "name": "mysticalterrain:drowned_idol"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.03,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.03,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     }
   ]
 }

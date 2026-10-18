@@ -9,15 +9,18 @@
           "name": "minecraft:bone_block"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.3,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.3,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     },
     {
       "rolls": 1,
@@ -37,15 +40,18 @@
           ]
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.7,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.7,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     },
     {
       "rolls": 1,
@@ -55,15 +61,18 @@
           "name": "mysticalterrain:primal_egg"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.03,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.03,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     }
   ]
 }

@@ -10,11 +10,9 @@
         }
       ],
       "rolls": 1,
-      "condition": [
-        {
-          "type": "minecraft:survives_explosion"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      }
     }
   ],
   "random_sequence": "mysticalterrain:blocks/silverbark_log"

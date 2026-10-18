@@ -7,23 +7,19 @@
         {
           "type": "minecraft:item",
           "name": "mysticalterrain:charwood_door",
-          "condition": [
-            {
-              "block": "mysticalterrain:charwood_door",
-              "properties": {
-                "half": "lower"
-              },
-              "type": "minecraft:block_state_property"
-            }
-          ]
+          "condition": {
+            "block": "mysticalterrain:charwood_door",
+            "properties": {
+              "half": "lower"
+            },
+            "type": "minecraft:block_state_property"
+          }
         }
       ],
       "rolls": 1,
-      "condition": [
-        {
-          "type": "minecraft:survives_explosion"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      }
     }
   ],
   "random_sequence": "mysticalterrain:blocks/charwood_door"

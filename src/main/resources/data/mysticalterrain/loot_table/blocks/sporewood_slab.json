@@ -12,15 +12,13 @@
               "add": false,
               "count": 2,
               "type": "minecraft:set_count",
-              "condition": [
-                {
-                  "block": "mysticalterrain:sporewood_slab",
-                  "properties": {
-                    "type": "double"
-                  },
-                  "type": "minecraft:block_state_property"
-                }
-              ]
+              "condition": {
+                "block": "mysticalterrain:sporewood_slab",
+                "properties": {
+                  "type": "double"
+                },
+                "type": "minecraft:block_state_property"
+              }
             },
             {
               "type": "minecraft:explosion_decay"

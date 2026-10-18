@@ -7,22 +7,18 @@
         {
           "type": "minecraft:item",
           "name": "mysticalterrain:marsh_grass",
-          "condition": [
-            {
-              "predicate": {
-                "items": "minecraft:shears"
-              },
-              "type": "minecraft:match_tool"
-            }
-          ]
+          "condition": {
+            "predicate": {
+              "items": "minecraft:shears"
+            },
+            "type": "minecraft:match_tool"
+          }
         }
       ],
       "rolls": 1,
-      "condition": [
-        {
-          "type": "minecraft:survives_explosion"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:survives_explosion"
+      }
     }
   ],
   "random_sequence": "mysticalterrain:blocks/marsh_grass"

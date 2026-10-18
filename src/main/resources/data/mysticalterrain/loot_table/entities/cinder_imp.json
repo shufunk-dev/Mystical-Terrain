@@ -28,15 +28,18 @@
           "name": "mysticalterrain:cinder_heart"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.02,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.02,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     }
   ]
 }

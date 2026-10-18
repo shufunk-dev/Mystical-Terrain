@@ -9,15 +9,18 @@
           "name": "mysticalterrain:glowcap_block"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.4,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.4,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     },
     {
       "rolls": 1,
@@ -46,15 +49,18 @@
           "name": "mysticalterrain:spore_heart"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.05,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.05,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     }
   ]
 }

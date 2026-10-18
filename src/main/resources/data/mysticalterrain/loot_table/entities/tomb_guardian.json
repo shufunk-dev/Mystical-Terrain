@@ -28,15 +28,18 @@
           "name": "minecraft:gold_ingot"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.12,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.12,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     },
     {
       "rolls": 1,
@@ -46,15 +49,18 @@
           "name": "mysticalterrain:jackal_canopic_jar"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.02,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.02,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     },
     {
       "rolls": 1,
@@ -64,15 +70,18 @@
           "name": "mysticalterrain:falcon_canopic_jar"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.02,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.02,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     },
     {
       "rolls": 1,
@@ -82,15 +91,18 @@
           "name": "mysticalterrain:baboon_canopic_jar"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.02,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.02,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     },
     {
       "rolls": 1,
@@ -100,15 +112,18 @@
           "name": "mysticalterrain:human_canopic_jar"
         }
       ],
-      "condition": [
-        {
-          "type": "minecraft:killed_by_player"
-        },
-        {
-          "chance": 0.02,
-          "type": "minecraft:random_chance"
-        }
-      ]
+      "condition": {
+        "type": "minecraft:all_of",
+        "terms": [
+          {
+            "type": "minecraft:killed_by_player"
+          },
+          {
+            "chance": 0.02,
+            "type": "minecraft:random_chance"
+          }
+        ]
+      }
     }
   ]
 }
