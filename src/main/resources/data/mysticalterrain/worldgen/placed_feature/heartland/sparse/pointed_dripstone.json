@@ -35,40 +35,25 @@
     {
       "type": "minecraft:offset",
       "x": {
-        "type": "minecraft:trapezoid",
-        "min": null,
-        "max": {
-          "type": "minecraft:clamped_normal",
-          "deviation": 3,
-          "max_inclusive": 10,
-          "mean": 0,
-          "min_inclusive": -10
-        },
-        "plateau": 0
+        "type": "minecraft:clamped_normal",
+        "deviation": 3,
+        "max_inclusive": 10,
+        "mean": 0,
+        "min_inclusive": -10
       },
       "y": {
-        "type": "minecraft:trapezoid",
-        "min": null,
-        "max": {
-          "type": "minecraft:clamped_normal",
-          "deviation": 0.6,
-          "max_inclusive": 2,
-          "mean": 0,
-          "min_inclusive": -2
-        },
-        "plateau": 0
+        "type": "minecraft:clamped_normal",
+        "deviation": 0.6,
+        "max_inclusive": 2,
+        "mean": 0,
+        "min_inclusive": -2
       },
       "z": {
-        "type": "minecraft:trapezoid",
-        "min": null,
-        "max": {
-          "type": "minecraft:clamped_normal",
-          "deviation": 3,
-          "max_inclusive": 10,
-          "mean": 0,
-          "min_inclusive": -10
-        },
-        "plateau": 0
+        "type": "minecraft:clamped_normal",
+        "deviation": 3,
+        "max_inclusive": 10,
+        "mean": 0,
+        "min_inclusive": -10
       }
     },
     {
