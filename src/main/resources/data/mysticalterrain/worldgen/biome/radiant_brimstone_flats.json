@@ -115,7 +115,8 @@
       "minecraft:ore_quartz_nether",
       "minecraft:ore_ancient_debris_large",
       "minecraft:ore_debris_small",
-      "mysticalterrain:nether/glowstone"],
+      "mysticalterrain:nether/glowstone"
+    ],
     [],
     [
       "minecraft:spring_lava",

@@ -98,7 +98,8 @@
       "minecraft:ore_gold_deltas",
       "minecraft:ore_quartz_deltas",
       "minecraft:ore_ancient_debris_large",
-      "minecraft:ore_debris_small"],
+      "minecraft:ore_debris_small"
+    ],
     [],
     [
       "mysticalterrain:nether/patch_soul_fire",
