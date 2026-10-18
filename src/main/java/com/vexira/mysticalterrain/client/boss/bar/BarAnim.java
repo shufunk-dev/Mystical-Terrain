@@ -3,9 +3,9 @@ package com.vexira.mysticalterrain.client.boss.bar;
 import com.vexira.mysticalterrain.boss.net.BossStatePayload;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import org.jspecify.annotations.Nullable;
 
 @Environment(EnvType.CLIENT)
@@ -48,11 +48,11 @@ public final class BarAnim {
    private int levelValue = Integer.MIN_VALUE;
    private int levelGen = -1;
    private BarText.@Nullable Line levelLine;
-   private @Nullable Text nameSrc;
+   private @Nullable Component nameSrc;
    private int nameAvail = -1;
    private int nameGen = -1;
    private BarText.@Nullable Line nameLine;
-   private @Nullable Text widthSrc;
+   private @Nullable Component widthSrc;
    private int widthGen = -1;
    private int nameFull;
    private BarText.@Nullable Line titleSrc;
@@ -147,7 +147,7 @@ public final class BarAnim {
          this.bornAt = now;
       }
 
-      float dt = this.shown < 0.0F ? 0.0F : MathHelper.clamp(now - this.lastFrame, 0.0F, 10.0F);
+      float dt = this.shown < 0.0F ? 0.0F : Mth.clamp(now - this.lastFrame, 0.0F, 10.0F);
       this.lastFrame = now;
       this.target = progress;
       if (this.shown < 0.0F) {
@@ -193,7 +193,7 @@ public final class BarAnim {
             this.castGen = gen;
          }
 
-         this.castProgress = MathHelper.clamp((st.castTick() + (now - this.stateAt)) / st.castLength(), 0.0F, 1.0F);
+         this.castProgress = Mth.clamp((st.castTick() + (now - this.stateAt)) / st.castLength(), 0.0F, 1.0F);
       }
 
       this.castAlpha = approach(this.castAlpha, casting ? 1.0F : 0.0F, dt * (casting ? 0.25F : 0.1F));
@@ -209,7 +209,7 @@ public final class BarAnim {
    }
 
    public float open(float now) {
-      float t = MathHelper.clamp((now - this.bornAt) / 15.0F, 0.0F, 1.0F);
+      float t = Mth.clamp((now - this.bornAt) / 15.0F, 0.0F, 1.0F);
       return 1.0F - (1.0F - t) * (1.0F - t) * (1.0F - t);
    }
 
@@ -253,18 +253,18 @@ public final class BarAnim {
       return this.levelLine;
    }
 
-   public int nameWidth(Text name) {
+   public int nameWidth(Component name) {
       int gen = BarText.generation();
       if (name != this.widthSrc || gen != this.widthGen) {
          this.widthSrc = name;
          this.widthGen = gen;
-         this.nameFull = MinecraftClient.getInstance().textRenderer.getWidth(name);
+         this.nameFull = Minecraft.getInstance().font.width(name);
       }
 
       return this.nameFull;
    }
 
-   public BarText.Line name(Text name, int avail) {
+   public BarText.Line name(Component name, int avail) {
       int gen = BarText.generation();
       if (this.nameLine == null || name != this.nameSrc || avail != this.nameAvail || gen != this.nameGen) {
          this.nameSrc = name;

@@ -19,16 +19,16 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.Disconnect;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.Join;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 
 public final class GearSystem {
    private static boolean initialized;
@@ -39,16 +39,16 @@ public final class GearSystem {
    public static void init() {
       if (!initialized) {
          initialized = true;
-         PayloadTypeRegistry.playS2C().register(GearSyncPayload.TYPE, GearSyncPayload.CODEC);
-         PayloadTypeRegistry.playC2S().register(SetAbilityPayload.TYPE, SetAbilityPayload.CODEC);
+         PayloadTypeRegistry.clientboundPlay().register(GearSyncPayload.TYPE, GearSyncPayload.CODEC);
+         PayloadTypeRegistry.serverboundPlay().register(SetAbilityPayload.TYPE, SetAbilityPayload.CODEC);
          ServerPlayNetworking.registerGlobalReceiver(SetAbilityPayload.TYPE, (payload, context) -> castSet(context.player()));
-         ServerTickEvents.START_SERVER_TICK.register((StartTick)server -> GearState.time(server.getTicks()));
+         ServerTickEvents.START_SERVER_TICK.register((StartTick)server -> GearState.time(server.getTickCount()));
          ServerTickEvents.END_SERVER_TICK.register(GearSystem::tick);
          ServerPlayConnectionEvents.JOIN.register((Join)(handler, sender, server) -> GearState.of(handler.player).markDirty());
          ServerPlayConnectionEvents.DISCONNECT.register((Disconnect)(handler, server) -> GearState.forget(handler.player));
          ServerLifecycleEvents.SERVER_STOPPED.register((ServerStopped)server -> GearState.clear());
          ServerLivingEntityEvents.ALLOW_DAMAGE.register((AllowDamage)(entity, source, amount) -> {
-            if (entity instanceof PlayerEntity p && p.getEntityWorld() instanceof ServerWorld level) {
+            if (entity instanceof Player p && p.level() instanceof ServerLevel level) {
                for (Entry<String, Integer> e : MysticArmor.worn(p).entrySet()) {
                   Arsenal a = Arsenals.of(e.getKey());
                   if (a != null && e.getValue() >= 2 && !a.armorKit().allowDamage(level, p, source, amount, e.getValue())) {
@@ -60,8 +60,8 @@ public final class GearSystem {
             return true;
          });
          ServerLivingEntityEvents.AFTER_DAMAGE.register((AfterDamage)(entity, source, baseAmount, taken, blocked) -> {
-            if (entity instanceof PlayerEntity p && p.getEntityWorld() instanceof ServerWorld level) {
-               LivingEntity attacker = source.getAttacker() instanceof LivingEntity l && l != p ? l : null;
+            if (entity instanceof Player p && p.level() instanceof ServerLevel level) {
+               LivingEntity attacker = source.getEntity() instanceof LivingEntity l && l != p ? l : null;
 
                for (Entry<String, Integer> e : MysticArmor.worn(p).entrySet()) {
                   Arsenal a = Arsenals.of(e.getKey());
@@ -72,7 +72,7 @@ public final class GearSystem {
             }
          });
          ServerLivingEntityEvents.ALLOW_DEATH.register((AllowDeath)(entity, source, amount) -> {
-            if (entity instanceof PlayerEntity p && p.getEntityWorld() instanceof ServerWorld level) {
+            if (entity instanceof Player p && p.level() instanceof ServerLevel level) {
                for (Entry<String, Integer> e : MysticArmor.worn(p).entrySet()) {
                   Arsenal a = Arsenals.of(e.getKey());
                   if (a != null && e.getValue() >= 2 && !a.armorKit().allowDeath(level, p, source, amount, e.getValue())) {
@@ -86,24 +86,24 @@ public final class GearSystem {
          CommandRegistrationCallback.EVENT
             .register(
                (CommandRegistrationCallback)(dispatcher, registries, environment) -> dispatcher.register(
-                  (LiteralArgumentBuilder)((LiteralArgumentBuilder)((LiteralArgumentBuilder)CommandManager.literal("mysticgear")
-                           .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK)))
-                        .then(CommandManager.literal("reset").executes(ctx -> {
-                           GearState.of(((ServerCommandSource)ctx.getSource()).getPlayerOrThrow()).clearCooldowns();
-                           ((ServerCommandSource)ctx.getSource()).sendFeedback(() -> Text.literal("Gear cooldowns reset"), false);
+                  (LiteralArgumentBuilder)((LiteralArgumentBuilder)((LiteralArgumentBuilder)Commands.literal("mysticgear")
+                           .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS)))
+                        .then(Commands.literal("reset").executes(ctx -> {
+                           GearState.of(((CommandSourceStack)ctx.getSource()).getPlayerOrException()).clearCooldowns();
+                           ((CommandSourceStack)ctx.getSource()).sendSuccess(() -> Component.literal("Gear cooldowns reset"), false);
                            return 1;
                         })))
-                     .then(CommandManager.literal("resonance").then(CommandManager.argument("value", IntegerArgumentType.integer(0, 100)).executes(ctx -> {
-                        ServerPlayerEntity p = ((ServerCommandSource)ctx.getSource()).getPlayerOrThrow();
+                     .then(Commands.literal("resonance").then(Commands.argument("value", IntegerArgumentType.integer(0, 100)).executes(ctx -> {
+                        ServerPlayer p = ((CommandSourceStack)ctx.getSource()).getPlayerOrException();
                         int value = IntegerArgumentType.getInteger(ctx, "value");
 
-                        for (ItemStack held : new ItemStack[]{p.getMainHandStack(), p.getOffHandStack()}) {
+                        for (ItemStack held : new ItemStack[]{p.getMainHandItem(), p.getOffhandItem()}) {
                            if (held.getItem() instanceof MysticWeapon w) {
                               GearState.of(p).setResonance(w.gearId(), value);
                            }
                         }
 
-                        ((ServerCommandSource)ctx.getSource()).sendFeedback(() -> Text.literal("Resonance of the held weapon set to " + value), false);
+                        ((CommandSourceStack)ctx.getSource()).sendSuccess(() -> Component.literal("Resonance of the held weapon set to " + value), false);
                         return 1;
                      })))
                )
@@ -112,12 +112,12 @@ public final class GearSystem {
    }
 
    private static void tick(MinecraftServer server) {
-      for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+      for (ServerPlayer p : server.getPlayerList().getPlayers()) {
          if (p.isAlive()) {
             for (Entry<String, Integer> e : MysticArmor.worn(p).entrySet()) {
                Arsenal a = Arsenals.of(e.getKey());
                if (a != null) {
-                  a.armorKit().tick(p.getEntityWorld(), p, e.getValue());
+                  a.armorKit().tick(p.level(), p, e.getValue());
                }
             }
          }
@@ -129,9 +129,9 @@ public final class GearSystem {
       }
    }
 
-   static void castSet(ServerPlayerEntity p) {
+   static void castSet(ServerPlayer p) {
       if (p.isAlive() && !p.isSpectator()) {
-         ServerWorld level = p.getEntityWorld();
+         ServerLevel level = p.level();
 
          for (Entry<String, Integer> e : MysticArmor.worn(p).entrySet()) {
             Arsenal a = Arsenals.of(e.getKey());
@@ -143,7 +143,7 @@ public final class GearSystem {
                   return;
                }
 
-               GearUse use = new GearUse(level, p, p.getEquippedStack(EquipmentSlot.CHEST), null, a, null, GearUse.Slot.SET, 0, 0, false, 1.0F);
+               GearUse use = new GearUse(level, p, p.getItemBySlot(EquipmentSlot.CHEST), null, a, null, GearUse.Slot.SET, 0, 0, false, 1.0F);
                if (active.cast().fire(use)) {
                   state.cooldown(kit.key(), active.cooldown());
                   GearKit.sound(level, p, 1.4F, 0.95F + level.getRandom().nextFloat() * 0.1F, kit.sounds());

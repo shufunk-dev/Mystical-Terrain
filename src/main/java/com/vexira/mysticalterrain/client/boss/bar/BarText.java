@@ -5,13 +5,13 @@ import java.util.HashMap;
 import java.util.Map;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.StringVisitable;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.Language;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.locale.Language;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FormattedText;
+import net.minecraft.network.chat.Style;
+import net.minecraft.util.FormattedCharSequence;
 import org.jspecify.annotations.Nullable;
 
 @Environment(EnvType.CLIENT)
@@ -37,29 +37,29 @@ public final class BarText {
       return generation;
    }
 
-   private static TextRenderer font() {
-      return MinecraftClient.getInstance().textRenderer;
+   private static Font font() {
+      return Minecraft.getInstance().font;
    }
 
    public static BarText.Line of(String text) {
-      return new BarText.Line(OrderedText.styledForwardsVisitedString(text, Style.EMPTY), font().getWidth(text));
+      return new BarText.Line(FormattedCharSequence.forward(text, Style.EMPTY), font().width(text));
    }
 
-   public static BarText.Line of(Text text) {
-      OrderedText seq = text.asOrderedText();
-      return new BarText.Line(seq, font().getWidth(seq));
+   public static BarText.Line of(Component text) {
+      FormattedCharSequence seq = text.getVisualOrderText();
+      return new BarText.Line(seq, font().width(seq));
    }
 
-   public static BarText.Line fit(StringVisitable text, int width) {
-      TextRenderer font = font();
-      int w = font.getWidth(text);
+   public static BarText.Line fit(FormattedText text, int width) {
+      Font font = font();
+      int w = font.width(text);
       if (w <= width) {
-         OrderedText seq = Language.getInstance().reorder(text);
+         FormattedCharSequence seq = Language.getInstance().getVisualOrder(text);
          return new BarText.Line(seq, w);
       } else {
-         StringVisitable cut = font.trimToWidth(text, Math.max(0, width - font.getWidth("...")));
-         OrderedText seq = Language.getInstance().reorder(StringVisitable.concat(new StringVisitable[]{cut, StringVisitable.plain("...")}));
-         return new BarText.Line(seq, font.getWidth(seq));
+         FormattedText cut = font.substrByWidth(text, Math.max(0, width - font.width("...")));
+         FormattedCharSequence seq = Language.getInstance().getVisualOrder(FormattedText.composite(new FormattedText[]{cut, FormattedText.of("...")}));
+         return new BarText.Line(seq, font.width(seq));
       }
    }
 
@@ -67,7 +67,7 @@ public final class BarText {
       generation();
       BarText.Line line = UI.get(key);
       if (line == null) {
-         line = of(Text.translatableWithFallback(key, fallback));
+         line = of(Component.translatableWithFallback(key, fallback));
          UI.put(key, line);
       }
 
@@ -78,7 +78,7 @@ public final class BarText {
       generation();
       int i = Math.max(0, Math.min(ROMAN.length - 1, phase));
       if (BANNERS[i] == null) {
-         BANNERS[i] = of(Text.translatableWithFallback("gui.mysticalterrain.bossbar.phase_banner", "PHASE %s", new Object[]{ROMAN[i]}));
+         BANNERS[i] = of(Component.translatableWithFallback("gui.mysticalterrain.bossbar.phase_banner", "PHASE %s", new Object[]{ROMAN[i]}));
       }
 
       return BANNERS[i];
@@ -86,7 +86,7 @@ public final class BarText {
 
    public static BarText.Line level(int level) {
       String value = level > 0 ? Integer.toString(level) : "??";
-      return of(Text.translatableWithFallback("gui.mysticalterrain.bossbar.level", "Lv. %s", new Object[]{value}));
+      return of(Component.translatableWithFallback("gui.mysticalterrain.bossbar.level", "Lv. %s", new Object[]{value}));
    }
 
    public static BarText.@Nullable Line title(BarStyle style) {
@@ -99,8 +99,8 @@ public final class BarText {
       BarText.Line line = style.moves.get(anim);
       if (line == null) {
          String key = style.movePrefix + anim;
-         Text name = Language.getInstance().hasTranslation(key) ? Text.translatable(key) : Text.literal(pretty(anim));
-         line = of(Text.translatableWithFallback("gui.mysticalterrain.bossbar.casting", "%s", new Object[]{name}));
+         Component name = Language.getInstance().has(key) ? Component.translatable(key) : Component.literal(pretty(anim));
+         line = of(Component.translatableWithFallback("gui.mysticalterrain.bossbar.casting", "%s", new Object[]{name}));
          style.moves.put(anim, line);
       }
 
@@ -112,8 +112,8 @@ public final class BarText {
       if (style.textGen != gen) {
          style.textGen = gen;
          style.moves.clear();
-         style.titleText = Text.translatable(style.titleKey);
-         style.title = Language.getInstance().hasTranslation(style.titleKey) ? of(style.titleText) : null;
+         style.titleText = Component.translatable(style.titleKey);
+         style.title = Language.getInstance().has(style.titleKey) ? of(style.titleText) : null;
       }
    }
 
@@ -171,6 +171,6 @@ public final class BarText {
    }
 
    @Environment(EnvType.CLIENT)
-   public record Line(OrderedText text, int width) {
+   public record Line(FormattedCharSequence text, int width) {
    }
 }

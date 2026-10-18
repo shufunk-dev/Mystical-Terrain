@@ -19,28 +19,25 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.EndTick;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.Join;
-import net.fabricmc.fabric.api.client.rendering.v1.BlockRenderLayerMap;
 import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
 import net.fabricmc.fabric.api.resource.v1.pack.PackActivationType;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
-import net.minecraft.block.Block;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.option.KeyBinding.Category;
-import net.minecraft.client.render.BlockRenderLayer;
-import net.minecraft.client.render.entity.EmptyEntityRenderer;
-import net.minecraft.client.render.entity.EntityRendererFactories;
-import net.minecraft.client.util.InputUtil.Type;
-import net.minecraft.entity.EntityType;
-import net.minecraft.resource.ResourcePackManager;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.KeyMapping.Category;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.entity.EntityRenderers;
+import net.minecraft.client.renderer.entity.NoopRenderer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.repository.PackRepository;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.level.block.Block;
 
 @Environment(EnvType.CLIENT)
 public class MysticalTerrainClient implements ClientModInitializer {
@@ -52,41 +49,34 @@ public class MysticalTerrainClient implements ClientModInitializer {
       ResourceLoader.registerBuiltinPack(
          SIXTEEN,
          FabricLoader.getInstance().getModContainer("mysticalterrain").orElseThrow(),
-         Text.translatable("pack.mysticalterrain.16x"),
+         Component.translatable("pack.mysticalterrain.16x"),
          PackActivationType.NORMAL
       );
-      KeyBinding toggle = KeyBindingHelper.registerKeyBinding(
-         new KeyBinding("key.mysticalterrain.toggle_16x", Type.KEYSYM, 296, Category.create(MysticalTerrain.id("controls")))
+      KeyMapping toggle = KeyMappingHelper.registerKeyMapping(
+         new KeyMapping("key.mysticalterrain.toggle_16x", 296, Category.register(MysticalTerrain.id("controls")))
       );
       GearClient.init();
       ClientTickEvents.END_CLIENT_TICK.register((EndTick)client -> {
-         while (toggle.wasPressed()) {
+         while (toggle.consumeClick()) {
             toggleSixteen(client);
          }
       });
 
-      for (WoodSet set : MysticalBlocks.WOOD) {
-         BlockRenderLayerMap.putBlocks(BlockRenderLayer.CUTOUT, new Block[]{set.door(), set.trapdoor()});
-      }
-
-      MysticalBlocks.PLANTS.forEach(block -> BlockRenderLayerMap.putBlock(block, BlockRenderLayer.CUTOUT));
-      EntityRendererFactories.register(EntityType.ENDER_DRAGON, DragonGeoRenderer::new);
+      EntityRenderers.register(EntityTypes.ENDER_DRAGON, DragonGeoRenderer::new);
       GearRenderers.install();
-      BossEntities.BOSSES.forEach((id, type) -> EntityRendererFactories.register(type, ctx -> new BossRenderer(ctx, id, 1.2F)));
-      EntityRendererFactories.register(BossEntities.WARDEN_SHADE, WardenShadeRenderer::new);
-      RealmMobs.TYPES.forEach((id, type) -> EntityRendererFactories.register(type, ctx -> new BossRenderer(ctx, id, RealmMobs.kind(id).width() * 0.5F)));
-      EntityRendererFactories.register(BossEntities.BOSS_BOLT, EmptyEntityRenderer::new);
-      BlockRenderLayerMap.putBlocks(BlockRenderLayer.CUTOUT, MysticalBosses.ALTARS.values().toArray(Block[]::new));
-      BlockRenderLayerMap.putBlocks(BlockRenderLayer.CUTOUT, new Block[]{MysticalBosses.FROST_BELL, MysticalBosses.GLOOM_BRAZIER, MysticalBosses.VOID_PEDESTAL});
+      BossEntities.BOSSES.forEach((id, type) -> EntityRenderers.register(type, ctx -> new BossRenderer(ctx, id, 1.2F)));
+      EntityRenderers.register(BossEntities.WARDEN_SHADE, WardenShadeRenderer::new);
+      RealmMobs.TYPES.forEach((id, type) -> EntityRenderers.register(type, ctx -> new BossRenderer(ctx, id, RealmMobs.kind(id).width() * 0.5F)));
+      EntityRenderers.register(BossEntities.BOSS_BOLT, NoopRenderer::new);
    }
 
-   private static void toggleSixteen(MinecraftClient client) {
-      ResourcePackManager packs = client.getResourcePackManager();
+   private static void toggleSixteen(Minecraft client) {
+      PackRepository packs = client.getResourcePackRepository();
       String id = SIXTEEN.toString();
-      boolean on = !packs.getEnabledIds().contains(id);
-      if (on ? packs.enable(id) : packs.disable(id)) {
-         client.options.refreshResourcePacks(packs);
-         client.inGameHud.setOverlayMessage(Text.translatable(on ? "message.mysticalterrain.16x_on" : "message.mysticalterrain.16x_off"), false);
+      boolean on = !packs.getSelectedIds().contains(id);
+      if (on ? packs.addPack(id) : packs.removePack(id)) {
+         client.options.updateResourcePacks(packs);
+         client.gui.hud.setOverlayMessage(Component.translatable(on ? "message.mysticalterrain.16x_on" : "message.mysticalterrain.16x_off"), false);
       }
    }
 }

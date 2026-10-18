@@ -3,28 +3,28 @@ package com.vexira.mysticalterrain.client.vfx;
 import com.vexira.mysticalterrain.MysticalTerrain;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.particle.ParticleManager;
-import net.minecraft.client.particle.ParticleRenderer;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.Frustum;
-import net.minecraft.client.render.Submittable;
+import net.minecraft.client.Camera;
+import net.minecraft.client.particle.ParticleEngine;
+import net.minecraft.client.particle.ParticleGroup;
+import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.state.level.ParticleGroupRenderState;
 
 @Environment(EnvType.CLIENT)
-final class VfxParticleGroup extends ParticleRenderer<VfxParticle> {
+final class VfxParticleGroup extends ParticleGroup<VfxParticle> {
    private final VfxRenderState state = new VfxRenderState();
    private boolean warned;
 
-   VfxParticleGroup(ParticleManager engine) {
+   VfxParticleGroup(ParticleEngine engine) {
       super(engine);
    }
 
-   public Submittable render(Frustum frustum, Camera camera, float tickProgress) {
+   public ParticleGroupRenderState extractRenderState(Frustum frustum, Camera camera, float tickProgress) {
       for (VfxParticle p : this.particles) {
          if (p.visible(frustum)) {
             try {
-               p.render(this.state, camera, tickProgress);
+               p.extract(this.state, camera, tickProgress);
             } catch (RuntimeException e) {
-               p.markDead();
+               p.remove();
                if (!this.warned) {
                   this.warned = true;
                   MysticalTerrain.LOGGER.warn("Dropped a broken effect particle", e);

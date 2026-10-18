@@ -1,8 +1,8 @@
 package com.vexira.mysticalterrain.boss.dragon;
 
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
 
 public interface DragonAccess {
-   void mysticalterrain$reallyHurt(ServerWorld var1, DamageSource var2, float var3);
+   void mysticalterrain$reallyHurt(ServerLevel var1, DamageSource var2, float var3);
 }

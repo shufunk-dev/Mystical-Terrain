@@ -4,40 +4,40 @@ import com.vexira.mysticalterrain.building.Blueprint;
 import com.vexira.mysticalterrain.building.BuildingBuilder;
 import com.vexira.mysticalterrain.building.BuildingKind;
 import com.vexira.mysticalterrain.building.BuildingParams;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.structure.StructureContext;
-import net.minecraft.structure.StructurePiece;
-import net.minecraft.structure.StructurePieceType;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockBox;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.StructureWorldAccess;
-import net.minecraft.world.gen.StructureAccessor;
-import net.minecraft.world.gen.chunk.ChunkGenerator;
-import net.minecraft.world.gen.feature.ConfiguredFeature;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.feature.Feature;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.StructurePiece;
+import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSerializationContext;
+import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 
 public class BuildingPiece extends StructurePiece {
    public static final StructurePieceType TYPE = BuildingPiece::new;
-   private final RegistryKey<ConfiguredFeature<?, ?>> key;
+   private final ResourceKey<Feature> key;
    private final BuildingConfiguration config;
    private final BlockPos base;
    private final BuildingParams params;
    private volatile Blueprint plan;
 
-   public BuildingPiece(RegistryKey<ConfiguredFeature<?, ?>> key, BuildingConfiguration config, BlockPos base, BuildingParams params) {
+   public BuildingPiece(ResourceKey<Feature> key, BuildingConfiguration config, BlockPos base, BuildingParams params) {
       this(key, config, base, params, BuildingBuilder.build(params));
    }
 
-   private BuildingPiece(RegistryKey<ConfiguredFeature<?, ?>> key, BuildingConfiguration config, BlockPos base, BuildingParams params, Blueprint plan) {
+   public BuildingPiece(ResourceKey<Feature> key, BuildingConfiguration config, BlockPos base, BuildingParams params, Blueprint plan) {
       super(
          TYPE,
          0,
-         new BlockBox(
+         new BoundingBox(
             base.getX() + plan.minX(),
             base.getY() + Math.min(Math.max(plan.minY(), 0), plan.maxY()),
             base.getZ() + plan.minZ(),
@@ -53,38 +53,38 @@ public class BuildingPiece extends StructurePiece {
       this.plan = plan;
    }
 
-   public BuildingPiece(StructureContext context, NbtCompound tag) {
+   public BuildingPiece(StructurePieceSerializationContext context, CompoundTag tag) {
       super(TYPE, tag);
-      this.key = RegistryKey.of(RegistryKeys.CONFIGURED_FEATURE, Identifier.of(tag.getString("building", "")));
-      this.config = context.registryManager()
-         .getOrThrow(RegistryKeys.CONFIGURED_FEATURE)
-         .getOptional(this.key)
-         .map(RegistryEntry::value)
-         .map(ConfiguredFeature::config)
-         .filter(BuildingConfiguration.class::isInstance)
-         .map(BuildingConfiguration.class::cast)
+      this.key = ResourceKey.create(Registries.FEATURE, Identifier.parse(tag.getStringOr("building", "")));
+      this.config = context.registryAccess()
+         .lookupOrThrow(Registries.FEATURE)
+         .get(this.key)
+         .map(Holder::value)
+         .filter(BuildingFeature.class::isInstance)
+         .map(BuildingFeature.class::cast)
+         .map(BuildingFeature::config)
          .orElse(null);
-      this.base = new BlockPos(tag.getInt("x", 0), tag.getInt("y", 0), tag.getInt("z", 0));
+      this.base = new BlockPos(tag.getIntOr("x", 0), tag.getIntOr("y", 0), tag.getIntOr("z", 0));
 
       BuildingKind kind;
       try {
-         kind = BuildingKind.valueOf(tag.getString("kind", "SHRINE"));
+         kind = BuildingKind.valueOf(tag.getStringOr("kind", "SHRINE"));
       } catch (IllegalArgumentException e) {
          kind = BuildingKind.SHRINE;
       }
 
       this.params = new BuildingParams(
          kind,
-         tag.getInt("size", 4),
-         tag.getInt("floors", 2),
-         tag.getDouble("decay", 0.0),
-         tag.getLong("seed", 0L)
+         tag.getIntOr("size", 4),
+         tag.getIntOr("floors", 2),
+         tag.getDoubleOr("decay", 0.0),
+         tag.getLongOr("seed", 0L)
       );
    }
 
    @Override
-   protected void writeNbt(StructureContext context, NbtCompound tag) {
-      tag.putString("building", this.key.getValue().toString());
+   protected void addAdditionalSaveData(StructurePieceSerializationContext context, CompoundTag tag) {
+      tag.putString("building", this.key.identifier().toString());
       tag.putInt("x", this.base.getX());
       tag.putInt("y", this.base.getY());
       tag.putInt("z", this.base.getZ());
@@ -96,8 +96,8 @@ public class BuildingPiece extends StructurePiece {
    }
 
    @Override
-   public void generate(
-      StructureWorldAccess level, StructureAccessor structures, ChunkGenerator generator, Random random, BlockBox box, ChunkPos chunk, BlockPos pivot
+   public void postProcess(
+      WorldGenLevel level, StructureManager structures, ChunkGenerator generator, RandomSource random, BoundingBox box, ChunkPos chunk, BlockPos pivot
    ) {
       if (this.config != null) {
          if (this.plan == null) {

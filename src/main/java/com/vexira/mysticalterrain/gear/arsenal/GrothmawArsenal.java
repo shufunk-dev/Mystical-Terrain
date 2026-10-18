@@ -30,35 +30,35 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.ServerStopped;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.attribute.EntityAttributeInstance;
-import net.minecraft.entity.attribute.EntityAttributeModifier;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.attribute.EntityAttributeModifier.Operation;
-import net.minecraft.entity.boss.WitherEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.damage.DamageTypes;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.consume.UseAction;
-import net.minecraft.particle.BlockStateParticleEffect;
-import net.minecraft.particle.ParticleTypes;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.BlockParticleOption;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 public final class GrothmawArsenal extends Arsenal {
@@ -93,20 +93,20 @@ public final class GrothmawArsenal extends Arsenal {
       this.weapon("tyrants_fang", 13.0F, -3.3F)
          .primary(Active.of(160, GrothmawArsenal::boneQuake).empowered(50, 1.4F))
          .alternate(Active.of(240, GrothmawArsenal::skullBreaker).empowered(60, 1.5F))
-         .charge(Charge.of(3, 16).pose(UseAction.TRIDENT).onLevel(GrothmawArsenal::fangLevel).cast(440, GrothmawArsenal::continentalBreaker))
+         .charge(Charge.of(3, 16).pose(ItemUseAnimation.TRIDENT).onLevel(GrothmawArsenal::fangLevel).cast(440, GrothmawArsenal::continentalBreaker))
          .passive(GrothmawArsenal::aftershock)
          .resonancePerHit(14.0F);
       this.weapon("raptor_talons", 7.0F, -1.6F)
          .primary(Active.of(100, GrothmawArsenal::pounce).empowered(30, 1.3F))
          .alternate(Active.of(280, GrothmawArsenal::packHunt).empowered(60, 1.3F))
-         .charge(Charge.of(2, 10).perLevel(0.35F).pose(UseAction.BLOCK).onLevel(GrothmawArsenal::talonLevel))
+         .charge(Charge.of(2, 10).perLevel(0.35F).pose(ItemUseAnimation.BLOCK).onLevel(GrothmawArsenal::talonLevel))
          .passive(GrothmawArsenal::rend)
          .resonancePerHit(7.0F);
       this.weapon("fossil_greataxe", 12.0F, -3.1F)
          .axe()
          .primary(Active.of(140, GrothmawArsenal::reaversSpin).empowered(40, 1.4F))
          .alternate(Active.of(280, GrothmawArsenal::amberTomb).empowered(50, 1.4F))
-         .charge(Charge.of(3, 12).perLevel(0.25F).pose(UseAction.SPEAR).onLevel(GrothmawArsenal::axeLevel))
+         .charge(Charge.of(3, 12).perLevel(0.25F).pose(ItemUseAnimation.SPEAR).onLevel(GrothmawArsenal::axeLevel))
          .passive(GrothmawArsenal::amberSap)
          .resonancePerHit(12.0F);
    }
@@ -129,22 +129,22 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   private static long now(ServerWorld level) {
-      return level.getServer().getTicks();
+   private static long now(ServerLevel level) {
+      return level.getServer().getTickCount();
    }
 
-   static void later(ServerWorld level, int delay, Runnable run) {
+   static void later(ServerLevel level, int delay, Runnable run) {
       TASKS.add(new GrothmawArsenal.Task(now(level) + Math.max(1, delay), run));
    }
 
-   static void every(ServerWorld level, int delay, int period, int count, IntConsumer step) {
+   static void every(ServerLevel level, int delay, int period, int count, IntConsumer step) {
       for (int i = 0; i < count; i++) {
          int k = i;
          later(level, delay + i * period, () -> step.accept(k));
       }
    }
 
-   static void track(ServerWorld level, int delay, IntPredicate step) {
+   static void track(ServerLevel level, int delay, IntPredicate step) {
       int[] t = new int[]{0};
       Runnable[] self = new Runnable[1];
       self[0] = () -> {
@@ -168,7 +168,7 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    private static void tickAll(MinecraftServer server) {
-      long now = server.getTicks();
+      long now = server.getTickCount();
       if (!TASKS.isEmpty()) {
          List<GrothmawArsenal.Task> due = new ArrayList<>();
          Iterator<GrothmawArsenal.Task> it = TASKS.iterator();
@@ -202,14 +202,14 @@ public final class GrothmawArsenal extends Arsenal {
          Entry<LivingEntity, GrothmawArsenal.Rend> en = it.next();
          LivingEntity t = en.getKey();
          GrothmawArsenal.Rend r = en.getValue();
-         PlayerEntity owner = r.owner;
+         Player owner = r.owner;
          if (t == null || !t.isAlive() || now - r.last > 100L || owner == null || owner.isRemoved()) {
             it.remove();
-         } else if (r.count > 0 && now >= r.bleed && t.timeUntilRegen <= 10 && t.getEntityWorld() instanceof ServerWorld level) {
+         } else if (r.count > 0 && now >= r.bleed && t.getInvulnerableTime() <= 10 && t.level() instanceof ServerLevel level) {
             r.bleed = now + 20L;
-            int inv = t.timeUntilRegen;
+            int inv = t.getInvulnerableTime();
             GearKit.magic(level, owner, t, 0.6F * r.count);
-            t.timeUntilRegen = inv;
+            t.setInvulnerableTime(inv);
             Vfx.embers(level, center(t), 14688314, r.count, 0.25);
          }
       }
@@ -237,7 +237,7 @@ public final class GrothmawArsenal extends Arsenal {
                   pin(e, now);
                }
 
-               if (e.getEntityWorld() instanceof ServerWorld level) {
+               if (e.level() instanceof ServerLevel level) {
                   long age = now - tb.start;
                   if (age > 0L && age % 10L == 0L) {
                      Vfx.embers(level, center(e), PAL.glow(), 3, 0.5);
@@ -262,9 +262,9 @@ public final class GrothmawArsenal extends Arsenal {
       while (it.hasNext()) {
          Entry<UUID, GrothmawArsenal.Plate> en = it.next();
          if (now - en.getValue().seen > 2L) {
-            ServerPlayerEntity p = server.getPlayerManager().getPlayer(en.getKey());
+            ServerPlayer p = server.getPlayerList().getPlayer(en.getKey());
             if (p != null) {
-               EntityAttributeInstance max = p.getAttributeInstance(EntityAttributes.MAX_ABSORPTION);
+               AttributeInstance max = p.getAttribute(Attributes.MAX_ABSORPTION);
                if (max != null) {
                   max.removeModifier(PLATING);
                }
@@ -278,10 +278,10 @@ public final class GrothmawArsenal extends Arsenal {
 
       while (rageIt.hasNext()) {
          Entry<UUID, Long> en = rageIt.next();
-         ServerPlayerEntity p = server.getPlayerManager().getPlayer(en.getKey());
+         ServerPlayer p = server.getPlayerList().getPlayer(en.getKey());
          if (p != null && p.isAlive() && now < en.getValue()) {
-            ServerWorld level = p.getEntityWorld();
-            Vec3d feet = p.getEntityPos();
+            ServerLevel level = p.level();
+            Vec3 feet = p.position();
             if (now % 20L == 0L) {
                Vfx.auraRing(level, feet, PAL, 1.0);
                Vfx.embers(level, feet.add(0.0, 1.0, 0.0), PAL.glow(), 6, 0.6);
@@ -297,13 +297,13 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    static boolean boneQuake(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      float yaw = p.getYaw();
-      Vec3d feet = p.getEntityPos();
-      Vec3d dir = GearKit.flatLook(p);
-      Vec3d start = ground(level, feet.add(dir.multiply(1.5)));
-      Vfx.heavyImpact(level, ground(level, feet.add(dir.multiply(1.2))), PAL, 0.7);
+      ServerLevel level = u.level();
+      Player p = u.player();
+      float yaw = p.getYRot();
+      Vec3 feet = p.position();
+      Vec3 dir = GearKit.flatLook(p);
+      Vec3 start = ground(level, feet.add(dir.scale(1.5)));
+      Vfx.heavyImpact(level, ground(level, feet.add(dir.scale(1.2))), PAL, 0.7);
       Vfx.groundCrack(level, start, 1.8, PAL);
       dust(level, start, 30, 0.7);
       GearKit.kick(level, p, 0.35);
@@ -311,17 +311,17 @@ public final class GrothmawArsenal extends Arsenal {
       float[] fan = u.empowered() ? new float[]{0.0F, -22.0F, 22.0F} : new float[]{0.0F};
 
       for (float off : fan) {
-         Vec3d d = yawDir(yaw + off);
-         Vec3d from = ground(level, feet.add(d.multiply(1.5)));
+         Vec3 d = yawDir(yaw + off);
+         Vec3 from = ground(level, feet.add(d.scale(1.5)));
          Vfx.telegraphLine(level, from, d, 14.0, 2.4, 5, PAL);
          erupt(u, from, d, 14.0, 1.75, 1.3, 3, 1.8, 0.1, 0.5, seen, e -> quakeHit(u, e));
          if (u.empowered()) {
-            Vec3d end = ground(level, from.add(d.multiply(14.0)));
+            Vec3 end = ground(level, from.add(d.scale(14.0)));
             later(level, 11, () -> tarBurst(u, end));
          }
       }
 
-      later(level, 3, () -> soundAt(level, start.add(dir.multiply(6.0)), 1.2F, 0.9F, "weapon.tyrants_fang.erupt", "boss.grothmaw.bone_quake.hit"));
+      later(level, 3, () -> soundAt(level, start.add(dir.scale(6.0)), 1.2F, 0.9F, "weapon.tyrants_fang.erupt", "boss.grothmaw.bone_quake.hit"));
       return true;
    }
 
@@ -338,9 +338,9 @@ public final class GrothmawArsenal extends Arsenal {
       u.resonate(3.0F);
    }
 
-   private static void tarBurst(GearUse u, Vec3d at) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+   private static void tarBurst(GearUse u, Vec3 at) {
+      ServerLevel level = u.level();
+      Player p = u.player();
       if (alive(p, level)) {
          Vfx.explosion(level, at, PAL, 2.5);
 
@@ -357,7 +357,7 @@ public final class GrothmawArsenal extends Arsenal {
                Vfx.smoke(level, at, PAL.smoke(), 2, 1.2, 0.8);
 
                for (LivingEntity ex : u.enemies(at, 3.2)) {
-                  if (flatDist(at, ex.getEntityPos()) <= 2.2 + ex.getWidth() / 2.0F && Math.abs(ex.getY() - at.y) < 1.5) {
+                  if (flatDist(at, ex.position()) <= 2.2 + ex.getBbWidth() / 2.0F && Math.abs(ex.getY() - at.y) < 1.5) {
                      slow(ex, p, 1, 30);
                      u.magic(ex, 1.5F);
                   }
@@ -369,8 +369,8 @@ public final class GrothmawArsenal extends Arsenal {
 
    private static void erupt(
       GearUse u,
-      Vec3d start,
-      Vec3d dir,
+      Vec3 start,
+      Vec3 dir,
       double length,
       double seg,
       double width,
@@ -381,14 +381,14 @@ public final class GrothmawArsenal extends Arsenal {
       Set<LivingEntity> seen,
       Consumer<LivingEntity> hit
    ) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       int steps = (int)Math.ceil(length / seg - 1.0E-6);
       every(level, delay, 1, steps, k -> {
          if (alive(p, level)) {
             double a = seg * k;
             double b = Math.min(length, a + seg);
-            Vec3d q = ground(level, start.add(dir.multiply((a + b) / 2.0)));
+            Vec3 q = ground(level, start.add(dir.scale((a + b) / 2.0)));
             Vfx.pillar(level, q, PAL, height + growth * k, thick);
             if (k % 2 == 0) {
                Vfx.debris(level, q, Vfx.Debris.BONE, 15260864, 4, 0.4);
@@ -399,9 +399,9 @@ public final class GrothmawArsenal extends Arsenal {
                Vfx.groundCrack(level, q, 1.3, PAL);
             }
 
-            Vec3d from = start.add(dir.multiply(a));
+            Vec3 from = start.add(dir.scale(a));
 
-            for (LivingEntity e : GearKit.alongLine(level, p, new Vec3d(from.x, q.y + 0.8, from.z), dir, b - a, width)) {
+            for (LivingEntity e : GearKit.alongLine(level, p, new Vec3(from.x, q.y + 0.8, from.z), dir, b - a, width)) {
                if (seen.add(e)) {
                   hit.accept(e);
                }
@@ -411,10 +411,10 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    static boolean skullBreaker(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       boolean emp = u.empowered();
-      Vec3d feet = p.getEntityPos();
+      Vec3 feet = p.position();
       GearKit.dash(p, emp ? 1.1 : 0.95, emp ? 1.05 : 0.75);
       Vfx.shockwave(level, ground(level, feet), PAL, 2.0);
       dust(level, feet, 20, 0.6);
@@ -425,18 +425,18 @@ public final class GrothmawArsenal extends Arsenal {
             return false;
          }
 
-         p.onLanding();
-         if (!p.isOnGround()) {
+         p.resetFallDistance();
+         if (!p.onGround()) {
             air[0] = true;
          }
 
          if (t % 2 == 0) {
-            Vec3d at = p.getEntityPos().add(0.0, 1.0, 0.0);
+            Vec3 at = p.position().add(0.0, 1.0, 0.0);
             Vfx.trail(level, at, PAL, 1.0);
             Vfx.embers(level, at, PAL.glow(), 2, 0.3);
          }
 
-         boolean landed = t >= 3 && (p.isOnGround() && (air[0] || t >= 10) || p.isTouchingWater());
+         boolean landed = t >= 3 && (p.onGround() && (air[0] || t >= 10) || p.isInWater());
          if (!landed && t < 40) {
             return true;
          }
@@ -448,17 +448,17 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    private static void skullLand(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       boolean emp = u.empowered();
-      Vec3d g = ground(level, p.getEntityPos());
+      Vec3 g = ground(level, p.position());
       double r = emp ? 6.0 : 4.5;
       long now = now(level);
       Set<LivingEntity> struck = new HashSet<>();
 
       for (LivingEntity e : u.enemies(g, r + 2.0)) {
-         double d = flatDist(g, e.getEntityPos());
-         if (!(d > r + e.getWidth() / 2.0F) && !(Math.abs(e.getY() - g.y) > 3.0)) {
+         double d = flatDist(g, e.position());
+         if (!(d > r + e.getBbWidth() / 2.0F) && !(Math.abs(e.getY() - g.y) > 3.0)) {
             u.strike(e, (float)(18.0 * (1.0 - 0.4 * Math.min(1.0, d / r))));
             if (heavy(e)) {
                slow(e, p, 0, 20);
@@ -475,7 +475,7 @@ public final class GrothmawArsenal extends Arsenal {
          }
       }
 
-      float yaw = p.getYaw();
+      float yaw = p.getYRot();
       Vfx.slashArc(level, GearKit.eye(p).add(0.0, -0.3, 0.0), yaw, 20.0F, 90.0F, 3.0, PAL, 170.0F);
       Vfx.heavyImpact(level, g, PAL, emp ? 1.6 : 1.3);
       Vfx.groundCrack(level, g, r, PAL);
@@ -485,7 +485,7 @@ public final class GrothmawArsenal extends Arsenal {
       soundAt(level, g, 1.4F, 0.85F, "weapon.tyrants_fang.slam", "weapon.tyrants_fang.use");
       if (emp) {
          for (int i = 0; i < 3; i++) {
-            Vfx.pillar(level, ground(level, g.add(yawDir(yaw + 120 * i).multiply(0.6 * r))), PAL, 2.6, 0.6);
+            Vfx.pillar(level, ground(level, g.add(yawDir(yaw + 120 * i).scale(0.6 * r))), PAL, 2.6, 0.6);
          }
 
          every(level, 1, 1, 12, k -> {
@@ -497,8 +497,8 @@ public final class GrothmawArsenal extends Arsenal {
 
             if (alive(p, level)) {
                for (LivingEntity e : u.enemies(g, ring + 2.0)) {
-                  double dx = flatDist(g, e.getEntityPos());
-                  if (e.isOnGround() && Math.abs(dx - ring) <= 0.5 + e.getWidth() / 2.0F && Math.abs(e.getY() - g.y) < 1.5 && struck.add(e)) {
+                  double dx = flatDist(g, e.position());
+                  if (e.onGround() && Math.abs(dx - ring) <= 0.5 + e.getBbWidth() / 2.0F && Math.abs(e.getY() - g.y) < 1.5 && struck.add(e)) {
                      u.magic(e, 6.0F);
                      if (!heavy(e)) {
                         GearKit.knockAway(e, g, 0.8, 0.15);
@@ -512,9 +512,9 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   static void fangLevel(ServerWorld level, PlayerEntity p, WeaponKit kit, int c, boolean max) {
-      Vec3d feet = p.getEntityPos();
-      Vec3d tip = GearKit.tip(p);
+   static void fangLevel(ServerLevel level, Player p, WeaponKit kit, int c, boolean max) {
+      Vec3 feet = p.position();
+      Vec3 tip = GearKit.tip(p);
       Vfx.groundCrack(level, ground(level, feet), 1.5 + c, PAL);
       Vfx.gather(level, tip, PAL, 1.6, 8);
       Vfx.flare(level, tip, PAL.glow(), 1.0 + 0.4 * c, 6);
@@ -527,11 +527,11 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    static boolean continentalBreaker(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       int lv = Math.max(1, u.charge());
-      float yaw = p.getYaw();
-      Vec3d g = ground(level, p.getEntityPos());
+      float yaw = p.getYRot();
+      Vec3 g = ground(level, p.position());
       Vfx.heavyImpact(level, g, PAL, 0.9 + 0.3 * lv);
       Vfx.slashArc(level, GearKit.eye(p).add(0.0, -0.3, 0.0), yaw, 20.0F, 90.0F, 3.2, PAL, 180.0F);
       dust(level, g, 40, 1.5);
@@ -549,7 +549,7 @@ public final class GrothmawArsenal extends Arsenal {
       Set<LivingEntity> seen = new HashSet<>();
 
       for (int i = 0; i < n; i++) {
-         Vec3d d = yawDir(yaw + i * 360.0F / n);
+         Vec3 d = yawDir(yaw + i * 360.0F / n);
          Vfx.telegraphLine(level, g, d, len, 1.6, 6, PAL);
          erupt(u, g, d, len, 1.5, 1.1, 6, 2.0 + 0.2 * lv, 0.0, 0.55, seen, e -> {
             rehit(e);
@@ -574,9 +574,9 @@ public final class GrothmawArsenal extends Arsenal {
       return true;
    }
 
-   private static void primordialNova(GearUse u, Vec3d g) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+   private static void primordialNova(GearUse u, Vec3 g) {
+      ServerLevel level = u.level();
+      Player p = u.player();
       if (alive(p, level)) {
          Vfx.nova(level, g, PAL, 10.0);
          Vfx.radialFlash(level, g, 16.0, PAL.glow(), 0.6F);
@@ -594,10 +594,10 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   static void aftershock(ServerWorld level, LivingEntity a, LivingEntity t, ItemStack stack) {
-      if (a instanceof PlayerEntity p) {
+   static void aftershock(ServerLevel level, LivingEntity a, LivingEntity t, ItemStack stack) {
+      if (a instanceof Player p) {
          if (!heavy(t)) {
-            GearKit.knockAway(t, a.getEntityPos(), 0.9, 0.25);
+            GearKit.knockAway(t, a.position(), 0.9, 0.25);
          }
 
          Vfx.impact(level, center(t), PAL, 0.45);
@@ -609,7 +609,7 @@ public final class GrothmawArsenal extends Arsenal {
 
          s.count++;
          s.last = now;
-         Vec3d g = ground(level, t.getEntityPos());
+         Vec3 g = ground(level, t.position());
          if (s.count < 3) {
             Vfx.ring(level, g, PAL.glow(), 0.6 + 0.5 * s.count, 8);
          } else {
@@ -638,8 +638,8 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    static boolean pounce(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       double range = 14 + 5 * u.charge();
       int chain = u.empowered() ? 2 : 0;
       Set<LivingEntity> raked = new HashSet<>();
@@ -648,10 +648,10 @@ public final class GrothmawArsenal extends Arsenal {
          leap(u, target, raked, chain, true);
          return true;
       } else {
-         Vec3d feet = p.getEntityPos();
-         Vec3d dir = GearKit.flatLook(p);
+         Vec3 feet = p.position();
+         Vec3 dir = GearKit.flatLook(p);
          GearKit.dash(p, 1.4, 0.45);
-         Vfx.dashTrail(level, feet.add(0.0, 0.8, 0.0), feet.add(dir.multiply(7.0)).add(0.0, 0.8, 0.0), PAL);
+         Vfx.dashTrail(level, feet.add(0.0, 0.8, 0.0), feet.add(dir.scale(7.0)).add(0.0, 0.8, 0.0), PAL);
          Vfx.streaks(level, feet.add(0.0, 1.0, 0.0), dir, PAL, 8);
          dust(level, feet, 12, 0.4);
          track(level, 1, t -> {
@@ -659,9 +659,9 @@ public final class GrothmawArsenal extends Arsenal {
                return false;
             }
 
-            p.onLanding();
+            p.resetFallDistance();
             if (t >= 1) {
-               LivingEntity hit = closest(u.enemies(p.getEntityPos(), 4.0), p, raked, 1.8);
+               LivingEntity hit = closest(u.enemies(p.position(), 4.0), p, raked, 1.8);
                if (hit != null) {
                   rake(u, hit, true, raked);
                   afterRake(u, raked, chain);
@@ -681,17 +681,17 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    private static void leap(GearUse u, LivingEntity target, Set<LivingEntity> raked, int chain, boolean first) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      Vec3d feet = p.getEntityPos();
-      Vec3d to = target.getEntityPos().subtract(feet);
+      ServerLevel level = u.level();
+      Player p = u.player();
+      Vec3 feet = p.position();
+      Vec3 to = target.position().subtract(feet);
       double d = Math.sqrt(to.x * to.x + to.z * to.z);
-      Vec3d dir = d < 0.001 ? GearKit.flatLook(p) : new Vec3d(to.x / d, 0.0, to.z / d);
+      Vec3 dir = d < 0.001 ? GearKit.flatLook(p) : new Vec3(to.x / d, 0.0, to.z / d);
       double speed = Math.min(1.9, d / 11.0);
       double up = Math.min(0.7, 0.42 + 0.02 * d);
-      p.setVelocity(dir.x * speed, up, dir.z * speed);
-      p.knockedBack = true;
-      Vfx.dashTrail(level, feet.add(0.0, 0.8, 0.0), target.getEntityPos().add(0.0, 0.8, 0.0), PAL);
+      p.setDeltaMovement(dir.x * speed, up, dir.z * speed);
+      p.syncVelocity = true;
+      Vfx.dashTrail(level, feet.add(0.0, 0.8, 0.0), target.position().add(0.0, 0.8, 0.0), PAL);
       Vfx.streaks(level, feet.add(0.0, 1.0, 0.0), dir, PAL, 8);
       dust(level, feet, 12, 0.4);
       if (!first) {
@@ -703,12 +703,12 @@ public final class GrothmawArsenal extends Arsenal {
             return false;
          }
 
-         p.onLanding();
+         p.resetFallDistance();
          if (target.isAlive() && t < 24) {
-            double gap = flatGap(p.getEntityPos(), target);
-            Box box = target.getBoundingBox();
-            boolean aligned = p.getY() < box.maxY + 1.5 && p.getY() + p.getHeight() > box.minY - 1.0;
-            if ((!(gap < 2.0) || !aligned) && (t < 3 || !p.isOnGround() || !(gap < 3.0))) {
+            double gap = flatGap(p.position(), target);
+            AABB box = target.getBoundingBox();
+            boolean aligned = p.getY() < box.maxY + 1.5 && p.getY() + p.getBbHeight() > box.minY - 1.0;
+            if ((!(gap < 2.0) || !aligned) && (t < 3 || !p.onGround() || !(gap < 3.0))) {
                return true;
             }
 
@@ -727,16 +727,16 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    private static void rake(GearUse u, LivingEntity t, boolean first, Set<LivingEntity> raked) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       boolean full = first && u.fullyCharged();
       raked.add(t);
       rehit(t);
       u.strike(t, first ? 9.0F : 7.0F);
       addRend(level, p, t, full ? 5 : (first ? 2 : 1));
       u.resonate(4.0F);
-      Vec3d c = center(t);
-      float yaw = p.getYaw();
+      Vec3 c = center(t);
+      float yaw = p.getYRot();
       Vfx.claw(level, c, yaw, 20.0F, 2.2, PAL);
       Vfx.impact(level, c, Vfx.Palette.BLOOD, 0.6);
       Vfx.slashArc(level, c, yaw, 0.0F, -35.0F, 1.6, PAL, 120.0F);
@@ -745,15 +745,15 @@ public final class GrothmawArsenal extends Arsenal {
          Vfx.radialFlash(level, c, 8.0, PAL.glow(), 0.35F);
       }
 
-      Vec3d away = flat(t.getEntityPos().subtract(p.getEntityPos()));
-      p.setVelocity(-away.x * 0.3, 0.35, -away.z * 0.3);
-      p.knockedBack = true;
+      Vec3 away = flat(t.position().subtract(p.position()));
+      p.setDeltaMovement(-away.x * 0.3, 0.35, -away.z * 0.3);
+      p.syncVelocity = true;
       soundAt(level, c, 1.1F, 1.0F + level.getRandom().nextFloat() * 0.1F, "weapon.raptor_talons.rake", "weapon.raptor_talons.use");
    }
 
    private static void afterRake(GearUse u, Set<LivingEntity> raked, int chain) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       cushion(level, p);
       if (chain <= 0) {
          if (u.empowered()) {
@@ -765,9 +765,9 @@ public final class GrothmawArsenal extends Arsenal {
                LivingEntity next = null;
                double best = Double.MAX_VALUE;
 
-               for (LivingEntity e : u.enemies(p.getEntityPos(), 8.0)) {
-                  double d = e.squaredDistanceTo(p);
-                  if (!raked.contains(e) && d < best && p.canSee(e)) {
+               for (LivingEntity e : u.enemies(p.position(), 8.0)) {
+                  double d = e.distanceToSqr(p);
+                  if (!raked.contains(e) && d < best && p.hasLineOfSight(e)) {
                      best = d;
                      next = e;
                   }
@@ -785,18 +785,18 @@ public final class GrothmawArsenal extends Arsenal {
 
    private static void finale(GearUse u) {
       if (alive(u.player(), u.level())) {
-         Vfx.auraRing(u.level(), u.player().getEntityPos(), PAL, 1.0);
+         Vfx.auraRing(u.level(), u.player().position(), PAL, 1.0);
       }
    }
 
-   private static @Nullable LivingEntity closest(List<LivingEntity> near, PlayerEntity p, Set<LivingEntity> skip, double reach) {
+   private static @Nullable LivingEntity closest(List<LivingEntity> near, Player p, Set<LivingEntity> skip, double reach) {
       LivingEntity best = null;
       double bestGap = reach;
-      Box me = p.getBoundingBox();
+      AABB me = p.getBoundingBox();
 
       for (LivingEntity e : near) {
-         double gap = flatGap(p.getEntityPos(), e);
-         Box b = e.getBoundingBox();
+         double gap = flatGap(p.position(), e);
+         AABB b = e.getBoundingBox();
          if (!skip.contains(e) && gap <= bestGap && b.maxY > me.minY - 1.0 && b.minY < me.maxY + 1.0) {
             best = e;
             bestGap = gap;
@@ -806,25 +806,25 @@ public final class GrothmawArsenal extends Arsenal {
       return best;
    }
 
-   static void talonLevel(ServerWorld level, PlayerEntity p, WeaponKit kit, int c, boolean max) {
-      Vec3d feet = p.getEntityPos();
-      Vec3d tip = GearKit.tip(p);
-      Vfx.streaks(level, feet.add(0.0, 0.3, 0.0), GearKit.flatLook(p).multiply(-1.0), PAL, 4);
+   static void talonLevel(ServerLevel level, Player p, WeaponKit kit, int c, boolean max) {
+      Vec3 feet = p.position();
+      Vec3 tip = GearKit.tip(p);
+      Vfx.streaks(level, feet.add(0.0, 0.3, 0.0), GearKit.flatLook(p).scale(-1.0), PAL, 4);
       Vfx.ring(level, feet, PAL.glow(), 0.9 + 0.4 * c, 8);
       Vfx.flare(level, tip, PAL.glow(), 0.8 + 0.3 * c, 5);
       dust(level, feet, 4 + 3 * c, 0.4);
       if (max) {
          Vfx.glint(level, tip, 16773808, 1.4);
-         Vfx.claw(level, tip, p.getYaw(), p.getPitch(), 0.9, PAL);
+         Vfx.claw(level, tip, p.getYRot(), p.getXRot(), 0.9, PAL);
       }
    }
 
    static boolean packHunt(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      float yaw = p.getYaw();
-      Vec3d feet = p.getEntityPos();
-      Vec3d start = ground(level, feet.add(GearKit.flatLook(p).multiply(0.8)));
+      ServerLevel level = u.level();
+      Player p = u.player();
+      float yaw = p.getYRot();
+      Vec3 feet = p.position();
+      Vec3 start = ground(level, feet.add(GearKit.flatLook(p).scale(0.8)));
       float[] fan = u.empowered() ? new float[]{-25.0F, -12.5F, 0.0F, 12.5F, 25.0F} : new float[]{-15.0F, 0.0F, 15.0F};
       Set<LivingEntity> out = new HashSet<>();
       Set<LivingEntity> back = u.empowered() ? new HashSet<>() : null;
@@ -838,28 +838,28 @@ public final class GrothmawArsenal extends Arsenal {
       return true;
    }
 
-   private static void raptor(GearUse u, Vec3d start, Vec3d dir, boolean home, Set<LivingEntity> seen, @Nullable Set<LivingEntity> back) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      Vec3d[] at = new Vec3d[]{start, start};
-      Vec3d[] heading = new Vec3d[]{dir};
+   private static void raptor(GearUse u, Vec3 start, Vec3 dir, boolean home, Set<LivingEntity> seen, @Nullable Set<LivingEntity> back) {
+      ServerLevel level = u.level();
+      Player p = u.player();
+      Vec3[] at = new Vec3[]{start, start};
+      Vec3[] heading = new Vec3[]{dir};
       track(level, 1, t -> {
          if (!alive(p, level)) {
             return false;
          }
 
-         Vec3d head = at[0];
+         Vec3 head = at[0];
          if (home) {
-            if (flatDist(head, p.getEntityPos()) < 1.5) {
+            if (flatDist(head, p.position()) < 1.5) {
                fade(level, head, true);
                return false;
             }
 
-            heading[0] = flat(p.getEntityPos().subtract(head));
+            heading[0] = flat(p.position().subtract(head));
          }
 
-         Vec3d d = heading[0];
-         Vec3d next = ground(level, head.add(d.multiply(0.9)));
+         Vec3 d = heading[0];
+         Vec3 next = ground(level, head.add(d.scale(0.9)));
          boolean blocked = next.y - head.y > 1.25 || solid(level, next.add(0.0, 0.8, 0.0));
          if (!blocked) {
             head = next;
@@ -894,14 +894,14 @@ public final class GrothmawArsenal extends Arsenal {
 
          fade(level, head, home);
          if (back != null) {
-            raptor(u, head, d.multiply(-1.0), true, back, null);
+            raptor(u, head, d.scale(-1.0), true, back, null);
          }
 
          return false;
       });
    }
 
-   private static void fade(ServerWorld level, Vec3d at, boolean beside) {
+   private static void fade(ServerLevel level, Vec3 at, boolean beside) {
       Vfx.glint(level, at.add(0.0, 1.0, 0.0), PAL.core(), 1.0);
       if (beside) {
          Vfx.flare(level, at.add(0.0, 0.8, 0.0), PAL.glow(), 1.0, 5);
@@ -911,15 +911,15 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   static void rend(ServerWorld level, LivingEntity a, LivingEntity t, ItemStack stack) {
-      if (a instanceof PlayerEntity p) {
+   static void rend(ServerLevel level, LivingEntity a, LivingEntity t, ItemStack stack) {
+      if (a instanceof Player p) {
          GearKit.hitSpark(level, t, PAL);
-         Vfx.slash(level, center(t), a.getYaw(), 14688314, 0.8);
+         Vfx.slash(level, center(t), a.getYRot(), 14688314, 0.8);
          addRend(level, p, t, 1);
       }
    }
 
-   private static void addRend(ServerWorld level, PlayerEntity p, LivingEntity t, int stacks) {
+   private static void addRend(ServerLevel level, Player p, LivingEntity t, int stacks) {
       if (t.isAlive()) {
          long now = now(level);
          GrothmawArsenal.Rend r = REND.computeIfAbsent(t, k -> new GrothmawArsenal.Rend());
@@ -942,11 +942,11 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   private static void eviscerate(ServerWorld level, PlayerEntity p, LivingEntity t, GrothmawArsenal.Rend r, long now) {
+   private static void eviscerate(ServerLevel level, Player p, LivingEntity t, GrothmawArsenal.Rend r, long now) {
       r.count = 0;
       r.lock = now + 40L;
-      Vec3d c = center(t);
-      float yaw = p.getYaw();
+      Vec3 c = center(t);
+      float yaw = p.getYRot();
       rehit(t);
       GearKit.magic(level, p, t, 8.0F);
       p.heal(1.5F);
@@ -958,15 +958,15 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    static boolean reaversSpin(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       int lv = u.charge();
       double r = 4.5 + 0.5 * lv;
       int n = 1 + lv + (u.empowered() ? 1 : 0);
-      float yaw = p.getYaw();
+      float yaw = p.getYRot();
       int lead = u.fullyCharged() ? 3 : 0;
       if (u.fullyCharged()) {
-         Vec3d feet = p.getEntityPos();
+         Vec3 feet = p.position();
 
          for (LivingEntity e : u.enemies(feet, 8.0)) {
             if (!heavy(e)) {
@@ -991,14 +991,14 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    private static void spinRev(GearUse u, int k, int n, double r, float yaw) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       if (alive(p, level)) {
-         Vec3d feet = p.getEntityPos();
+         Vec3 feet = p.position();
          boolean last = k == n - 1;
 
          for (LivingEntity e : u.enemies(feet, r + 2.0)) {
-            if (!(flatDist(feet, e.getEntityPos()) > r + e.getWidth() / 2.0F) && !(Math.abs(e.getY() - feet.y) >= 2.5)) {
+            if (!(flatDist(feet, e.position()) > r + e.getBbWidth() / 2.0F) && !(Math.abs(e.getY() - feet.y) >= 2.5)) {
                if (k >= 1) {
                   rehit(e);
                }
@@ -1017,7 +1017,7 @@ public final class GrothmawArsenal extends Arsenal {
                   }
                }
 
-               Vec3d c = center(e);
+               Vec3 c = center(e);
                Vfx.impact(level, c, PAL, 0.5);
                Vfx.debris(level, c, Vfx.Debris.BONE, 15260864, 3, 0.3);
             }
@@ -1026,7 +1026,7 @@ public final class GrothmawArsenal extends Arsenal {
          Vfx.slashArc(level, feet.add(0.0, 1.1, 0.0), yaw + 180 * k, 0.0F, 0.0F, r, PAL, 340.0F);
          Vfx.slashArc(level, feet.add(0.0, 0.7, 0.0), yaw + 90.0F + 180 * k, 0.0F, 8.0F, r - 1.0, PAL, -330.0F);
          if (k == 0 || last) {
-            Vec3d g = ground(level, feet);
+            Vec3 g = ground(level, feet);
             Vfx.shockwave(level, g, PAL, r);
             dustRing(level, g, r * 0.8, 10);
          }
@@ -1042,9 +1042,9 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   private static void amberRing(GearUse u, Vec3d g, double r) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+   private static void amberRing(GearUse u, Vec3 g, double r) {
+      ServerLevel level = u.level();
+      Player p = u.player();
       Vfx.groundCrack(level, g, r, PAL);
       every(level, 1, 5, 12, i -> {
          Vfx.ring(level, g, PAL.glow(), r, 6);
@@ -1056,9 +1056,9 @@ public final class GrothmawArsenal extends Arsenal {
 
          if (i % 2 == 1 && alive(p, level)) {
             for (LivingEntity e : u.enemies(g, r + 1.5)) {
-               double d = flatDist(g, e.getEntityPos());
+               double d = flatDist(g, e.position());
                if (d >= r - 1.2 && d <= r + 0.6 && Math.abs(e.getY() - g.y) < 2.0) {
-                  e.setOnFireFor(3.0F);
+                  e.igniteForSeconds(3.0F);
                   u.magic(e, 2.0F);
                }
             }
@@ -1066,9 +1066,9 @@ public final class GrothmawArsenal extends Arsenal {
       });
    }
 
-   static void axeLevel(ServerWorld level, PlayerEntity p, WeaponKit kit, int c, boolean max) {
-      Vec3d feet = p.getEntityPos();
-      float yaw = p.getYaw();
+   static void axeLevel(ServerLevel level, Player p, WeaponKit kit, int c, boolean max) {
+      Vec3 feet = p.position();
+      float yaw = p.getYRot();
       Vfx.ring(level, feet, PAL.glow(), 1.5 + c, 10);
       Vfx.slashArc(level, feet.add(0.0, 1.0, 0.0), yaw, 0.0F, 0.0F, 1.5 + 0.5 * c, PAL, 90.0F);
       Vfx.streaks(level, feet.add(0.0, 1.0, 0.0), yawDir(yaw + 90.0F), PAL, 3 + c);
@@ -1079,12 +1079,12 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    static boolean amberTomb(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      float yaw = p.getYaw();
-      Vec3d feet = p.getEntityPos();
+      ServerLevel level = u.level();
+      Player p = u.player();
+      float yaw = p.getYRot();
+      Vec3 feet = p.position();
       boolean emp = u.empowered();
-      Vec3d start = ground(level, feet.add(GearKit.flatLook(p).multiply(1.2)));
+      Vec3 start = ground(level, feet.add(GearKit.flatLook(p).scale(1.2)));
       Vfx.slashArc(level, GearKit.eye(p).add(0.0, -0.3, 0.0), yaw, 25.0F, 90.0F, 3.2, PAL, 170.0F);
       Vfx.heavyImpact(level, start, PAL, 0.8);
       dust(level, start, 24, 0.6);
@@ -1094,22 +1094,22 @@ public final class GrothmawArsenal extends Arsenal {
       float[] fan = emp ? new float[]{0.0F, -25.0F, 25.0F} : new float[]{0.0F};
 
       for (float off : fan) {
-         Vec3d d = yawDir(yaw + off);
-         Vec3d from = ground(level, feet.add(d.multiply(1.2)));
+         Vec3 d = yawDir(yaw + off);
+         Vec3 from = ground(level, feet.add(d.scale(1.2)));
          Vfx.telegraphLine(level, from, d, 12.0, 1.8, 8, PAL);
          every(level, 1, 1, 8, s -> {
             if (alive(p, level)) {
                int t = s + 1;
-               Vec3d q = ground(level, from.add(d.multiply(1.5 * t)));
+               Vec3 q = ground(level, from.add(d.scale(1.5 * t)));
                if (t % 2 == 0) {
                   Vfx.groundCrack(level, q, 1.1, PAL);
                }
 
                Vfx.embers(level, q, PAL.glow(), 4, 0.4);
                Vfx.shards(level, q, 14721088, 3, 0.25);
-               Vec3d a = from.add(d.multiply(1.5 * s));
+               Vec3 a = from.add(d.scale(1.5 * s));
 
-               for (LivingEntity e : GearKit.alongLine(level, p, new Vec3d(a.x, q.y + 0.8, a.z), d, 1.5, 1.4)) {
+               for (LivingEntity e : GearKit.alongLine(level, p, new Vec3(a.x, q.y + 0.8, a.z), d, 1.5, 1.4)) {
                   if (seen.add(e)) {
                      u.strike(e, 8.0F);
                      entomb(level, p, e, 50, shatter, emp ? 3.0 : 0.0);
@@ -1123,7 +1123,7 @@ public final class GrothmawArsenal extends Arsenal {
       return true;
    }
 
-   private static void entomb(ServerWorld level, PlayerEntity owner, LivingEntity e, int ticks, float damage, double burst) {
+   private static void entomb(ServerLevel level, Player owner, LivingEntity e, int ticks, float damage, double burst) {
       if (e.isAlive()) {
          long now = now(level);
          GrothmawArsenal.Tomb tb = new GrothmawArsenal.Tomb();
@@ -1133,7 +1133,7 @@ public final class GrothmawArsenal extends Arsenal {
          tb.burst = burst;
          tb.owner = owner;
          TOMBS.put(e, tb);
-         Vec3d c = center(e);
+         Vec3 c = center(e);
          if (heavy(e)) {
             slow(e, owner, 2, 20);
             bubble(level, e, 10);
@@ -1147,34 +1147,34 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   private static void bubble(ServerWorld level, LivingEntity e, int life) {
-      double radius = Math.max(0.8, Math.max(e.getWidth() * 0.8, e.getHeight() * 0.55) + 0.3);
+   private static void bubble(ServerLevel level, LivingEntity e, int life) {
+      double radius = Math.max(0.8, Math.max(e.getBbWidth() * 0.8, e.getBbHeight() * 0.55) + 0.3);
       Vfx.shieldBubble(level, center(e), radius, PAL, life);
    }
 
    private static void pin(LivingEntity e, long now) {
-      Vec3d v = e.getVelocity();
+      Vec3 v = e.getDeltaMovement();
       if (v.x * v.x + v.z * v.z > 1.0E-4 || v.y > 0.0) {
-         e.setVelocity(0.0, Math.min(0.0, v.y), 0.0);
-         e.knockedBack = true;
+         e.setDeltaMovement(0.0, Math.min(0.0, v.y), 0.0);
+         e.syncVelocity = true;
       }
 
-      if (e instanceof MobEntity m) {
+      if (e instanceof Mob m) {
          m.getNavigation().stop();
       }
 
-      if (now % 10L == 0L || !e.hasStatusEffect(StatusEffects.SLOWNESS)) {
-         e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 15, 5, true, false));
-         e.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, 15, 0, true, false));
+      if (now % 10L == 0L || !e.hasEffect(MobEffects.SLOWNESS)) {
+         e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 15, 5, true, false));
+         e.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 15, 0, true, false));
       }
    }
 
    private static void shatter(LivingEntity e, GrothmawArsenal.Tomb tb) {
-      if (e.isAlive() && e.getEntityWorld() instanceof ServerWorld level) {
-         Vec3d var7 = center(e);
-         StatusEffectInstance held = e.getStatusEffect(StatusEffects.SLOWNESS);
+      if (e.isAlive() && e.level() instanceof ServerLevel level) {
+         Vec3 var7 = center(e);
+         MobEffectInstance held = e.getEffect(MobEffects.SLOWNESS);
          if (held != null && held.getAmplifier() == 5) {
-            e.removeStatusEffect(StatusEffects.SLOWNESS);
+            e.removeEffect(MobEffects.SLOWNESS);
          }
 
          rehit(e);
@@ -1198,8 +1198,8 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   static void amberSap(ServerWorld level, LivingEntity a, LivingEntity t, ItemStack stack) {
-      if (a instanceof PlayerEntity p) {
+   static void amberSap(ServerLevel level, LivingEntity a, LivingEntity t, ItemStack stack) {
+      if (a instanceof Player p) {
          GrothmawArsenal.Tomb tb = TOMBS.remove(t);
          if (tb != null) {
             shatter(t, tb);
@@ -1209,7 +1209,7 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   private static void addSap(ServerWorld level, PlayerEntity p, LivingEntity t) {
+   private static void addSap(ServerLevel level, Player p, LivingEntity t) {
       if (t.isAlive() && !TOMBS.containsKey(t)) {
          long now = now(level);
          GrothmawArsenal.Sap s = SAP.computeIfAbsent(t, k -> new GrothmawArsenal.Sap());
@@ -1219,7 +1219,7 @@ public final class GrothmawArsenal extends Arsenal {
 
          s.count++;
          s.last = now;
-         Vec3d c = center(t);
+         Vec3 c = center(t);
          Vfx.embers(level, c, PAL.glow(), 2 + 2 * s.count, 0.35);
          Vfx.flare(level, c, 14721088, 0.5 + 0.15 * s.count, 4);
          if (s.count >= 2) {
@@ -1234,13 +1234,13 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   static void bonePlating(ServerWorld level, PlayerEntity p, int pieces) {
+   static void bonePlating(ServerLevel level, Player p, int pieces) {
       long now = now(level);
-      GrothmawArsenal.Plate pl = PLATE.computeIfAbsent(p.getUuid(), id -> new GrothmawArsenal.Plate());
+      GrothmawArsenal.Plate pl = PLATE.computeIfAbsent(p.getUUID(), id -> new GrothmawArsenal.Plate());
       pl.seen = now;
-      EntityAttributeInstance max = p.getAttributeInstance(EntityAttributes.MAX_ABSORPTION);
+      AttributeInstance max = p.getAttribute(Attributes.MAX_ABSORPTION);
       if (max != null && !max.hasModifier(PLATING)) {
-         max.addTemporaryModifier(new EntityAttributeModifier(PLATING, 4.0, Operation.ADD_VALUE));
+         max.addTransientModifier(new AttributeModifier(PLATING, 4.0, Operation.ADD_VALUE));
       }
 
       GearState state = GearState.of(p);
@@ -1249,34 +1249,34 @@ public final class GrothmawArsenal extends Arsenal {
          if (p.getAbsorptionAmount() < 4.0F) {
             p.setAbsorptionAmount(4.0F);
             pl.up = true;
-            Vfx.auraRing(level, p.getEntityPos(), PAL, 0.9);
-            Vfx.debris(level, p.getEntityPos().add(0.0, 1.0, 0.0), Vfx.Debris.BONE, 15260864, 6, 0.15);
-            Vfx.glint(level, p.getEntityPos().add(0.0, 1.2, 0.0), 16773808, 0.9);
+            Vfx.auraRing(level, p.position(), PAL, 0.9);
+            Vfx.debris(level, p.position().add(0.0, 1.0, 0.0), Vfx.Debris.BONE, 15260864, 6, 0.15);
+            Vfx.glint(level, p.position().add(0.0, 1.2, 0.0), 16773808, 0.9);
          }
       }
    }
 
-   static void furyTick(ServerWorld level, PlayerEntity p, int pieces) {
+   static void furyTick(ServerLevel level, Player p, int pieces) {
       long now = now(level);
       if (now % 20L == 0L) {
-         GrothmawArsenal.Fury f = FURY.get(p.getUuid());
+         GrothmawArsenal.Fury f = FURY.get(p.getUUID());
          if (f != null) {
             if (now - f.lastHurt > 120L && f.value > 0.0F) {
                f.value = Math.max(0.0F, f.value - 2.0F);
             }
 
             if (f.value >= 8.0F) {
-               Vfx.embers(level, p.getEntityPos().add(0.0, 1.0, 0.0), PAL.glow(), (int)(f.value / 4.0F), 0.4);
+               Vfx.embers(level, p.position().add(0.0, 1.0, 0.0), PAL.glow(), (int)(f.value / 4.0F), 0.4);
             }
          }
       }
    }
 
-   static void hideHurt(ServerWorld level, PlayerEntity p, @Nullable LivingEntity attacker, DamageSource source, float taken, int pieces) {
-      GrothmawArsenal.Plate pl = PLATE.get(p.getUuid());
+   static void hideHurt(ServerLevel level, Player p, @Nullable LivingEntity attacker, DamageSource source, float taken, int pieces) {
+      GrothmawArsenal.Plate pl = PLATE.get(p.getUUID());
       if (pl != null && pl.up && p.getAbsorptionAmount() <= 0.0F) {
          pl.up = false;
-         Vec3d c = center(p);
+         Vec3 c = center(p);
          Vfx.shards(level, c, 15260864, 10, 0.4);
          Vfx.debris(level, c, Vfx.Debris.BONE, 15260864, 10, 0.45);
          Vfx.flare(level, c, PAL.glow(), 1.2, 5);
@@ -1286,7 +1286,7 @@ public final class GrothmawArsenal extends Arsenal {
 
       if (pieces >= 4 && !(taken <= 0.0F)) {
          long now = now(level);
-         GrothmawArsenal.Fury f = FURY.computeIfAbsent(p.getUuid(), id -> new GrothmawArsenal.Fury());
+         GrothmawArsenal.Fury f = FURY.computeIfAbsent(p.getUUID(), id -> new GrothmawArsenal.Fury());
          f.value = Math.min(24.0F, f.value + taken);
          f.lastHurt = now;
          GearState state = GearState.of(p);
@@ -1299,25 +1299,25 @@ public final class GrothmawArsenal extends Arsenal {
       }
    }
 
-   private static void rage(ServerWorld level, PlayerEntity p, int ticks) {
+   private static void rage(ServerLevel level, Player p, int ticks) {
       long now = now(level);
-      long until = Math.max(RAGE.getOrDefault(p.getUuid(), 0L), now + ticks);
-      RAGE.put(p.getUuid(), until);
+      long until = Math.max(RAGE.getOrDefault(p.getUUID(), 0L), now + ticks);
+      RAGE.put(p.getUUID(), until);
       int left = (int)(until - now);
-      p.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, left, 0));
-      p.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, left, 0));
-      p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, left, 0));
+      p.addEffect(new MobEffectInstance(MobEffects.STRENGTH, left, 0));
+      p.addEffect(new MobEffectInstance(MobEffects.SPEED, left, 0));
+      p.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, left, 0));
    }
 
-   private static void rageBurst(ServerWorld level, PlayerEntity p) {
-      Vec3d feet = p.getEntityPos();
+   private static void rageBurst(ServerLevel level, Player p) {
+      Vec3 feet = p.position();
       Vfx.nova(level, feet.add(0.0, 1.0, 0.0), PAL, 4.0);
       Vfx.pillar(level, feet, PAL, 3.2, 0.9);
       Vfx.auraRing(level, feet, PAL, 1.8);
       GearKit.kick(level, p, 0.4);
 
       for (LivingEntity e : GearKit.enemies(level, p, feet, 5.0)) {
-         e.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, 80, 0), p);
+         e.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 80, 0), p);
          if (!heavy(e)) {
             GearKit.knockAway(e, feet, 0.8, 0.3);
          }
@@ -1328,15 +1328,15 @@ public final class GrothmawArsenal extends Arsenal {
 
    private static void afterDamage(LivingEntity entity, DamageSource source, float base, float taken, boolean blocked) {
       if (!(taken <= 0.0F)
-         && source.getAttacker() instanceof PlayerEntity p
+         && source.getEntity() instanceof Player p
          && entity != p
-         && source.getSource() == p
-         && source.isOf(DamageTypes.PLAYER_ATTACK)
-         && p.getEntityWorld() instanceof ServerWorld level) {
+         && source.getDirectEntity() == p
+         && source.is(DamageTypes.PLAYER_ATTACK)
+         && p.level() instanceof ServerLevel level) {
          long var11 = now(level);
-         Long until = RAGE.get(p.getUuid());
-         if (until != null && var11 < until && var11 - LEECH.getOrDefault(p.getUuid(), -100L) >= 10L) {
-            LEECH.put(p.getUuid(), var11);
+         Long until = RAGE.get(p.getUUID());
+         if (until != null && var11 < until && var11 - LEECH.getOrDefault(p.getUUID(), -100L) >= 10L) {
+            LEECH.put(p.getUUID(), var11);
             p.heal(1.0F);
             Vfx.flare(level, center(p), PAL.glow(), 0.8, 4);
             Vfx.embers(level, center(entity), PAL.glow(), 3, 0.3);
@@ -1345,16 +1345,16 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    static boolean extinctionRoar(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      float yaw = p.getYaw();
-      Vec3d feet = p.getEntityPos();
-      Vec3d g = ground(level, feet);
-      Vec3d eye = GearKit.eye(p);
-      Vec3d look = p.getRotationVector();
+      ServerLevel level = u.level();
+      Player p = u.player();
+      float yaw = p.getYRot();
+      Vec3 feet = p.position();
+      Vec3 g = ground(level, feet);
+      Vec3 eye = GearKit.eye(p);
+      Vec3 look = p.getLookAngle();
       Vfx.telegraphCone(level, g, yaw, 45.0F, 12.0, 4, PAL);
       Vfx.streaks(level, eye, look, PAL, 14);
-      Vfx.nova(level, eye.add(look.multiply(1.2)), PAL, 2.5);
+      Vfx.nova(level, eye.add(look.scale(1.2)), PAL, 2.5);
       Vfx.radialFlash(level, feet, 10.0, PAL.glow(), 0.4F);
       Vfx.shake(level, feet, 14.0, 0.5, 14);
       dust(level, g, 30, 1.5);
@@ -1372,18 +1372,18 @@ public final class GrothmawArsenal extends Arsenal {
                   }
 
                   int terror = heavy ? 40 : 100;
-                  e.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, terror, 1), p);
-                  e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, terror, 1), p);
+                  e.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, terror, 1), p);
+                  e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, terror, 1), p);
                   Vfx.impact(level, center(e), PAL, 0.6);
                   roared.add(e);
                }
             }
 
-            roared.sort(Comparator.comparingDouble(e -> e.squaredDistanceTo(feet)));
+            roared.sort(Comparator.comparingDouble(e -> e.distanceToSqr(feet)));
 
             for (int i = 0; i < 5; i++) {
                LivingEntity target = i < roared.size() ? roared.get(i) : null;
-               later(level, 2 + 4 * i, () -> boulder(u, target != null && target.isAlive() ? target.getEntityPos() : conePoint(level, feet, yaw)));
+               later(level, 2 + 4 * i, () -> boulder(u, target != null && target.isAlive() ? target.position() : conePoint(level, feet, yaw)));
             }
          }
       });
@@ -1391,27 +1391,27 @@ public final class GrothmawArsenal extends Arsenal {
       return true;
    }
 
-   private static Vec3d conePoint(ServerWorld level, Vec3d feet, float yaw) {
+   private static Vec3 conePoint(ServerLevel level, Vec3 feet, float yaw) {
       float a = yaw + (level.getRandom().nextFloat() * 2.0F - 1.0F) * 45.0F;
       double d = 4.0 + level.getRandom().nextDouble() * 7.0;
-      return ground(level, feet.add(yawDir(a).multiply(d)));
+      return ground(level, feet.add(yawDir(a).scale(d)));
    }
 
-   private static void boulder(GearUse u, Vec3d at) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+   private static void boulder(GearUse u, Vec3 at) {
+      ServerLevel level = u.level();
+      Player p = u.player();
       if (alive(p, level)) {
-         Vec3d g = ground(level, at);
-         BlockState rock = level.getBlockState(BlockPos.ofFloored(g.x, g.y - 0.5, g.z));
-         BlockStateParticleEffect chunks = new BlockStateParticleEffect(
-            ParticleTypes.BLOCK, !rock.isAir() && rock.getFluidState().isEmpty() ? rock : Blocks.COBBLESTONE.getDefaultState()
+         Vec3 g = ground(level, at);
+         BlockState rock = level.getBlockState(BlockPos.containing(g.x, g.y - 0.5, g.z));
+         BlockParticleOption chunks = new BlockParticleOption(
+            ParticleTypes.BLOCK, !rock.isAir() && rock.getFluidState().isEmpty() ? rock : Blocks.COBBLESTONE.defaultBlockState()
          );
          Vfx.telegraphCircle(level, g, 2.4, 16, PAL);
          Vfx.smoke(level, g.add(0.0, 14.0, 0.0), PAL.smoke(), 6, 1.0, 2.0);
          every(level, 8, 1, 8, k -> {
-            Vec3d q = g.add(0.0, 14 * (8 - k) / 8.0, 0.0);
-            Vfx.meteorTrail(level, q, new Vec3d(0.0, -1.75, 0.0), PAL);
-            level.spawnParticles(chunks, q.x, q.y, q.z, 4, 0.35, 0.35, 0.35, 0.0);
+            Vec3 q = g.add(0.0, 14 * (8 - k) / 8.0, 0.0);
+            Vfx.meteorTrail(level, q, new Vec3(0.0, -1.75, 0.0), PAL);
+            level.sendParticles(chunks, q.x, q.y, q.z, 4, 0.35, 0.35, 0.35, 0.0);
          });
          later(
             level,
@@ -1419,7 +1419,7 @@ public final class GrothmawArsenal extends Arsenal {
             () -> {
                if (alive(p, level)) {
                   for (LivingEntity e : u.enemies(g, 4.0)) {
-                     if (!(flatDist(g, e.getEntityPos()) > 2.4 + e.getWidth() / 2.0F) && !(Math.abs(e.getY() - g.y) > 3.0)) {
+                     if (!(flatDist(g, e.position()) > 2.4 + e.getBbWidth() / 2.0F) && !(Math.abs(e.getY() - g.y) > 3.0)) {
                         rehit(e);
                         u.magic(e, 12.0F);
                         slow(e, p, 0, 40);
@@ -1431,7 +1431,7 @@ public final class GrothmawArsenal extends Arsenal {
 
                   Vfx.heavyImpact(level, g, PAL, 0.9);
                   Vfx.shards(level, g, 7232064, 10, 0.5);
-                  level.spawnParticles(chunks, g.x, g.y + 0.3, g.z, 30, 1.0, 0.3, 1.0, 0.2);
+                  level.sendParticles(chunks, g.x, g.y + 0.3, g.z, 30, 1.0, 0.3, 1.0, 0.2);
                   soundAt(
                      level,
                      g,
@@ -1448,56 +1448,56 @@ public final class GrothmawArsenal extends Arsenal {
    }
 
    private static boolean heavy(LivingEntity e) {
-      return e instanceof MysticalBoss b && b.isBoss() || e instanceof EnderDragonEntity || e instanceof WitherEntity;
+      return e instanceof MysticalBoss b && b.isBoss() || e instanceof EnderDragon || e instanceof WitherBoss;
    }
 
    private static void rehit(LivingEntity e) {
-      e.timeUntilRegen = 0;
+      e.setInvulnerableTime(0);
    }
 
-   private static boolean alive(PlayerEntity p, ServerWorld level) {
-      return p.isAlive() && p.getEntityWorld() == level;
+   private static boolean alive(Player p, ServerLevel level) {
+      return p.isAlive() && p.level() == level;
    }
 
-   private static Vec3d ground(ServerWorld level, Vec3d v) {
-      Vec3d g = BossFx.ground(level, v.x, v.y, v.z);
+   private static Vec3 ground(ServerLevel level, Vec3 v) {
+      Vec3 g = BossFx.ground(level, v.x, v.y, v.z);
       return g == null ? v : g;
    }
 
-   private static Vec3d center(LivingEntity e) {
+   private static Vec3 center(LivingEntity e) {
       return e.getBoundingBox().getCenter();
    }
 
-   private static Vec3d yawDir(float yaw) {
-      return Vec3d.fromPolar(0.0F, yaw);
+   private static Vec3 yawDir(float yaw) {
+      return Vec3.directionFromRotation(0.0F, yaw);
    }
 
-   private static float yawOf(Vec3d d) {
-      return (float)(MathHelper.atan2(-d.x, d.z) * 180.0F / (float)Math.PI);
+   private static float yawOf(Vec3 d) {
+      return (float)(Mth.atan2(-d.x, d.z) * 180.0F / (float)Math.PI);
    }
 
-   private static Vec3d flat(Vec3d v) {
-      Vec3d f = new Vec3d(v.x, 0.0, v.z);
-      return f.lengthSquared() < 1.0E-6 ? Vec3d.ZERO : f.normalize();
+   private static Vec3 flat(Vec3 v) {
+      Vec3 f = new Vec3(v.x, 0.0, v.z);
+      return f.lengthSqr() < 1.0E-6 ? Vec3.ZERO : f.normalize();
    }
 
-   private static double flatDist(Vec3d a, Vec3d b) {
+   private static double flatDist(Vec3 a, Vec3 b) {
       double dx = a.x - b.x;
       double dz = a.z - b.z;
       return Math.sqrt(dx * dx + dz * dz);
    }
 
-   private static double flatGap(Vec3d at, LivingEntity e) {
-      Box b = e.getBoundingBox();
+   private static double flatGap(Vec3 at, LivingEntity e) {
+      AABB b = e.getBoundingBox();
       double dx = Math.max(0.0, Math.max(b.minX - at.x, at.x - b.maxX));
       double dz = Math.max(0.0, Math.max(b.minZ - at.z, at.z - b.maxZ));
       return Math.sqrt(dx * dx + dz * dz);
    }
 
-   private static boolean inCone(Vec3d from, float yaw, double half, double range, LivingEntity e) {
-      Vec3d to = e.getEntityPos().subtract(from);
+   private static boolean inCone(Vec3 from, float yaw, double half, double range, LivingEntity e) {
+      Vec3 to = e.position().subtract(from);
       double d = Math.sqrt(to.x * to.x + to.z * to.z);
-      if (d > range + e.getWidth() / 2.0F) {
+      if (d > range + e.getBbWidth() / 2.0F) {
          return false;
       }
 
@@ -1505,65 +1505,65 @@ public final class GrothmawArsenal extends Arsenal {
          return true;
       }
 
-      Vec3d f = yawDir(yaw);
+      Vec3 f = yawDir(yaw);
       return (to.x * f.x + to.z * f.z) / d >= Math.cos(Math.toRadians(half));
    }
 
    private static void launch(LivingEntity e, double up) {
-      e.addVelocity(0.0, up, 0.0);
-      e.knockedBack = true;
+      e.push(0.0, up, 0.0);
+      e.syncVelocity = true;
    }
 
-   private static void pull(LivingEntity e, Vec3d to, double strength, double lift) {
-      Vec3d d = flat(to.subtract(e.getEntityPos()));
-      e.addVelocity(d.x * strength, lift, d.z * strength);
-      e.knockedBack = true;
+   private static void pull(LivingEntity e, Vec3 to, double strength, double lift) {
+      Vec3 d = flat(to.subtract(e.position()));
+      e.push(d.x * strength, lift, d.z * strength);
+      e.syncVelocity = true;
    }
 
-   private static void slow(LivingEntity e, PlayerEntity source, int amplifier, int ticks) {
-      e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, ticks, amplifier), source);
+   private static void slow(LivingEntity e, Player source, int amplifier, int ticks) {
+      e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, ticks, amplifier), source);
    }
 
-   private static boolean solid(ServerWorld level, Vec3d v) {
-      BlockPos pos = BlockPos.ofFloored(v);
+   private static boolean solid(ServerLevel level, Vec3 v) {
+      BlockPos pos = BlockPos.containing(v);
       return !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty();
    }
 
-   private static void cushion(ServerWorld level, PlayerEntity p) {
+   private static void cushion(ServerLevel level, Player p) {
       track(level, 1, t -> {
          if (!alive(p, level)) {
             return false;
          }
 
-         p.onLanding();
-         return t < 40 && (t < 2 || !p.isOnGround());
+         p.resetFallDistance();
+         return t < 40 && (t < 2 || !p.onGround());
       });
    }
 
-   private static void dust(ServerWorld level, Vec3d at, int count, double spread) {
-      BlockPos pos = BlockPos.ofFloored(at.x, at.y - 0.2, at.z);
+   private static void dust(ServerLevel level, Vec3 at, int count, double spread) {
+      BlockPos pos = BlockPos.containing(at.x, at.y - 0.2, at.z);
       BlockState state = level.getBlockState(pos);
       if (state.isAir()) {
-         state = level.getBlockState(pos.down());
+         state = level.getBlockState(pos.below());
       }
 
       if (!state.isAir() && state.getFluidState().isEmpty()) {
-         level.spawnParticles(new BlockStateParticleEffect(ParticleTypes.BLOCK, state), at.x, at.y + 0.15, at.z, count, spread, 0.1, spread, 0.15);
+         level.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, state), at.x, at.y + 0.15, at.z, count, spread, 0.1, spread, 0.15);
       }
    }
 
-   private static void dustRing(ServerWorld level, Vec3d g, double r, int points) {
+   private static void dustRing(ServerLevel level, Vec3 g, double r, int points) {
       for (int j = 0; j < points; j++) {
          double a = j * Math.PI * 2.0 / points;
          dust(level, g.add(Math.cos(a) * r, 0.0, Math.sin(a) * r), 2, 0.15);
       }
    }
 
-   private static void soundAt(ServerWorld level, Vec3d at, float volume, float pitch, String... keys) {
+   private static void soundAt(ServerLevel level, Vec3 at, float volume, float pitch, String... keys) {
       for (String key : keys) {
          SoundEvent e = BossSounds.event(key);
          if (e != null) {
-            level.playSound(null, at.x, at.y, at.z, e, SoundCategory.PLAYERS, volume, pitch);
+            level.playSound(null, at.x, at.y, at.z, e, SoundSource.PLAYERS, volume, pitch);
             return;
          }
       }
@@ -1584,7 +1584,7 @@ public final class GrothmawArsenal extends Arsenal {
       long last = -1000L;
       long lock;
       long bleed;
-      @Nullable PlayerEntity owner;
+      @Nullable Player owner;
    }
 
    private static final class Sap {
@@ -1605,6 +1605,6 @@ public final class GrothmawArsenal extends Arsenal {
       long until;
       float damage;
       double burst;
-      PlayerEntity owner;
+      Player owner;
    }
 }

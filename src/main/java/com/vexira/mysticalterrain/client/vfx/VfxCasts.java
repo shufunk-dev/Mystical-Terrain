@@ -8,16 +8,16 @@ import java.util.ArrayList;
 import java.util.List;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.random.Random;
+import net.minecraft.client.Minecraft;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.phys.Vec3;
 
 @Environment(EnvType.CLIENT)
 final class VfxCasts {
    private static final int WHITE = 16777215;
    private final VfxCastPayload p;
-   private final Random r;
+   private final RandomSource r;
    private final int core;
    private final int glow;
    private final int smoke;
@@ -26,7 +26,7 @@ final class VfxCasts {
 
    private VfxCasts(VfxCastPayload p) {
       this.p = p;
-      this.r = Random.create(p.seed());
+      this.r = RandomSource.create(p.seed());
       this.core = p.core() & 16777215;
       this.glow = p.glow() & 16777215;
       this.smoke = p.smoke() & 16777215;
@@ -35,13 +35,13 @@ final class VfxCasts {
    }
 
    static void play(VfxCastPayload p) {
-      if (MinecraftClient.getInstance().world != null && !p.points().isEmpty()) {
+      if (Minecraft.getInstance().level != null && !p.points().isEmpty()) {
          new VfxCasts(p).run();
       }
    }
 
    private void run() {
-      Vec3d a = this.p.point(0);
+      Vec3 a = this.p.point(0);
       switch (this.p.effect()) {
          case SPARKS:
             this.sparks(a, this.core, (int)this.arg(0), this.arg(1), this.arg(2));
@@ -62,7 +62,7 @@ final class VfxCasts {
             this.glint(a, this.core, this.size(0));
             break;
          case IMPACT:
-            this.impact(a, MathHelper.clamp(this.arg(0), 0.1F, 4.0F));
+            this.impact(a, Mth.clamp(this.arg(0), 0.1F, 4.0F));
             break;
          case SHOCKWAVE:
             this.shockwave(a, this.size(0));
@@ -96,10 +96,10 @@ final class VfxCasts {
             this.telegraphLine(a, this.vec(1), this.size(0), this.size(1), this.ticks(2));
             break;
          case TELEGRAPH_CONE:
-            this.telegraphCone(a, this.arg(0), MathHelper.clamp(this.arg(1), 5.0F, 180.0F), this.size(2), this.ticks(3));
+            this.telegraphCone(a, this.arg(0), Mth.clamp(this.arg(1), 5.0F, 180.0F), this.size(2), this.ticks(3));
             break;
          case LIGHTNING:
-            this.lightning(a, this.p.point(1), MathHelper.clamp((int)this.arg(0), 0, 6), true);
+            this.lightning(a, this.p.point(1), Mth.clamp((int)this.arg(0), 0, 6), true);
             break;
          case CHAIN_LIGHTNING:
             for (int i = 0; i + 1 < this.p.points().size(); i++) {
@@ -114,7 +114,7 @@ final class VfxCasts {
             this.nova(a, this.size(0));
             break;
          case RUNE_CIRCLE:
-            this.runeCircle(a, this.size(0), this.ticks(1), this.arg(2), MathHelper.clamp((int)this.arg(3), 0, 3));
+            this.runeCircle(a, this.size(0), this.ticks(1), this.arg(2), Mth.clamp((int)this.arg(3), 0, 3));
             break;
          case CHARGE_UP:
             this.chargeUp(a, this.ticks(0));
@@ -126,13 +126,13 @@ final class VfxCasts {
             this.groundCrack(a, this.size(0));
             break;
          case HEAVY_IMPACT:
-            this.heavyImpact(a, MathHelper.clamp(this.arg(0), 0.2F, 4.0F));
+            this.heavyImpact(a, Mth.clamp(this.arg(0), 0.2F, 4.0F));
             break;
          case SHIELD_BUBBLE:
             this.shieldBubble(a, this.size(0), this.ticks(1));
             break;
          case WARD:
-            this.ward(a, this.size(0), this.ticks(1), MathHelper.clamp((int)this.arg(2), 0, 3));
+            this.ward(a, this.size(0), this.ticks(1), Mth.clamp((int)this.arg(2), 0, 3));
             break;
          case DASH_TRAIL:
             this.dashTrail(a, this.p.point(1));
@@ -160,14 +160,14 @@ final class VfxCasts {
    }
 
    private double size(int i) {
-      return MathHelper.clamp(this.arg(i), 0.0F, 96.0F);
+      return Mth.clamp(this.arg(i), 0.0F, 96.0F);
    }
 
    private int ticks(int i) {
-      return MathHelper.clamp((int)this.arg(i), 2, 1200);
+      return Mth.clamp((int)this.arg(i), 2, 1200);
    }
 
-   private Vec3d vec(int i) {
+   private Vec3 vec(int i) {
       return this.p.point(i).subtract(this.p.point(0));
    }
 
@@ -179,47 +179,47 @@ final class VfxCasts {
       return VfxOptions.of(kind, color, size, life);
    }
 
-   private static void add(VfxOptions.Builder b, Vec3d at) {
+   private static void add(VfxOptions.Builder b, Vec3 at) {
       VfxClient.spawn(b.build(), at.x, at.y, at.z, 0.0, 0.0, 0.0);
    }
 
-   private static void add(VfxOptions.Builder b, Vec3d at, Vec3d v) {
+   private static void add(VfxOptions.Builder b, Vec3 at, Vec3 v) {
       VfxClient.spawn(b.build(), at.x, at.y, at.z, v.x, v.y, v.z);
    }
 
-   private static void flare(Vec3d at, int color, double size, int life) {
+   private static void flare(Vec3 at, int color, double size, int life) {
       add(of(VfxParticles.Kind.FLARE, color, size, life), at);
    }
 
    private static int dim(int c, float k) {
-      int rr = MathHelper.clamp((int)((c >> 16 & 0xFF) * k), 0, 255);
-      int gg = MathHelper.clamp((int)((c >> 8 & 0xFF) * k), 0, 255);
-      int bb = MathHelper.clamp((int)((c & 0xFF) * k), 0, 255);
+      int rr = Mth.clamp((int)((c >> 16 & 0xFF) * k), 0, 255);
+      int gg = Mth.clamp((int)((c >> 8 & 0xFF) * k), 0, 255);
+      int bb = Mth.clamp((int)((c & 0xFF) * k), 0, 255);
       return rr << 16 | gg << 8 | bb;
    }
 
-   private static Vec3d forward(float yawDeg) {
+   private static Vec3 forward(float yawDeg) {
       float y = yawDeg * (float) (Math.PI / 180.0);
-      return new Vec3d(-MathHelper.sin(y), 0.0, MathHelper.cos(y));
+      return new Vec3(-Mth.sin(y), 0.0, Mth.cos(y));
    }
 
-   private Vec3d unit() {
-      Vec3d v = new Vec3d(this.r.nextGaussian(), this.r.nextGaussian(), this.r.nextGaussian());
-      return v.lengthSquared() < 1.0E-6 ? new Vec3d(0.0, 1.0, 0.0) : v.normalize();
+   private Vec3 unit() {
+      Vec3 v = new Vec3(this.r.nextGaussian(), this.r.nextGaussian(), this.r.nextGaussian());
+      return v.lengthSqr() < 1.0E-6 ? new Vec3(0.0, 1.0, 0.0) : v.normalize();
    }
 
-   private Vec3d perp(Vec3d d) {
-      Vec3d dn = d.lengthSquared() < 1.0E-8 ? new Vec3d(0.0, 1.0, 0.0) : d.normalize();
+   private Vec3 perp(Vec3 d) {
+      Vec3 dn = d.lengthSqr() < 1.0E-8 ? new Vec3(0.0, 1.0, 0.0) : d.normalize();
 
       for (int i = 0; i < 4; i++) {
-         Vec3d u = this.unit();
-         Vec3d q = u.subtract(dn.multiply(u.dotProduct(dn)));
-         if (q.lengthSquared() > 1.0E-4) {
+         Vec3 u = this.unit();
+         Vec3 q = u.subtract(dn.scale(u.dot(dn)));
+         if (q.lengthSqr() > 1.0E-4) {
             return q.normalize();
          }
       }
 
-      return Math.abs(dn.y) < 0.9 ? dn.crossProduct(new Vec3d(0.0, 1.0, 0.0)).normalize() : dn.crossProduct(new Vec3d(1.0, 0.0, 0.0)).normalize();
+      return Math.abs(dn.y) < 0.9 ? dn.cross(new Vec3(0.0, 1.0, 0.0)).normalize() : dn.cross(new Vec3(1.0, 0.0, 0.0)).normalize();
    }
 
    private int bound(int n) {
@@ -240,17 +240,17 @@ final class VfxCasts {
       }
    }
 
-   private static void screen(Vec3d at, double radius, double shake, int ticks, int color, float flash, int style) {
+   private static void screen(Vec3 at, double radius, double shake, int ticks, int color, float flash, int style) {
       VfxClient.screenAt(at, radius, shake, ticks, color, flash, style);
    }
 
-   private void sparks(Vec3d at, int color, int count, double speed, double size) {
+   private void sparks(Vec3 at, int color, int count, double speed, double size) {
       int m = this.n(count, 40);
 
       for (int i = 0; i < m; i++) {
-         Vec3d d = new Vec3d(this.r.nextGaussian(), Math.abs(this.r.nextGaussian()) * 0.9 + 0.2, this.r.nextGaussian())
+         Vec3 d = new Vec3(this.r.nextGaussian(), Math.abs(this.r.nextGaussian()) * 0.9 + 0.2, this.r.nextGaussian())
             .normalize()
-            .multiply(speed * (0.5 + this.r.nextDouble()));
+            .scale(speed * (0.5 + this.r.nextDouble()));
          add(
             of(VfxParticles.Kind.BEAM, color, size * (0.8 + this.r.nextDouble() * 0.5), 10 + this.r.nextInt(12))
                .variant(1)
@@ -265,50 +265,50 @@ final class VfxCasts {
       }
    }
 
-   private void embers(Vec3d at, int color, int count, double spread) {
+   private void embers(Vec3 at, int color, int count, double spread) {
       int m = this.n(count, 40);
 
       for (int i = 0; i < m; i++) {
-         Vec3d q = at.add(this.r.nextGaussian() * spread, this.r.nextDouble() * spread, this.r.nextGaussian() * spread);
+         Vec3 q = at.add(this.r.nextGaussian() * spread, this.r.nextDouble() * spread, this.r.nextGaussian() * spread);
          add(
             of(VfxParticles.Kind.EMBER, color, 0.12 + this.r.nextDouble() * 0.12, 30 + this.r.nextInt(30)).curl((this.r.nextFloat() - 0.5F) * 0.1F),
             q,
-            new Vec3d(this.r.nextGaussian() * 0.01, 0.02 + this.r.nextDouble() * 0.03, this.r.nextGaussian() * 0.01)
+            new Vec3(this.r.nextGaussian() * 0.01, 0.02 + this.r.nextDouble() * 0.03, this.r.nextGaussian() * 0.01)
          );
       }
    }
 
-   private void smoke(Vec3d at, int color, int count, double spread, double size) {
+   private void smoke(Vec3 at, int color, int count, double spread, double size) {
       int m = this.n(count, 24);
 
       for (int i = 0; i < m; i++) {
-         Vec3d q = at.add(this.r.nextGaussian() * spread, this.r.nextDouble() * spread * 0.5, this.r.nextGaussian() * spread);
+         Vec3 q = at.add(this.r.nextGaussian() * spread, this.r.nextDouble() * spread * 0.5, this.r.nextGaussian() * spread);
          add(
             of(VfxParticles.Kind.SMOKE, color, size * (0.7 + this.r.nextDouble() * 0.6), 30 + this.r.nextInt(25)),
             q,
-            new Vec3d(this.r.nextGaussian() * 0.02, 0.02 + this.r.nextDouble() * 0.02, this.r.nextGaussian() * 0.02)
+            new Vec3(this.r.nextGaussian() * 0.02, 0.02 + this.r.nextDouble() * 0.02, this.r.nextGaussian() * 0.02)
          );
       }
    }
 
-   private void shards(Vec3d at, int color, int count, double speed) {
+   private void shards(Vec3 at, int color, int count, double speed) {
       int m = this.n(count, 30);
 
       for (int i = 0; i < m; i++) {
-         Vec3d d = new Vec3d(this.r.nextGaussian(), 0.6 + this.r.nextDouble(), this.r.nextGaussian())
+         Vec3 d = new Vec3(this.r.nextGaussian(), 0.6 + this.r.nextDouble(), this.r.nextGaussian())
             .normalize()
-            .multiply(speed * (0.6 + this.r.nextDouble() * 0.8));
+            .scale(speed * (0.6 + this.r.nextDouble() * 0.8));
          add(of(VfxParticles.Kind.SHARD, color, 0.18 + this.r.nextDouble() * 0.2, 25 + this.r.nextInt(20)).collide(), at, d);
       }
    }
 
-   private void debris(Vec3d at, int color, int count, double speed, int variant) {
-      int v = MathHelper.clamp(variant, 0, Vfx.Debris.values().length - 1);
+   private void debris(Vec3 at, int color, int count, double speed, int variant) {
+      int v = Mth.clamp(variant, 0, Vfx.Debris.values().length - 1);
       boolean light = v != Vfx.Debris.BONE.ordinal();
       int m = this.n(count, 30);
 
       for (int i = 0; i < m; i++) {
-         Vec3d d = new Vec3d(this.r.nextGaussian(), 0.8 + this.r.nextDouble(), this.r.nextGaussian()).normalize().multiply(speed * (0.5 + this.r.nextDouble()));
+         Vec3 d = new Vec3(this.r.nextGaussian(), 0.8 + this.r.nextDouble(), this.r.nextGaussian()).normalize().scale(speed * (0.5 + this.r.nextDouble()));
          add(
             of(VfxParticles.Kind.DEBRIS, color, (light ? 0.32 : 0.26) * (0.7 + this.r.nextDouble() * 0.6), 40 + this.r.nextInt(30))
                .variant(v)
@@ -322,17 +322,17 @@ final class VfxCasts {
       }
    }
 
-   private void glint(Vec3d at, int color, double size) {
+   private void glint(Vec3 at, int color, double size) {
       add(of(VfxParticles.Kind.GLINT, color, size, 8).variant(0).roll(this.r.nextFloat() * 90.0F).spin(0.05F), at);
       add(of(VfxParticles.Kind.GLINT, color, size * 0.6, 6).variant(1).roll(45.0F + this.r.nextFloat() * 20.0F), at);
    }
 
-   private void impact(Vec3d at, double power) {
-      Vec3d c = at.add(0.0, 0.4, 0.0);
+   private void impact(Vec3 at, double power) {
+      Vec3 c = at.add(0.0, 0.4, 0.0);
       flare(c, this.core, 1.6 * power, 6);
       flare(c, this.glow, 3.2 * power, 10);
       add(of(VfxParticles.Kind.GLINT, this.core, 2.4 * power, 7).variant(0).roll(this.r.nextFloat() * 90.0F), c);
-      Vec3d g = at.add(0.0, 0.08, 0.0);
+      Vec3 g = at.add(0.0, 0.08, 0.0);
       add(of(VfxParticles.Kind.SHOCK, this.glow, 4.4 * power, 11).variant(0), g);
       add(of(VfxParticles.Kind.RING, this.core, 2.4 * power, 7), g);
       this.sparks(c, this.core, (int)(10.0 * power), 0.45 * power, 0.22);
@@ -342,8 +342,8 @@ final class VfxCasts {
       }
    }
 
-   private void shockwave(Vec3d at, double radius) {
-      Vec3d g = at.add(0.0, 0.08, 0.0);
+   private void shockwave(Vec3 at, double radius) {
+      Vec3 g = at.add(0.0, 0.08, 0.0);
       add(of(VfxParticles.Kind.SHOCK, this.glow, radius * 2.0, 14).variant(0), g);
       add(of(VfxParticles.Kind.RING, this.core, radius * 1.2, 10), g);
       flare(at.add(0.0, 0.3, 0.0), this.core, radius * 0.6, 6);
@@ -355,16 +355,16 @@ final class VfxCasts {
 
       for (int i = 0; i < m; i++) {
          double a = i * Math.PI * 2.0 / m;
-         Vec3d e = at.add(Math.cos(a) * radius * 0.4, 0.2, Math.sin(a) * radius * 0.4);
-         add(of(VfxParticles.Kind.SMOKE, this.smoke, 1.0 + this.r.nextDouble(), 24), e, new Vec3d(Math.cos(a) * 0.12, 0.03, Math.sin(a) * 0.12));
+         Vec3 e = at.add(Math.cos(a) * radius * 0.4, 0.2, Math.sin(a) * radius * 0.4);
+         add(of(VfxParticles.Kind.SMOKE, this.smoke, 1.0 + this.r.nextDouble(), 24), e, new Vec3(Math.cos(a) * 0.12, 0.03, Math.sin(a) * 0.12));
       }
 
       this.shards(at, this.smoke, (int)Math.min(20.0, radius * 2.0), 0.5);
       screen(at, radius * 4.0, Math.min(1.4, 0.18 * radius), 12, 0, 0.0F, 0);
    }
 
-   private void beam(Vec3d from, Vec3d to, double width, int life) {
-      Vec3d d = to.subtract(from);
+   private void beam(Vec3 from, Vec3 to, double width, int life) {
+      Vec3 d = to.subtract(from);
       boolean held = life > 0;
       int fade = held ? 3 : 1;
       add(of(VfxParticles.Kind.BEAM, this.core, width, held ? life : 3).variant(0).span().fade(fade), from, d);
@@ -374,26 +374,26 @@ final class VfxCasts {
       this.sparks(to, this.glow, 3, 0.25, 0.18);
    }
 
-   private void gather(Vec3d at, double radius, int count) {
+   private void gather(Vec3 at, double radius, int count) {
       int m = this.n(count, 24);
 
       for (int i = 0; i < m; i++) {
          double a = this.r.nextDouble() * Math.PI * 2.0;
          double h = (this.r.nextDouble() - 0.3) * radius;
-         Vec3d from = at.add(Math.cos(a) * radius, h, Math.sin(a) * radius);
+         Vec3 from = at.add(Math.cos(a) * radius, h, Math.sin(a) * radius);
          int life = 10 + this.r.nextInt(4);
          add(
             of(VfxParticles.Kind.BEAM, this.r.nextBoolean() ? this.core : this.glow, 0.16, life).variant(1).streak(2.5F).drag(1.0F).gravity(0.0F).fade(3),
             from,
-            at.subtract(from).multiply(1.0 / life)
+            at.subtract(from).scale(1.0 / life)
          );
       }
 
       flare(at, this.glow, radius * 0.5, 5);
    }
 
-   private void pillar(Vec3d at, double height, double width) {
-      Vec3d up = new Vec3d(0.0, height, 0.0);
+   private void pillar(Vec3 at, double height, double width) {
+      Vec3 up = new Vec3(0.0, height, 0.0);
       add(of(VfxParticles.Kind.BEAM, this.core, width, 9).variant(0).span().curve(6).fade(3), at, up);
       add(of(VfxParticles.Kind.BEAM, this.glow, width * 2.4, 12).variant(2).span().curve(6).fade(3), at, up);
       flare(at.add(0.0, 0.3, 0.0), this.glow, width * 2.6, 10);
@@ -402,7 +402,7 @@ final class VfxCasts {
       this.embers(at.add(0.0, height * 0.3, 0.0), this.core, 10, width);
    }
 
-   private void explosion(Vec3d at, double radius) {
+   private void explosion(Vec3 at, double radius) {
       flare(at, 16777215, radius * 1.2, 4);
       flare(at, this.core, radius * 2.2, 8);
       flare(at, this.glow, radius * 3.4, 14);
@@ -420,33 +420,33 @@ final class VfxCasts {
       screen(at, radius * 6.0, Math.min(1.6, 0.3 * radius), 14, this.glow, (float)Math.min(0.45, 0.08 * radius), 1);
    }
 
-   private void aura(Vec3d at, double radius) {
+   private void aura(Vec3 at, double radius) {
       add(of(VfxParticles.Kind.RING, this.glow, radius * 2.0, 20), at.add(0.0, 0.08, 0.0));
       this.embers(at, this.core, (int)(radius * 3.0), radius * 0.6);
    }
 
-   private void telegraphCircle(Vec3d center, double radius, int ticks) {
+   private void telegraphCircle(Vec3 center, double radius, int ticks) {
       double size = radius * 2.0 / 0.955;
-      Vec3d g = center.add(0.0, 0.06, 0.0);
+      Vec3 g = center.add(0.0, 0.06, 0.0);
       add(of(VfxParticles.Kind.TELEGRAPH, this.glow, size, ticks).variant(0).flat().spin(0.01F).fade(5), g);
       add(of(VfxParticles.Kind.TELEGRAPH, dim(this.glow, 0.7F), size, ticks).variant(1).flat().curve(7).fade(5), g.add(0.0, 0.01, 0.0));
       add(of(VfxParticles.Kind.RING, this.core, radius * 2.2, 7).flat().delay(ticks), g);
    }
 
-   private void telegraphLine(Vec3d from, Vec3d dir, double length, double width, int ticks) {
-      Vec3d flat = new Vec3d(dir.x, 0.0, dir.z);
-      Vec3d d = (flat.lengthSquared() < 1.0E-6 ? new Vec3d(0.0, 0.0, 1.0) : flat.normalize()).multiply(Math.max(0.5, length));
-      Vec3d g = from.add(0.0, 0.06, 0.0);
+   private void telegraphLine(Vec3 from, Vec3 dir, double length, double width, int ticks) {
+      Vec3 flat = new Vec3(dir.x, 0.0, dir.z);
+      Vec3 d = (flat.lengthSqr() < 1.0E-6 ? new Vec3(0.0, 0.0, 1.0) : flat.normalize()).scale(Math.max(0.5, length));
+      Vec3 g = from.add(0.0, 0.06, 0.0);
       add(of(VfxParticles.Kind.TELEGRAPH, this.glow, width / 0.88, ticks).variant(2).lie().fade(5), g, d);
       add(of(VfxParticles.Kind.BEAM, dim(this.glow, 0.6F), width * 0.8, ticks).variant(0).lie().curve(7).fade(5), g.add(0.0, 0.01, 0.0), d);
       add(of(VfxParticles.Kind.BEAM, this.core, width * 0.5, 6).variant(0).lie().delay(ticks), g, d);
    }
 
-   private void telegraphCone(Vec3d origin, float yaw, float halfAngle, double range, int ticks) {
-      int wedges = MathHelper.clamp((int)Math.ceil(2.0F * halfAngle / 30.0F - 0.01), 1, 12);
+   private void telegraphCone(Vec3 origin, float yaw, float halfAngle, double range, int ticks) {
+      int wedges = Mth.clamp((int)Math.ceil(2.0F * halfAngle / 30.0F - 0.01), 1, 12);
       float step = 2.0F * halfAngle / wedges;
       double size = range * 2.0 / 0.955;
-      Vec3d g = origin.add(0.0, 0.06, 0.0);
+      Vec3 g = origin.add(0.0, 0.06, 0.0);
 
       for (int i = 0; i < wedges; i++) {
          float a = yaw - halfAngle + (i + 0.5F) * step;
@@ -456,24 +456,24 @@ final class VfxCasts {
 
       if (halfAngle < 175.0F) {
          for (int s = -1; s <= 1; s += 2) {
-            Vec3d edge = forward(yaw + s * halfAngle).multiply(range);
+            Vec3 edge = forward(yaw + s * halfAngle).scale(range);
             add(of(VfxParticles.Kind.TELEGRAPH, this.glow, 0.3, ticks).variant(2).lie().fade(5), g, edge);
          }
       }
    }
 
-   private List<Vec3d> jag(Vec3d from, Vec3d to, int depth, double amp) {
-      List<Vec3d> pts = new ArrayList<>(List.of(from, to));
+   private List<Vec3> jag(Vec3 from, Vec3 to, int depth, double amp) {
+      List<Vec3> pts = new ArrayList<>(List.of(from, to));
       double a = from.distanceTo(to) * amp;
 
       for (int d = 0; d < depth; d++) {
-         List<Vec3d> next = new ArrayList<>();
+         List<Vec3> next = new ArrayList<>();
 
          for (int i = 0; i + 1 < pts.size(); i++) {
-            Vec3d p0 = pts.get(i);
-            Vec3d p1 = pts.get(i + 1);
+            Vec3 p0 = pts.get(i);
+            Vec3 p1 = pts.get(i + 1);
             next.add(p0);
-            next.add(p0.add(p1).multiply(0.5).add(this.perp(p1.subtract(p0)).multiply(this.r.nextGaussian() * a)));
+            next.add(p0.add(p1).scale(0.5).add(this.perp(p1.subtract(p0)).scale(this.r.nextGaussian() * a)));
          }
 
          next.add(pts.get(pts.size() - 1));
@@ -484,15 +484,15 @@ final class VfxCasts {
       return pts;
    }
 
-   private void lightning(Vec3d from, Vec3d to, int branches, boolean full) {
+   private void lightning(Vec3 from, Vec3 to, int branches, boolean full) {
       double len = from.distanceTo(to);
       if (!(len < 0.1)) {
          int depth = !full ? 2 : (len < 4.0 ? 2 : (len < 12.0 ? 3 : 4));
-         List<Vec3d> path = this.jag(from, to, depth, 0.18);
+         List<Vec3> path = this.jag(from, to, depth, 0.18);
 
          for (int i = 0; i + 1 < path.size(); i++) {
-            Vec3d a = path.get(i);
-            Vec3d d = path.get(i + 1).subtract(a);
+            Vec3 a = path.get(i);
+            Vec3 d = path.get(i + 1).subtract(a);
             add(of(VfxParticles.Kind.BOLT, this.core, 0.8, 7).span().fade(4), a, d);
             add(of(VfxParticles.Kind.BEAM, this.glow, 2.4, 8).variant(0).span().fade(4), a, d);
          }
@@ -501,10 +501,10 @@ final class VfxCasts {
 
          for (int k = 0; k < forks && path.size() > 2; k++) {
             int i = 1 + this.r.nextInt(path.size() - 2);
-            Vec3d s = path.get(i);
-            Vec3d seg = path.get(i + 1).subtract(s);
-            Vec3d dir = seg.normalize().add(this.perp(seg).multiply(0.9)).normalize();
-            List<Vec3d> fork = this.jag(s, s.add(dir.multiply(len * 0.25 * (0.5 + this.r.nextDouble()))), 2, 0.25);
+            Vec3 s = path.get(i);
+            Vec3 seg = path.get(i + 1).subtract(s);
+            Vec3 dir = seg.normalize().add(this.perp(seg).scale(0.9)).normalize();
+            List<Vec3> fork = this.jag(s, s.add(dir.scale(len * 0.25 * (0.5 + this.r.nextDouble()))), 2, 0.25);
 
             for (int j = 0; j + 1 < fork.size(); j++) {
                add(of(VfxParticles.Kind.BOLT, this.core, 0.5, 5).span().fade(4), fork.get(j), fork.get(j + 1).subtract(fork.get(j)));
@@ -520,7 +520,7 @@ final class VfxCasts {
       }
    }
 
-   private void vortex(Vec3d center, double radius, double height, int life) {
+   private void vortex(Vec3 center, double radius, double height, int life) {
       int m = this.n(30.0, 36);
       float w = 0.22F;
 
@@ -530,8 +530,8 @@ final class VfxCasts {
          double h = this.r.nextDouble() * height * 0.6;
          double rad = radius * Math.min(1.1, 0.35 + 0.65 * (h / Math.max(0.1, height) + 0.4 * this.r.nextDouble()));
          double a = this.r.nextDouble() * Math.PI * 2.0;
-         Vec3d pos = center.add(Math.cos(a) * rad, h, Math.sin(a) * rad);
-         Vec3d v = new Vec3d(-Math.sin(a) * rad * w, (height - h) / pl * 0.8, Math.cos(a) * rad * w);
+         Vec3 pos = center.add(Math.cos(a) * rad, h, Math.sin(a) * rad);
+         Vec3 v = new Vec3(-Math.sin(a) * rad * w, (height - h) / pl * 0.8, Math.cos(a) * rad * w);
          if (i % 4 == 3) {
             add(of(VfxParticles.Kind.SMOKE, this.smoke, 1.0 + this.r.nextDouble() * 0.8, pl).curl(w).drag(1.0F).gravity(0.0F).delay(delay), pos, v);
          } else {
@@ -550,12 +550,12 @@ final class VfxCasts {
          }
       }
 
-      Vec3d g = center.add(0.0, 0.08, 0.0);
+      Vec3 g = center.add(0.0, 0.08, 0.0);
       add(of(VfxParticles.Kind.RING, this.glow, radius * 2.0, life).flat().spin(0.12F).curve(5).fade(3), g);
       add(of(VfxParticles.Kind.SHOCK, dim(this.glow, 0.7F), radius * 2.2, Math.min(life, 20)).variant(1), g);
    }
 
-   private void nova(Vec3d center, double radius) {
+   private void nova(Vec3 center, double radius) {
       flare(center, 16777215, radius * 0.8, 5);
       flare(center, this.core, radius * 1.6, 9);
       flare(center, this.glow, radius * 2.6, 14);
@@ -568,15 +568,15 @@ final class VfxCasts {
          add(
             of(VfxParticles.Kind.BEAM, this.r.nextBoolean() ? this.core : this.glow, 0.2, 10).variant(1).streak(3.0F).drag(0.88F).gravity(0.0F).curve(2),
             center,
-            this.unit().multiply(radius / 7.0)
+            this.unit().scale(radius / 7.0)
          );
       }
 
       screen(center, radius * 3.0, 0.4, 8, this.glow, 0.25F, 1);
    }
 
-   private void runeCircle(Vec3d center, double radius, int life, float spin, int rune) {
-      Vec3d g = center.add(0.0, 0.05, 0.0);
+   private void runeCircle(Vec3 center, double radius, int life, float spin, int rune) {
+      Vec3 g = center.add(0.0, 0.05, 0.0);
       add(of(VfxParticles.Kind.RUNE, this.glow, radius * 2.0, life).variant(rune).flat().spin(spin), g);
       add(of(VfxParticles.Kind.RUNE, dim(this.core, 0.55F), radius * 1.1, life).variant((rune + 2) % 4).flat().spin(-spin * 1.6F), g.add(0.0, 0.01, 0.0));
       add(of(VfxParticles.Kind.RING, this.glow, radius * 2.25, life).flat().curve(5).fade(3), g);
@@ -587,21 +587,21 @@ final class VfxCasts {
          add(
             of(VfxParticles.Kind.GLINT, this.core, 0.3, 20 + this.r.nextInt(10)).variant(0).delay(this.bound(life - 20)),
             g.add(Math.cos(a) * radius, 0.1, Math.sin(a) * radius),
-            new Vec3d(0.0, 0.04, 0.0)
+            new Vec3(0.0, 0.04, 0.0)
          );
       }
    }
 
-   private void chargeUp(Vec3d at, int ticks) {
+   private void chargeUp(Vec3 at, int ticks) {
       int m = this.n(20.0, 24);
 
       for (int i = 0; i < m; i++) {
          int delay = Math.max(0, (int)((float)(i * (ticks - 8)) / m));
-         Vec3d from = at.add(this.unit().multiply(1.3 + this.r.nextDouble() * 1.2));
+         Vec3 from = at.add(this.unit().scale(1.3 + this.r.nextDouble() * 1.2));
          add(
             of(VfxParticles.Kind.BEAM, i % 2 == 0 ? this.core : this.glow, 0.12, 8).variant(1).streak(2.5F).drag(1.0F).gravity(0.0F).fade(3).delay(delay),
             from,
-            at.subtract(from).multiply(0.125)
+            at.subtract(from).scale(0.125)
          );
       }
 
@@ -612,8 +612,8 @@ final class VfxCasts {
          double a = k * Math.PI * 2.0 / 3.0;
          double rad = 1.1;
          float w = 0.3F;
-         Vec3d pos = at.add(Math.cos(a) * rad, (this.r.nextDouble() - 0.5) * 0.4, Math.sin(a) * rad);
-         Vec3d v = new Vec3d(-Math.sin(a) * rad * w, 0.0, Math.cos(a) * rad * w);
+         Vec3 pos = at.add(Math.cos(a) * rad, (this.r.nextDouble() - 0.5) * 0.4, Math.sin(a) * rad);
+         Vec3 v = new Vec3(-Math.sin(a) * rad * w, 0.0, Math.cos(a) * rad * w);
 
          for (int t = 0; t < 3; t++) {
             add(
@@ -634,8 +634,8 @@ final class VfxCasts {
       add(of(VfxParticles.Kind.SHOCK, this.glow, 3.2, 8).variant(1).face().roll(0.0F).delay(ticks), at);
    }
 
-   private void meteorTrail(Vec3d at, Vec3d v) {
-      if (v.lengthSquared() < 1.0E-6) {
+   private void meteorTrail(Vec3 at, Vec3 v) {
+      if (v.lengthSqr() < 1.0E-6) {
          flare(at, this.glow, 1.8, 6);
       } else {
          add(of(VfxParticles.Kind.BEAM, dim(this.glow, 0.8F), 1.3, 6).variant(1).streak(3.5F).drag(0.6F).gravity(0.0F), at, v);
@@ -646,8 +646,8 @@ final class VfxCasts {
          for (int m = this.n(2.0, 3); i < m; i++) {
             add(
                of(VfxParticles.Kind.SMOKE, this.smoke, 1.2 + this.r.nextDouble() * 0.8, 28 + this.r.nextInt(10)),
-               at.subtract(v.multiply(0.5)).add(this.r.nextGaussian() * 0.2, this.r.nextGaussian() * 0.2, this.r.nextGaussian() * 0.2),
-               new Vec3d(this.r.nextGaussian() * 0.02, 0.03, this.r.nextGaussian() * 0.02)
+               at.subtract(v.scale(0.5)).add(this.r.nextGaussian() * 0.2, this.r.nextGaussian() * 0.2, this.r.nextGaussian() * 0.2),
+               new Vec3(this.r.nextGaussian() * 0.02, 0.03, this.r.nextGaussian() * 0.02)
             );
          }
 
@@ -657,14 +657,14 @@ final class VfxCasts {
             add(
                of(VfxParticles.Kind.EMBER, this.core, 0.15, 20 + this.r.nextInt(10)),
                at,
-               v.multiply(-0.1).add(this.r.nextGaussian() * 0.03, this.r.nextGaussian() * 0.03, this.r.nextGaussian() * 0.03)
+               v.scale(-0.1).add(this.r.nextGaussian() * 0.03, this.r.nextGaussian() * 0.03, this.r.nextGaussian() * 0.03)
             );
          }
       }
    }
 
-   private void groundCrack(Vec3d center, double radius) {
-      Vec3d g = center.add(0.0, 0.04, 0.0);
+   private void groundCrack(Vec3 center, double radius) {
+      Vec3 g = center.add(0.0, 0.04, 0.0);
       add(of(VfxParticles.Kind.SCORCH, dim(this.smoke, 0.7F), radius * 2.3, 90).flat(), g);
       add(of(VfxParticles.Kind.CRACK, this.glow, radius * 2.0, 60).flat(), g.add(0.0, 0.01, 0.0));
       add(of(VfxParticles.Kind.CRACK, this.core, radius * 1.1, 26).flat().fade(1), g.add(0.0, 0.02, 0.0));
@@ -673,19 +673,19 @@ final class VfxCasts {
       for (int m = this.n(6.0, 10); i < m; i++) {
          double a = this.r.nextDouble() * Math.PI * 2.0;
          double d = Math.sqrt(this.r.nextDouble()) * radius * 0.8;
-         add(of(VfxParticles.Kind.EMBER, this.core, 0.14, 30 + this.r.nextInt(20)), g.add(Math.cos(a) * d, 0.05, Math.sin(a) * d), new Vec3d(0.0, 0.03, 0.0));
+         add(of(VfxParticles.Kind.EMBER, this.core, 0.14, 30 + this.r.nextInt(20)), g.add(Math.cos(a) * d, 0.05, Math.sin(a) * d), new Vec3(0.0, 0.03, 0.0));
       }
 
       this.smoke(g, this.smoke, 4, radius * 0.5, 1.2);
    }
 
-   private void heavyImpact(Vec3d at, double power) {
-      Vec3d c = at.add(0.0, 0.5, 0.0);
+   private void heavyImpact(Vec3 at, double power) {
+      Vec3 c = at.add(0.0, 0.5, 0.0);
       flare(c, 16777215, 1.4 * power, 4);
       flare(c, this.core, 2.4 * power, 7);
       flare(c, this.glow, 4.6 * power, 12);
       add(of(VfxParticles.Kind.GLINT, this.core, 3.4 * power, 7).variant(0).roll(this.r.nextFloat() * 90.0F), c);
-      Vec3d g = at.add(0.0, 0.08, 0.0);
+      Vec3 g = at.add(0.0, 0.08, 0.0);
       add(of(VfxParticles.Kind.SHOCK, this.glow, 6.4 * power, 15).variant(0), g);
       add(of(VfxParticles.Kind.SHOCK, this.core, 3.6 * power, 9).variant(1), g.add(0.0, 0.01, 0.0));
       this.groundCrack(at, 1.7 * power);
@@ -701,7 +701,7 @@ final class VfxCasts {
          add(
             of(VfxParticles.Kind.SMOKE, this.smoke, 1.2 * power * (0.8 + this.r.nextDouble() * 0.4), 30),
             at.add(Math.cos(a) * 0.6 * power, 0.25, Math.sin(a) * 0.6 * power),
-            new Vec3d(Math.cos(a) * 0.14, 0.02, Math.sin(a) * 0.14)
+            new Vec3(Math.cos(a) * 0.14, 0.02, Math.sin(a) * 0.14)
          );
       }
 
@@ -714,7 +714,7 @@ final class VfxCasts {
       }
    }
 
-   private void shieldBubble(Vec3d at, double radius, int life) {
+   private void shieldBubble(Vec3 at, double radius, int life) {
       add(of(VfxParticles.Kind.RING, this.glow, radius * 2.0 / 0.86, life).face().roll(0.0F).curve(5).fade(3), at);
       flare(at, dim(this.glow, 0.5F), radius * 1.6, 8);
       int[][] rows = new int[][]{{-15, 8}, {20, 8}, {52, 5}, {85, 1}};
@@ -727,7 +727,7 @@ final class VfxCasts {
             if (!(this.density < 0.5F) || k++ % 2 != 1) {
                float az = (j + row % 2 * 0.5F) * 360.0F / count;
                float pitch = -rows[row][0];
-               Vec3d dir = Vec3d.fromPolar(pitch, az);
+               Vec3 dir = Vec3.directionFromRotation(pitch, az);
                add(
                   of(VfxParticles.Kind.HEX, dim(this.glow, 0.8F), radius * 0.85, Math.max(4, life - row * 2))
                      .variant(0)
@@ -736,21 +736,21 @@ final class VfxCasts {
                      .curve(4)
                      .fade(3)
                      .delay(row * 2),
-                  at.add(dir.multiply(radius))
+                  at.add(dir.scale(radius))
                );
             }
          }
       }
    }
 
-   private void ward(Vec3d at, double radius, int life, int rune) {
-      Vec3d g = at.add(0.0, 0.05, 0.0);
+   private void ward(Vec3 at, double radius, int life, int rune) {
+      Vec3 g = at.add(0.0, 0.05, 0.0);
       add(of(VfxParticles.Kind.RUNE, this.glow, radius * 2.0, life).variant(rune).flat().spin(0.02F), g);
       add(of(VfxParticles.Kind.RING, this.glow, radius * 2.2, life).flat().curve(5).fade(3), g);
 
       for (int j = 0; j < 8; j++) {
          float az = j * 45.0F;
-         Vec3d pos = at.add(forward(az).multiply(radius)).add(0.0, radius * 0.45 + 0.3, 0.0);
+         Vec3 pos = at.add(forward(az).scale(radius)).add(0.0, radius * 0.45 + 0.3, 0.0);
          add(
             of(VfxParticles.Kind.HEX, dim(this.glow, 0.65F), radius * 0.8, Math.max(4, life - j))
                .variant(0)
@@ -763,11 +763,11 @@ final class VfxCasts {
          );
       }
 
-      add(of(VfxParticles.Kind.BEAM, dim(this.glow, 0.3F), radius * 1.9, life).variant(0).span().fade(3), g, new Vec3d(0.0, radius * 1.3, 0.0));
+      add(of(VfxParticles.Kind.BEAM, dim(this.glow, 0.3F), radius * 1.9, life).variant(0).span().fade(3), g, new Vec3(0.0, radius * 1.3, 0.0));
    }
 
-   private void dashTrail(Vec3d from, Vec3d to) {
-      Vec3d d = to.subtract(from);
+   private void dashTrail(Vec3 from, Vec3 to) {
+      Vec3 d = to.subtract(from);
       double len = d.length();
       if (!(len < 0.05)) {
          add(of(VfxParticles.Kind.BEAM, this.glow, 1.1, 9).variant(1).span(), from, d);
@@ -775,25 +775,25 @@ final class VfxCasts {
          int i = 0;
 
          for (int m = this.n(6.0, 8); i < m; i++) {
-            Vec3d s = from.add(d.multiply(this.r.nextDouble() * 0.3)).add(this.perp(d).multiply(0.3 + this.r.nextDouble() * 0.6));
+            Vec3 s = from.add(d.scale(this.r.nextDouble() * 0.3)).add(this.perp(d).scale(0.3 + this.r.nextDouble() * 0.6));
             add(
                of(VfxParticles.Kind.BEAM, this.r.nextBoolean() ? this.core : this.glow, 0.08, 5 + this.r.nextInt(3)).variant(1).span().delay(this.r.nextInt(2)),
                s,
-               d.multiply(0.5 + this.r.nextDouble() * 0.4)
+               d.scale(0.5 + this.r.nextDouble() * 0.4)
             );
          }
 
          for (int k = 1; k <= 3; k++) {
-            flare(from.add(d.multiply(k / 4.0)), dim(this.glow, 0.8F - k * 0.15F), 1.5, 4 + k * 2);
+            flare(from.add(d.scale(k / 4.0)), dim(this.glow, 0.8F - k * 0.15F), 1.5, 4 + k * 2);
          }
       }
    }
 
-   private void auraRing(Vec3d at, double radius) {
-      Vec3d g = at.add(0.0, 0.06, 0.0);
+   private void auraRing(Vec3 at, double radius) {
+      Vec3 g = at.add(0.0, 0.06, 0.0);
       add(of(VfxParticles.Kind.RING, this.glow, radius * 2.0, 24).flat().curve(5).spin(0.08F).fade(3), g);
       add(of(VfxParticles.Kind.SHOCK, dim(this.glow, 0.6F), radius * 2.4, 16).variant(1), g);
-      add(of(VfxParticles.Kind.BEAM, dim(this.glow, 0.3F), radius * 1.8, 20).variant(0).span().fade(3), g, new Vec3d(0.0, 2.2, 0.0));
+      add(of(VfxParticles.Kind.BEAM, dim(this.glow, 0.3F), radius * 1.8, 20).variant(0).span().fade(3), g, new Vec3(0.0, 2.2, 0.0));
       int i = 0;
 
       for (int m = this.n(8.0, 10); i < m; i++) {
@@ -801,20 +801,20 @@ final class VfxCasts {
          add(
             of(VfxParticles.Kind.GLINT, this.core, 0.3, 18 + this.r.nextInt(10)).variant(0).spin(0.1F).delay(this.r.nextInt(6)),
             g.add(Math.cos(a) * radius, 0.1, Math.sin(a) * radius),
-            new Vec3d(0.0, 0.05, 0.0)
+            new Vec3(0.0, 0.05, 0.0)
          );
       }
    }
 
-   private void wisps(Vec3d center, int count, double radius, int life) {
+   private void wisps(Vec3 center, int count, double radius, int life) {
       int m = this.n(count, 12);
 
       for (int i = 0; i < m; i++) {
          double a = i * Math.PI * 2.0 / m + this.r.nextDouble() * 0.5;
          double rad = radius * (0.6 + 0.4 * this.r.nextDouble());
          float w = (this.r.nextBoolean() ? 1 : -1) * (0.08F + this.r.nextFloat() * 0.06F);
-         Vec3d pos = center.add(Math.cos(a) * rad, (this.r.nextDouble() - 0.5) * 1.2, Math.sin(a) * rad);
-         Vec3d v = new Vec3d(-Math.sin(a) * rad * w, (this.r.nextDouble() - 0.5) * 0.02, Math.cos(a) * rad * w);
+         Vec3 pos = center.add(Math.cos(a) * rad, (this.r.nextDouble() - 0.5) * 1.2, Math.sin(a) * rad);
+         Vec3 v = new Vec3(-Math.sin(a) * rad * w, (this.r.nextDouble() - 0.5) * 0.02, Math.cos(a) * rad * w);
          int pl = life + this.r.nextInt(20);
          double size = 0.55 + this.r.nextDouble() * 0.25;
 
@@ -833,7 +833,7 @@ final class VfxCasts {
       }
    }
 
-   private void slashArc(Vec3d o, float yaw, float pitch, float roll, double reach, float arc) {
+   private void slashArc(Vec3 o, float yaw, float pitch, float roll, double reach, float arc) {
       if (!(reach <= 0.05)) {
          boolean mirror = arc < 0.0F;
          float span = Math.abs(arc);
@@ -854,52 +854,52 @@ final class VfxCasts {
          float follow = (mirror ? -1 : 1) * 0.06F;
          add(of(VfxParticles.Kind.SLASH, this.glow, size, 7).variant(variant).plane(yaw, pitch, roll).mirror(mirror).spin(follow), o);
          add(of(VfxParticles.Kind.SLASH, this.core, size * 0.97, 5).variant(variant).plane(yaw, pitch, roll).mirror(mirror).spin(follow), o);
-         Vec3d f = Vec3d.fromPolar(pitch, yaw);
+         Vec3 f = Vec3.directionFromRotation(pitch, yaw);
          float yr = yaw * (float) (Math.PI / 180.0);
-         Vec3d right = new Vec3d(-MathHelper.cos(yr), 0.0, -MathHelper.sin(yr));
-         Vec3d up = right.crossProduct(f);
+         Vec3 right = new Vec3(-Mth.cos(yr), 0.0, -Mth.sin(yr));
+         Vec3 up = right.cross(f);
          double rr = Math.toRadians(roll);
-         Vec3d side = right.multiply(Math.cos(rr)).add(up.multiply(Math.sin(rr)));
+         Vec3 side = right.scale(Math.cos(rr)).add(up.scale(Math.sin(rr)));
          double h = Math.toRadians(Math.min(span, 300.0F) / 2.0F);
          double sign = mirror ? 1.0 : -1.0;
-         Vec3d tipDir = f.multiply(Math.cos(h)).add(side.multiply(sign * Math.sin(h)));
-         Vec3d tangent = f.multiply(-Math.sin(h)).add(side.multiply(sign * Math.cos(h)));
-         Vec3d tip = o.add(tipDir.multiply(reach));
+         Vec3 tipDir = f.scale(Math.cos(h)).add(side.scale(sign * Math.sin(h)));
+         Vec3 tangent = f.scale(-Math.sin(h)).add(side.scale(sign * Math.cos(h)));
+         Vec3 tip = o.add(tipDir.scale(reach));
          int i = 0;
 
          for (int m = this.n(4.0, 6); i < m; i++) {
-            Vec3d v = tangent.multiply(0.3 + this.r.nextDouble() * 0.15)
-               .add(tipDir.multiply(0.08))
+            Vec3 v = tangent.scale(0.3 + this.r.nextDouble() * 0.15)
+               .add(tipDir.scale(0.08))
                .add(this.r.nextGaussian() * 0.04, this.r.nextGaussian() * 0.04, this.r.nextGaussian() * 0.04);
             add(of(VfxParticles.Kind.BEAM, this.core, 0.16, 7 + this.r.nextInt(4)).variant(1).streak(2.4F).gravity(0.4F).drag(0.88F).curve(2), tip, v);
          }
       }
    }
 
-   private void claw(Vec3d o, float yaw, float pitch, double reach) {
+   private void claw(Vec3 o, float yaw, float pitch, double reach) {
       boolean mirror = this.r.nextBoolean();
       float roll = mirror ? 50.0F : -50.0F;
       double size = reach * 2.0 / 0.86;
       float follow = (mirror ? -1 : 1) * 0.05F;
       add(of(VfxParticles.Kind.SLASH, this.glow, size, 7).variant(4).plane(yaw, pitch, roll).mirror(mirror).spin(follow), o);
       add(of(VfxParticles.Kind.SLASH, this.core, size * 0.97, 5).variant(4).plane(yaw, pitch, roll).mirror(mirror).spin(follow), o);
-      this.sparks(o.add(Vec3d.fromPolar(pitch, yaw).multiply(reach)), this.core, 4, 0.25, 0.18);
+      this.sparks(o.add(Vec3.directionFromRotation(pitch, yaw).scale(reach)), this.core, 4, 0.25, 0.18);
    }
 
-   private void streaks(Vec3d at, Vec3d dir, int count) {
-      Vec3d dn = dir.lengthSquared() < 1.0E-6 ? new Vec3d(0.0, 0.0, 1.0) : dir.normalize();
+   private void streaks(Vec3 at, Vec3 dir, int count) {
+      Vec3 dn = dir.lengthSqr() < 1.0E-6 ? new Vec3(0.0, 0.0, 1.0) : dir.normalize();
       int i = 0;
 
       for (int m = this.n(count, 16); i < m; i++) {
          double len = 1.5 + this.r.nextDouble() * 2.5;
-         Vec3d s = at.add(this.perp(dn).multiply(0.3 + this.r.nextDouble() * 1.2)).add(dn.multiply((this.r.nextDouble() - 0.5) * 2.0 - len * 0.5));
+         Vec3 s = at.add(this.perp(dn).scale(0.3 + this.r.nextDouble() * 1.2)).add(dn.scale((this.r.nextDouble() - 0.5) * 2.0 - len * 0.5));
          add(
             of(VfxParticles.Kind.BEAM, this.r.nextBoolean() ? this.core : this.glow, 0.06 + this.r.nextDouble() * 0.06, 4 + this.r.nextInt(3))
                .variant(1)
                .span()
                .delay(this.r.nextInt(2)),
             s,
-            dn.multiply(len)
+            dn.scale(len)
          );
       }
    }

@@ -2,18 +2,19 @@ package com.vexira.mysticalterrain.client.boss;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.boss.dragon.phase.PhaseType;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.GeoReplacedEntity;
-import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
-import software.bernie.geckolib.animation.object.PlayState;
-import software.bernie.geckolib.animation.state.AnimationTest;
-import software.bernie.geckolib.constant.dataticket.DataTicket;
-import software.bernie.geckolib.util.GeckoLibUtil;
+import com.geckolib.animatable.GeoReplacedEntity;
+import com.geckolib.animatable.instance.AnimatableInstanceCache;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.animation.state.AnimationTest;
+import com.geckolib.constant.dataticket.DataTicket;
+import com.geckolib.util.GeckoLibUtil;
 
 @Environment(EnvType.CLIENT)
 public class DragonAnimatable implements GeoReplacedEntity {
@@ -77,7 +78,7 @@ public class DragonAnimatable implements GeoReplacedEntity {
    }
 
    public EntityType<?> getReplacingEntityType() {
-      return EntityType.ENDER_DRAGON;
+      return EntityTypes.ENDER_DRAGON;
    }
 
    public void registerControllers(ControllerRegistrar controllers) {
@@ -146,22 +147,22 @@ public class DragonAnimatable implements GeoReplacedEntity {
    }
 
    private static RawAnimation byPhase(AnimationTest<DragonAnimatable> test) {
-      int phase = (Integer)test.getDataOrDefault(DragonGeoRenderer.PHASE, PhaseType.HOLDING_PATTERN.getTypeId());
-      if (phase == PhaseType.SITTING_FLAMING.getTypeId()) {
+      int phase = (Integer)test.getDataOrDefault(DragonGeoRenderer.PHASE, EnderDragonPhase.HOLDING_PATTERN.getId());
+      if (phase == EnderDragonPhase.SITTING_FLAMING.getId()) {
          return BREATH;
-      } else if (phase == PhaseType.SITTING_ATTACKING.getTypeId()) {
+      } else if (phase == EnderDragonPhase.SITTING_ATTACKING.getId()) {
          return PERCH_ROAR;
-      } else if (phase == PhaseType.SITTING_SCANNING.getTypeId()) {
+      } else if (phase == EnderDragonPhase.SITTING_SCANNING.getId()) {
          return SCAN;
-      } else if (phase == PhaseType.HOVER.getTypeId()) {
+      } else if (phase == EnderDragonPhase.HOVERING.getId()) {
          return HOVER;
-      } else if (phase == PhaseType.TAKEOFF.getTypeId()) {
+      } else if (phase == EnderDragonPhase.TAKEOFF.getId()) {
          return TAKEOFF;
-      } else if (phase == PhaseType.LANDING.getTypeId()) {
+      } else if (phase == EnderDragonPhase.LANDING.getId()) {
          return LAND;
-      } else if (phase == PhaseType.LANDING_APPROACH.getTypeId()) {
+      } else if (phase == EnderDragonPhase.LANDING_APPROACH.getId()) {
          return GLIDE;
-      } else if (phase == PhaseType.CHARGING_PLAYER.getTypeId()) {
+      } else if (phase == EnderDragonPhase.CHARGING_PLAYER.getId()) {
          return FLY_FAST;
       } else {
          float turn = (Float)test.getDataOrDefault(DragonGeoRenderer.TURN, 0.0F);

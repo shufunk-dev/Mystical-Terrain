@@ -6,44 +6,45 @@ import com.vexira.mysticalterrain.formation.Formation;
 import com.vexira.mysticalterrain.formation.FormationBuilder;
 import com.vexira.mysticalterrain.formation.FormationParams;
 import java.util.Optional;
-import net.minecraft.block.BlockState;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.HeightLimitView;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.biome.source.BiomeCoords;
-import net.minecraft.world.gen.chunk.ChunkGenerator;
-import net.minecraft.world.gen.chunk.VerticalBlockSample;
-import net.minecraft.world.gen.feature.ConfiguredFeature;
-import net.minecraft.world.gen.noise.NoiseConfig;
-import net.minecraft.world.gen.structure.Structure;
-import net.minecraft.world.gen.structure.StructureType;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.QuartPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.NoiseColumn;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.feature.Feature;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureType;
 
 public class FormationStructure extends Structure {
    public static final MapCodec<FormationStructure> CODEC = RecordCodecBuilder.mapCodec(
-      instance -> instance.group(configCodecBuilder(instance), ConfiguredFeature.REGISTRY_CODEC.fieldOf("formation").forGetter(structure -> structure.formation))
+      instance -> instance.group(settingsCodec(instance), Feature.CODEC.fieldOf("formation").forGetter(structure -> structure.formation))
          .apply(instance, FormationStructure::new)
    );
    public static final StructureType<FormationStructure> TYPE = () -> CODEC;
-   private final RegistryEntry<ConfiguredFeature<?, ?>> formation;
+   private final Holder<Feature> formation;
 
-   public FormationStructure(Structure.Config settings, RegistryEntry<ConfiguredFeature<?, ?>> formation) {
+   public FormationStructure(Structure.StructureSettings settings, Holder<Feature> formation) {
       super(settings);
       this.formation = formation;
    }
 
    @Override
-   protected Optional<Structure.StructurePosition> getStructurePosition(Structure.Context context) {
-      if (this.formation.value().config() instanceof FormationConfiguration config && this.formation.getKey().isPresent()) {
+   protected Optional<Structure.GenerationStub> findGenerationPoint(Structure.GenerationContext context) {
+      if (this.formation.value() instanceof FormationFeature ff && this.formation.unwrapKey().isPresent()) {
+         FormationConfiguration config = ff.config();
          ChunkPos chunk = context.chunkPos();
-         int x = chunk.getStartX();
-         int z = chunk.getStartZ();
+         int x = chunk.getMinBlockX();
+         int z = chunk.getMinBlockZ();
          FormationParams params = config.sample(context.random());
          ChunkGenerator generator = context.chunkGenerator();
-         HeightLimitView heights = context.world();
-         NoiseConfig randomState = context.noiseConfig();
-         int top = config.anchor() == FormationConfiguration.Anchor.SURFACE ? 0 : config.elevation().get(context.random());
+         LevelHeightAccessor heights = context.heightAccessor();
+         RandomState randomState = context.randomState();
+         int top = config.anchor() == FormationConfiguration.Anchor.SURFACE ? 0 : config.elevation().sample(context.random());
 
          Optional<Integer> y = switch (config.anchor()) {
             case SURFACE -> dry(generator, heights, randomState, x, z);
@@ -56,7 +57,7 @@ public class FormationStructure extends Structure {
             }
 
             if (config.anchor() == FormationConfiguration.Anchor.FLOOR) {
-               y = floor(generator.getColumnSample(x, z, heights, randomState), heights, top, Math.max(8, Math.min(shape.maxY(), 24)));
+               y = floor(generator.getBaseColumn(x, z, heights, randomState), heights, top, Math.max(8, Math.min(shape.maxY(), 24)));
                if (y.isEmpty()) {
                   return Optional.empty();
                }
@@ -64,9 +65,9 @@ public class FormationStructure extends Structure {
 
             BlockPos base = new BlockPos(x, y.get(), z);
             return Optional.of(
-               new Structure.StructurePosition(
+               new Structure.GenerationStub(
                   base,
-                  builder -> builder.addPiece(new FormationPiece(this.formation.getKey().get(), config, base, params))
+                  builder -> builder.addPiece(new FormationPiece(this.formation.unwrapKey().get(), config, base, params))
                )
             );
          } else {
@@ -77,27 +78,27 @@ public class FormationStructure extends Structure {
       }
    }
 
-   private static boolean fits(Structure.Context context, int x, int y, int z) {
-      return context.biomePredicate()
+   private static boolean fits(Structure.GenerationContext context, int x, int y, int z) {
+      return context.validBiome()
          .test(
             context.biomeSource()
-               .getBiome(BiomeCoords.fromBlock(x), BiomeCoords.fromBlock(y), BiomeCoords.fromBlock(z), context.noiseConfig().getMultiNoiseSampler())
+               .createUncachedResolver(context.randomState()).getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z))
          );
    }
 
-   private static Optional<Integer> dry(ChunkGenerator generator, HeightLimitView heights, NoiseConfig randomState, int x, int z) {
-      int y = generator.getHeight(x, z, Heightmap.Type.WORLD_SURFACE_WG, heights, randomState);
-      return y > heights.getBottomY() + 8 && y == generator.getHeight(x, z, Heightmap.Type.OCEAN_FLOOR_WG, heights, randomState)
+   private static Optional<Integer> dry(ChunkGenerator generator, LevelHeightAccessor heights, RandomState randomState, int x, int z) {
+      int y = generator.getBaseHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, heights, randomState);
+      return y > heights.getMinY() + 8 && y == generator.getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, heights, randomState)
          ? Optional.of(y)
          : Optional.empty();
    }
 
-   private static boolean grounded(ChunkGenerator generator, HeightLimitView heights, NoiseConfig randomState, int x, int z, int spread) {
-      int floor = heights.getBottomY() + 8;
+   private static boolean grounded(ChunkGenerator generator, LevelHeightAccessor heights, RandomState randomState, int x, int z, int spread) {
+      int floor = heights.getMinY() + 8;
       int[][] around = new int[][]{{spread, 0}, {-spread, 0}, {0, spread}, {0, -spread}};
 
       for (int[] offset : around) {
-         if (generator.getHeight(x + offset[0], z + offset[1], Heightmap.Type.WORLD_SURFACE_WG, heights, randomState) <= floor) {
+         if (generator.getBaseHeight(x + offset[0], z + offset[1], Heightmap.Types.WORLD_SURFACE_WG, heights, randomState) <= floor) {
             return false;
          }
       }
@@ -105,16 +106,16 @@ public class FormationStructure extends Structure {
       return true;
    }
 
-   private static Optional<Integer> floor(VerticalBlockSample column, HeightLimitView heights, int top, int headroom) {
-      int start = Math.min(top, heights.getTopYInclusive() - headroom);
+   private static Optional<Integer> floor(NoiseColumn column, LevelHeightAccessor heights, int top, int headroom) {
+      int start = Math.min(top, heights.getMaxY() - headroom);
 
-      for (int y = start; y > Math.max(32, heights.getBottomY()); y--) {
-         BlockState below = column.getState(y - 1);
-         if (column.getState(y).isAir() && !below.isAir() && below.getFluidState().isEmpty()) {
+      for (int y = start; y > Math.max(32, heights.getMinY()); y--) {
+         BlockState below = column.getBlock(y - 1);
+         if (column.getBlock(y).isAir() && !below.isAir() && below.getFluidState().isEmpty()) {
             boolean open = true;
 
             for (int dy = 1; dy < headroom && open; dy++) {
-               open = column.getState(y + dy).isAir();
+               open = column.getBlock(y + dy).isAir();
             }
 
             if (open) {
@@ -127,7 +128,7 @@ public class FormationStructure extends Structure {
    }
 
    @Override
-   public StructureType<?> getType() {
+   public StructureType<?> type() {
       return TYPE;
    }
 }

@@ -6,24 +6,24 @@ import com.vexira.mysticalterrain.gear.MysticArmor;
 import com.vexira.mysticalterrain.gear.MysticWeapon;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.render.entity.state.BipedEntityRenderState;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.ItemStack;
+import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.client.GeoRenderProvider;
-import software.bernie.geckolib.model.DefaultedGeoModel;
-import software.bernie.geckolib.model.DefaultedItemGeoModel;
-import software.bernie.geckolib.renderer.GeoArmorRenderer;
-import software.bernie.geckolib.renderer.GeoItemRenderer;
-import software.bernie.geckolib.renderer.base.GeoRenderState;
-import software.bernie.geckolib.renderer.layer.builtin.AutoGlowingGeoLayer;
+import com.geckolib.animatable.client.GeoRenderProvider;
+import com.geckolib.model.DefaultedGeoModel;
+import com.geckolib.model.DefaultedItemGeoModel;
+import com.geckolib.renderer.GeoArmorRenderer;
+import com.geckolib.renderer.GeoItemRenderer;
+import com.geckolib.renderer.base.GeoRenderState;
+import com.geckolib.renderer.layer.builtin.AutoGlowingGeoLayer;
 
 @Environment(EnvType.CLIENT)
 public final class GearRenderers {
    private GearRenderers() {
    }
 
-   private static <R extends BipedEntityRenderState & GeoRenderState> GeoArmorRenderer<MysticArmor, R> armorRenderer(String model) {
+   private static <R extends HumanoidRenderState & GeoRenderState> GeoArmorRenderer<MysticArmor, R> armorRenderer(String model) {
       GeoArmorRenderer<MysticArmor, R> renderer = new GeoArmorRenderer(new DefaultedGeoModel<MysticArmor>(MysticalTerrain.id(model)) {
          protected String subtype() {
             return "armor";

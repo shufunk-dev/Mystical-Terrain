@@ -1,5 +1,7 @@
 package com.vexira.mysticalterrain.client.boss;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import com.vexira.mysticalterrain.MysticalTerrain;
 import com.vexira.mysticalterrain.boss.dragon.DragonPose;
 import com.vexira.mysticalterrain.boss.dragon.DragonReworkHolder;
@@ -7,26 +9,24 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.entity.EntityRendererFactory.Context;
-import net.minecraft.client.render.entity.state.LivingEntityRenderState;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.boss.dragon.phase.Phase;
-import net.minecraft.entity.boss.dragon.phase.PhaseType;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.RotationAxis;
+import net.minecraft.client.renderer.entity.EntityRendererProvider.Context;
+import net.minecraft.util.LightCoordsUtil;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
+import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.constant.dataticket.DataTicket;
-import software.bernie.geckolib.model.DefaultedEntityGeoModel;
-import software.bernie.geckolib.renderer.GeoReplacedEntityRenderer;
-import software.bernie.geckolib.renderer.base.BoneSnapshots;
-import software.bernie.geckolib.renderer.base.GeoRenderState;
-import software.bernie.geckolib.renderer.base.RenderPassInfo;
-import software.bernie.geckolib.renderer.layer.builtin.AutoGlowingGeoLayer;
+import com.geckolib.constant.dataticket.DataTicket;
+import com.geckolib.model.DefaultedEntityGeoModel;
+import com.geckolib.renderer.GeoReplacedEntityRenderer;
+import com.geckolib.renderer.base.BoneSnapshots;
+import com.geckolib.renderer.base.GeoRenderState;
+import com.geckolib.renderer.base.RenderPassInfo;
+import com.geckolib.renderer.layer.builtin.AutoGlowingGeoLayer;
 
 @Environment(EnvType.CLIENT)
-public class DragonGeoRenderer extends GeoReplacedEntityRenderer<DragonAnimatable, EnderDragonEntity, LivingEntityRenderState> {
+public class DragonGeoRenderer extends GeoReplacedEntityRenderer<DragonAnimatable, EnderDragon, LivingEntityRenderState> {
    public static final DataTicket<Integer> STATE = DataTicket.create("mysticalterrain_dragon_state", Integer.class);
    public static final DataTicket<Integer> SERIAL = DataTicket.create("mysticalterrain_dragon_serial", Integer.class);
    public static final DataTicket<Integer> FIGHT_PHASE = DataTicket.create("mysticalterrain_dragon_fight_phase", Integer.class);
@@ -38,7 +38,7 @@ public class DragonGeoRenderer extends GeoReplacedEntityRenderer<DragonAnimatabl
    public static final DataTicket<Float> CLIMB = DataTicket.create("mysticalterrain_dragon_climb", Float.class);
    private static final DataTicket<float[]> POSE = DataTicket.create("mysticalterrain_dragon_pose", float[].class);
    private static final float EASE = 0.35F;
-   private static final Map<EnderDragonEntity, float[]> DRAWN = new WeakHashMap<>();
+   private static final Map<EnderDragon, float[]> DRAWN = new WeakHashMap<>();
 
    public DragonGeoRenderer(Context context) {
       super(context, new DefaultedEntityGeoModel(MysticalTerrain.id("ender_dragon")), new DragonAnimatable());
@@ -47,34 +47,34 @@ public class DragonGeoRenderer extends GeoReplacedEntityRenderer<DragonAnimatabl
       this.shadowRadius = 0.0F;
    }
 
-   protected boolean affectedByCulling(EnderDragonEntity dragon) {
+   protected boolean affectedByCulling(EnderDragon dragon) {
       return false;
    }
 
-   public void addRenderData(DragonAnimatable animatable, @Nullable EnderDragonEntity dragon, LivingEntityRenderState state, float partialTick) {
+   public void addRenderData(DragonAnimatable animatable, @Nullable EnderDragon dragon, LivingEntityRenderState state, float partialTick) {
       if (dragon != null) {
-         Phase phase = dragon.getPhaseManager().getCurrent();
-         PhaseType<?> type = phase.getType();
+         DragonPhaseInstance phase = dragon.getPhaseManager().getCurrentPhase();
+         EnderDragonPhase<?> type = phase.getPhase();
          int raw = ((DragonReworkHolder)dragon).mysticalterrain$state();
          int rework = raw & 0xFF;
          state.addGeckolibData(STATE, rework);
          state.addGeckolibData(SERIAL, raw >>> 16 & 0xFF);
          state.addGeckolibData(FIGHT_PHASE, raw >>> 8 & 3);
-         state.addGeckolibData(DYING, type == PhaseType.DYING || dragon.ticksSinceDeath > 0);
-         state.addGeckolibData(SITTING, phase.isSittingOrHovering());
-         state.addGeckolibData(FLAMING, type == PhaseType.SITTING_FLAMING);
-         state.addGeckolibData(PHASE, type.getTypeId());
-         state.addGeckolibData(TURN, MathHelper.wrapDegrees(dragon.frameTracker.getFrame(0).yRot() - dragon.frameTracker.getFrame(6).yRot()));
-         state.addGeckolibData(CLIMB, (float)(dragon.frameTracker.getFrame(0).y() - dragon.frameTracker.getFrame(6).y()));
-         state.light = LightmapTextureManager.pack(
-            Math.max(LightmapTextureManager.getBlockLightCoordinates(state.light), 13),
-            Math.max(LightmapTextureManager.getSkyLightCoordinates(state.light), 13)
+         state.addGeckolibData(DYING, type == EnderDragonPhase.DYING || dragon.dragonDeathTime > 0);
+         state.addGeckolibData(SITTING, phase.isSitting());
+         state.addGeckolibData(FLAMING, type == EnderDragonPhase.SITTING_FLAMING);
+         state.addGeckolibData(PHASE, type.getId());
+         state.addGeckolibData(TURN, Mth.wrapDegrees(dragon.flightHistory.get(0).yRot() - dragon.flightHistory.get(6).yRot()));
+         state.addGeckolibData(CLIMB, (float)(dragon.flightHistory.get(0).y() - dragon.flightHistory.get(6).y()));
+         state.lightCoords = LightCoordsUtil.pack(
+            Math.max(LightCoordsUtil.block(state.lightCoords), 13),
+            Math.max(LightCoordsUtil.sky(state.lightCoords), 13)
          );
-         state.addGeckolibData(POSE, ease(dragon, DragonPose.pose(dragon, partialTick), dragon.age + partialTick));
+         state.addGeckolibData(POSE, ease(dragon, DragonPose.pose(dragon, partialTick), dragon.tickCount + partialTick));
       }
    }
 
-   private static float[] ease(EnderDragonEntity dragon, float[] pose, float now) {
+   private static float[] ease(EnderDragon dragon, float[] pose, float now) {
       float[] drawn = DRAWN.get(dragon);
       if (drawn == null) {
          drawn = new float[40];
@@ -100,13 +100,13 @@ public class DragonGeoRenderer extends GeoReplacedEntityRenderer<DragonAnimatabl
       }
    }
 
-   protected void applyRotations(RenderPassInfo<LivingEntityRenderState> info, MatrixStack poseStack, float nativeScale) {
+   protected void applyRotations(RenderPassInfo<LivingEntityRenderState> info, PoseStack poseStack, float nativeScale) {
       float[] pose = (float[])info.getGeckolibData(POSE);
       if (pose == null) {
          super.applyRotations(info, poseStack, nativeScale);
       } else {
-         poseStack.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-pose[0]));
-         poseStack.multiply(RotationAxis.POSITIVE_X.rotationDegrees(pose[1]));
+         poseStack.rotateDegrees(Axis.YP, -pose[0]);
+         poseStack.rotateDegrees(Axis.XP, pose[1]);
          poseStack.translate(0.0F, 0.0F, 1.0F);
       }
    }

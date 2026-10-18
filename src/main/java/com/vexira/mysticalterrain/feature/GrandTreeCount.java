@@ -8,20 +8,18 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.stream.Stream;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.gen.feature.FeaturePlacementContext;
-import net.minecraft.world.gen.placementmodifier.PlacementModifier;
-import net.minecraft.world.gen.placementmodifier.PlacementModifierType;
+import java.util.function.Consumer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.placement.PlacementContext;
+import net.minecraft.world.level.levelgen.placement.PlacementModifier;
 
-public class GrandTreeCount extends PlacementModifier {
+public class GrandTreeCount implements PlacementModifier {
    private static final String RATES = "/data/mysticalterrain/grand_tree_rates.json";
    private static final Map<String, Map<String, Double>> TABLE = load();
    public static final MapCodec<GrandTreeCount> CODEC = Identifier.CODEC.fieldOf("tree").xmap(GrandTreeCount::new, count -> count.tree);
-   public static final PlacementModifierType<GrandTreeCount> TYPE = () -> CODEC;
    private final Identifier tree;
    private final Map<String, Double> rates;
 
@@ -31,22 +29,24 @@ public class GrandTreeCount extends PlacementModifier {
    }
 
    @Override
-   public Stream<BlockPos> getPositions(FeaturePlacementContext context, Random random, BlockPos pos) {
+   public void modify(PlacementContext context, RandomSource random, BlockPos pos, Consumer<BlockPos> consumer) {
       int x = pos.getX() + 8;
       int z = pos.getZ() + 8;
-      BlockPos middle = new BlockPos(x, context.getTopY(Heightmap.Type.WORLD_SURFACE_WG, x, z), z);
-      double rate = context.getWorld()
+      BlockPos middle = new BlockPos(x, context.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z), z);
+      double rate = context.getLevel()
          .getBiome(middle)
-         .getKey()
-         .map(key -> this.rates.getOrDefault(key.getValue().toString(), 0.0))
+         .unwrapKey()
+         .map(key -> this.rates.getOrDefault(key.identifier().toString(), 0.0))
          .orElse(0.0);
       int count = (int)rate + (random.nextDouble() < rate - Math.floor(rate) ? 1 : 0);
-      return Stream.generate(() -> pos).limit(count);
+      for (int i = 0; i < count; i++) {
+         consumer.accept(pos);
+      }
    }
 
    @Override
-   public PlacementModifierType<?> getType() {
-      return TYPE;
+   public MapCodec<? extends PlacementModifier> codec() {
+      return CODEC;
    }
 
    private static Map<String, Map<String, Double>> load() {

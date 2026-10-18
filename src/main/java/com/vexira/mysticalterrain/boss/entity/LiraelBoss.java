@@ -17,42 +17,42 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.attribute.DefaultAttributeContainer.Builder;
-import net.minecraft.entity.boss.BossBar.Color;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.damage.DamageTypes;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.tag.DamageTypeTags;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.hit.HitResult.Type;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.BlockPos.Mutable;
-import net.minecraft.util.math.Direction.Axis;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.World;
-import net.minecraft.world.RaycastContext.FluidHandling;
-import net.minecraft.world.RaycastContext.ShapeType;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.BlockPos.MutableBlockPos;
+import net.minecraft.core.Direction.Axis;
+import net.minecraft.core.Holder;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.BossEvent.BossBarColor;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier.Builder;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.ClipContext.Block;
+import net.minecraft.world.level.ClipContext.Fluid;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.HitResult.Type;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
 
 public class LiraelBoss extends MysticalBoss {
    private static final BossSounds SOUNDS = BossSounds.of("lirael");
@@ -71,11 +71,11 @@ public class LiraelBoss extends MysticalBoss {
    private int stepGuard;
    private int wardFx;
    private boolean wasDodging;
-   private Vec3d dodgeFrom = Vec3d.ZERO;
+   private Vec3 dodgeFrom = Vec3.ZERO;
    private int dodgeTrail;
    private final List<LiraelBoss.Patch> patches = new ArrayList<>();
    private int moonfallTimer = 140;
-   private @Nullable Vec3d cageCenter;
+   private @Nullable Vec3 cageCenter;
    private double cageRadius = 22.0;
    private double cageSpin;
    private boolean cageUp;
@@ -86,16 +86,16 @@ public class LiraelBoss extends MysticalBoss {
    private boolean bloomArmed;
    private int nextBeat;
    private int staggerDrop;
-   private @Nullable Vec3d moveCenter;
-   private final List<Vec3d> spots = new ArrayList<>();
-   private final List<List<Vec3d>> waves = new ArrayList<>();
-   private final List<Vec3d> sanctuaries = new ArrayList<>();
-   private final List<Vec3d> decoys = new ArrayList<>();
-   private @Nullable Vec3d trueSpot;
-   private @Nullable Vec3d huntLand;
+   private @Nullable Vec3 moveCenter;
+   private final List<Vec3> spots = new ArrayList<>();
+   private final List<List<Vec3>> waves = new ArrayList<>();
+   private final List<Vec3> sanctuaries = new ArrayList<>();
+   private final List<Vec3> decoys = new ArrayList<>();
+   private @Nullable Vec3 trueSpot;
+   private @Nullable Vec3 huntLand;
    private @Nullable LivingEntity charmVictim;
-   private @Nullable Vec3d lineFrom;
-   private Vec3d lineDir = Vec3d.ZERO;
+   private @Nullable Vec3 lineFrom;
+   private Vec3 lineDir = Vec3.ZERO;
    private double lineLen;
    private float beamYaw0;
    private int beamDir = 1;
@@ -109,8 +109,8 @@ public class LiraelBoss extends MysticalBoss {
       return MysticalBoss.bossAttributes(840.0, 10.0, 0.3, 10.0);
    }
 
-   public LiraelBoss(EntityType<? extends HostileEntity> type, World level) {
-      super(type, level, "lirael", Color.PINK);
+   public LiraelBoss(EntityType<? extends Monster> type, Level level) {
+      super(type, level, "lirael", BossBarColor.PINK);
    }
 
    @Override
@@ -193,65 +193,65 @@ public class LiraelBoss extends MysticalBoss {
       return this.vanished;
    }
 
-   private Vec3d fwd() {
-      return Vec3d.fromPolar(0.0F, this.getYaw());
+   private Vec3 fwd() {
+      return Vec3.directionFromRotation(0.0F, this.getYRot());
    }
 
-   private Vec3d local(double right, double up, double forward) {
-      Vec3d f = this.fwd();
-      Vec3d r = Vec3d.fromPolar(0.0F, this.getYaw() + 90.0F);
-      return new Vec3d(this.getX() + f.x * forward + r.x * right, this.getY() + up, this.getZ() + f.z * forward + r.z * right);
+   private Vec3 local(double right, double up, double forward) {
+      Vec3 f = this.fwd();
+      Vec3 r = Vec3.directionFromRotation(0.0F, this.getYRot() + 90.0F);
+      return new Vec3(this.getX() + f.x * forward + r.x * right, this.getY() + up, this.getZ() + f.z * forward + r.z * right);
    }
 
-   private Vec3d tip() {
+   private Vec3 tip() {
       return this.local(0.2, 3.75, 0.63);
    }
 
-   private Vec3d thrustTip() {
+   private Vec3 thrustTip() {
       return this.local(0.0, 1.9, 4.1);
    }
 
-   private Vec3d beamFrom() {
+   private Vec3 beamFrom() {
       return this.local(-0.17, 1.82, 2.82);
    }
 
-   private Vec3d chest() {
+   private Vec3 chest() {
       return this.local(0.0, 2.3, 0.0);
    }
 
-   private Vec3d eyes() {
+   private Vec3 eyes() {
       return this.local(0.0, 3.13, 0.0);
    }
 
-   private Vec3d crown() {
+   private Vec3 crown() {
       return this.local(0.0, 3.9, 0.0);
    }
 
-   private Vec3d waist() {
+   private Vec3 waist() {
       return this.local(0.0, 1.75, 0.0);
    }
 
-   private Vec3d brooch() {
+   private Vec3 brooch() {
       return this.local(0.0, 2.28, 0.17);
    }
 
-   private Vec3d feet(ServerWorld level) {
-      Vec3d g = groundBelow(level, this.getX(), this.getY() + 0.5, this.getZ(), 8);
-      return g != null ? g : this.getEntityPos();
+   private Vec3 feet(ServerLevel level) {
+      Vec3 g = groundBelow(level, this.getX(), this.getY() + 0.5, this.getZ(), 8);
+      return g != null ? g : this.position();
    }
 
-   private static @Nullable Vec3d groundBelow(ServerWorld level, double x, double y, double z, int depth) {
-      Mutable p = BlockPos.ofFloored(x, y, z).mutableCopy();
+   private static @Nullable Vec3 groundBelow(ServerLevel level, double x, double y, double z, int depth) {
+      MutableBlockPos p = BlockPos.containing(x, y, z).mutable();
 
       for (int i = 0; i <= depth; i++) {
          BlockState s = level.getBlockState(p);
          VoxelShape shape = s.getCollisionShape(level, p);
          if (!shape.isEmpty()) {
-            return new Vec3d(x, p.getY() + shape.getMax(Axis.Y), z);
+            return new Vec3(x, p.getY() + shape.max(Axis.Y), z);
          }
 
          if (!s.getFluidState().isEmpty()) {
-            return new Vec3d(x, p.getY() + 0.9, z);
+            return new Vec3(x, p.getY() + 0.9, z);
          }
 
          p.move(0, -1, 0);
@@ -260,8 +260,8 @@ public class LiraelBoss extends MysticalBoss {
       return null;
    }
 
-   private Vec3d spotGround(ServerWorld level, Vec3d p) {
-      Vec3d g = groundBelow(level, p.x, p.y + 1.0, p.z, 10);
+   private Vec3 spotGround(ServerLevel level, Vec3 p) {
+      Vec3 g = groundBelow(level, p.x, p.y + 1.0, p.z, 10);
       if (g == null) {
          g = BossFx.ground(level, p.x, p.y, p.z);
       }
@@ -269,44 +269,44 @@ public class LiraelBoss extends MysticalBoss {
       return g != null ? g : p;
    }
 
-   private Vec3d ringPoint(ServerWorld level, Vec3d c, double radius, double angle) {
+   private Vec3 ringPoint(ServerLevel level, Vec3 c, double radius, double angle) {
       double x = c.x + Math.cos(angle) * radius;
       double z = c.z + Math.sin(angle) * radius;
-      Vec3d g = groundBelow(level, x, c.y + 4.0, z, 12);
-      return g != null ? g : new Vec3d(x, c.y, z);
+      Vec3 g = groundBelow(level, x, c.y + 4.0, z, 12);
+      return g != null ? g : new Vec3(x, c.y, z);
    }
 
    private float yawTo(double x, double z) {
-      return (float)(MathHelper.atan2(z - this.getZ(), x - this.getX()) * 180.0F / (float)Math.PI) - 90.0F;
+      return (float)(Mth.atan2(z - this.getZ(), x - this.getX()) * 180.0F / (float)Math.PI) - 90.0F;
    }
 
-   private static float yawOf(Vec3d dir) {
-      return (float)(MathHelper.atan2(dir.z, dir.x) * 180.0F / (float)Math.PI) - 90.0F;
+   private static float yawOf(Vec3 dir) {
+      return (float)(Mth.atan2(dir.z, dir.x) * 180.0F / (float)Math.PI) - 90.0F;
    }
 
-   private static double flat(LivingEntity e, Vec3d c) {
+   private static double flat(LivingEntity e, Vec3 c) {
       double dx = e.getX() - c.x;
       double dz = e.getZ() - c.z;
       return Math.sqrt(dx * dx + dz * dz);
    }
 
-   private static boolean inBand(Vec3d c, LivingEntity e, double r0, double r1, double dy) {
+   private static boolean inBand(Vec3 c, LivingEntity e, double r0, double r1, double dy) {
       double h = flat(e, c);
       return h >= r0 && h < r1 && Math.abs(e.getY() - c.y) <= dy;
    }
 
-   private List<LivingEntity> cone(ServerWorld level, double range, float halfAngle) {
+   private List<LivingEntity> cone(ServerLevel level, double range, float halfAngle) {
       List<LivingEntity> out = new ArrayList<>();
-      Vec3d f = this.fwd();
+      Vec3 f = this.fwd();
 
-      for (LivingEntity e : BossFx.victims(level, this, this.getEntityPos(), range + 5.0)) {
+      for (LivingEntity e : BossFx.victims(level, this, this.position(), range + 5.0)) {
          double dx = e.getX() - this.getX();
          double dz = e.getZ() - this.getZ();
          double h = Math.sqrt(dx * dx + dz * dz);
-         if (!(h > range + e.getWidth() * 0.5)
+         if (!(h > range + e.getBbWidth() * 0.5)
             && !(e.getY() < this.getY() - 5.0)
-            && !(e.getY() > this.getY() + this.getHeight())
-            && (!(h > 1.0) || !(Math.toDegrees(Math.acos(MathHelper.clamp((f.x * dx + f.z * dz) / h, -1.0, 1.0))) > halfAngle))) {
+            && !(e.getY() > this.getY() + this.getBbHeight())
+            && (!(h > 1.0) || !(Math.toDegrees(Math.acos(Mth.clamp((f.x * dx + f.z * dz) / h, -1.0, 1.0))) > halfAngle))) {
             out.add(e);
          }
       }
@@ -314,28 +314,28 @@ public class LiraelBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> strike(ServerWorld level, double range, float halfAngle, float base, double push, Vfx.Palette p) {
+   private List<LivingEntity> strike(ServerLevel level, double range, float halfAngle, float base, double push, Vfx.Palette p) {
       List<LivingEntity> hit = new ArrayList<>();
 
       for (LivingEntity e : this.cone(level, range, halfAngle)) {
          if (this.phys(level, e, base)) {
             hit.add(e);
-            Vfx.impact(level, e.getEntityPos().add(0.0, e.getHeight() * 0.5, 0.0), p, 0.7);
-            Vec3d away = new Vec3d(e.getX() - this.getX(), 0.0, e.getZ() - this.getZ());
-            away = away.lengthSquared() < 1.0E-4 ? this.fwd() : away.normalize();
-            e.addVelocity(away.x * push, 0.25 + push * 0.15, away.z * push);
-            e.knockedBack = true;
+            Vfx.impact(level, e.position().add(0.0, e.getBbHeight() * 0.5, 0.0), p, 0.7);
+            Vec3 away = new Vec3(e.getX() - this.getX(), 0.0, e.getZ() - this.getZ());
+            away = away.lengthSqr() < 1.0E-4 ? this.fwd() : away.normalize();
+            e.push(away.x * push, 0.25 + push * 0.15, away.z * push);
+            e.syncVelocity = true;
          }
       }
 
       return hit;
    }
 
-   private List<LivingEntity> around(ServerWorld level, Vec3d c, double r, double dy) {
+   private List<LivingEntity> around(ServerLevel level, Vec3 c, double r, double dy) {
       List<LivingEntity> out = new ArrayList<>();
 
       for (LivingEntity e : BossFx.victims(level, this, c, r + dy + 1.0)) {
-         if (inBand(c, e, 0.0, r + e.getWidth() * 0.5, dy)) {
+         if (inBand(c, e, 0.0, r + e.getBbWidth() * 0.5, dy)) {
             out.add(e);
          }
       }
@@ -343,12 +343,12 @@ public class LiraelBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> column(ServerWorld level, Vec3d pt, double r, double height) {
+   private List<LivingEntity> column(ServerLevel level, Vec3 pt, double r, double height) {
       List<LivingEntity> out = new ArrayList<>();
 
       for (LivingEntity e : BossFx.victims(level, this, pt.add(0.0, height * 0.5, 0.0), height * 0.5 + r + 2.0)) {
          double dy = e.getY() - pt.y;
-         if (flat(e, pt) <= r + e.getWidth() * 0.5 && dy >= -0.5 && dy <= height) {
+         if (flat(e, pt) <= r + e.getBbWidth() * 0.5 && dy >= -0.5 && dy <= height) {
             out.add(e);
          }
       }
@@ -356,27 +356,27 @@ public class LiraelBoss extends MysticalBoss {
       return out;
    }
 
-   private boolean magic(ServerWorld level, LivingEntity e, float base) {
-      return e.damage(level, this.getDamageSources().indirectMagic(this, this), this.dmg(base));
+   private boolean magic(ServerLevel level, LivingEntity e, float base) {
+      return e.hurtServer(level, this.damageSources().indirectMagic(this, this), this.dmg(base));
    }
 
-   private boolean phys(ServerWorld level, LivingEntity e, float base) {
-      return e.damage(level, this.getDamageSources().mobAttack(this), this.dmg(base));
+   private boolean phys(ServerLevel level, LivingEntity e, float base) {
+      return e.hurtServer(level, this.damageSources().mobAttack(this), this.dmg(base));
    }
 
-   private void effect(LivingEntity e, RegistryEntry<StatusEffect> effect, int ticks, int amp) {
-      e.addStatusEffect(new StatusEffectInstance(effect, ticks, amp), this);
+   private void effect(LivingEntity e, Holder<MobEffect> effect, int ticks, int amp) {
+      e.addEffect(new MobEffectInstance(effect, ticks, amp), this);
    }
 
-   private void guardBreak(ServerWorld level, LivingEntity e, int ticks) {
+   private void guardBreak(ServerLevel level, LivingEntity e, int ticks) {
       if (e.isBlocking()) {
-         ItemStack s = e.getActiveItem();
-         e.clearActiveItem();
-         if (e instanceof PlayerEntity p && !s.isEmpty()) {
-            p.getItemCooldownManager().set(s, ticks);
+         ItemStack s = e.getUseItem();
+         e.stopUsingItem();
+         if (e instanceof Player p && !s.isEmpty()) {
+            p.getCooldowns().addCooldown(s, ticks);
          }
 
-         Vec3d at = e.getEyePos().add(e.getRotationVec(1.0F).multiply(0.5)).add(0.0, -0.4, 0.0);
+         Vec3 at = e.getEyePosition().add(e.getViewVector(1.0F).scale(0.5)).add(0.0, -0.4, 0.0);
          Vfx.shards(level, at, 16759008, 14, 0.45);
          Vfx.glint(level, at, 16777215, 1.4);
       }
@@ -384,26 +384,26 @@ public class LiraelBoss extends MysticalBoss {
 
    private void duelHeight(@Nullable LivingEntity t) {
       if (t != null) {
-         Vec3d v = this.getVelocity();
-         this.setVelocity(v.x, MathHelper.clamp((t.getY() + 0.1 - this.getY()) * 0.35, -0.35, 0.25), v.z);
+         Vec3 v = this.getDeltaMovement();
+         this.setDeltaMovement(v.x, Mth.clamp((t.getY() + 0.1 - this.getY()) * 0.35, -0.35, 0.25), v.z);
       }
    }
 
-   private void petals(ServerWorld level, Vec3d at, int count, double speed) {
+   private void petals(ServerLevel level, Vec3 at, int count, double speed) {
       Vfx.debris(level, at, Vfx.Debris.PETAL, 16744132, count, speed);
    }
 
-   private void leaves(ServerWorld level, Vec3d at, int count, double speed) {
+   private void leaves(ServerLevel level, Vec3 at, int count, double speed) {
       Vfx.debris(level, at, Vfx.Debris.LEAF, 5937736, count, speed);
    }
 
-   private List<RealmMob> myMinions(ServerWorld level, double r) {
-      return level.getEntitiesByClass(
-         RealmMob.class, this.getBoundingBox().expand(r), m -> m.isAlive() && (m.bossId().equals("thorn_sprite") || m.bossId().equals("briar_knight"))
+   private List<RealmMob> myMinions(ServerLevel level, double r) {
+      return level.getEntitiesOfClass(
+         RealmMob.class, this.getBoundingBox().inflate(r), m -> m.isAlive() && (m.bossId().equals("thorn_sprite") || m.bossId().equals("briar_knight"))
       );
    }
 
-   private void summonCourt(ServerWorld level, int sprites, int knights, boolean glyphs) {
+   private void summonCourt(ServerLevel level, int sprites, int knights, boolean glyphs) {
       int room = Math.max(0, 8 - this.myMinions(level, 32.0).size());
       int k = Math.min(knights, room);
       int s = Math.min(sprites, room - k);
@@ -411,13 +411,13 @@ public class LiraelBoss extends MysticalBoss {
       EntityType<RealmMob> knight = RealmMobs.type("briar_knight");
       if (k > 0 && knight != null) {
          BossFx.summonMinions(level, this, knight, k, 5.0, null, m -> {
-            m.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 6000, 0), this);
+            m.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 6000, 0), this);
             if (strong) {
-               m.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 6000, 0), this);
+               m.addEffect(new MobEffectInstance(MobEffects.STRENGTH, 6000, 0), this);
             }
 
             if (glyphs) {
-               Vfx.runeCircle(level, m.getEntityPos(), 1.2, FAE, 30, 0.05F, Vfx.Rune.GLYPH);
+               Vfx.runeCircle(level, m.position(), 1.2, FAE, 30, 0.05F, Vfx.Rune.GLYPH);
             }
          });
       }
@@ -425,9 +425,9 @@ public class LiraelBoss extends MysticalBoss {
       EntityType<RealmMob> sprite = RealmMobs.type("thorn_sprite");
       if (s > 0 && sprite != null) {
          BossFx.summonMinions(level, this, sprite, s, 4.0, null, m -> {
-            m.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 6000, 0), this);
+            m.addEffect(new MobEffectInstance(MobEffects.SPEED, 6000, 0), this);
             if (glyphs) {
-               Vfx.runeCircle(level, m.getEntityPos(), 1.2, FAE, 30, 0.05F, Vfx.Rune.GLYPH);
+               Vfx.runeCircle(level, m.position(), 1.2, FAE, 30, 0.05F, Vfx.Rune.GLYPH);
             }
          });
       }
@@ -466,14 +466,14 @@ public class LiraelBoss extends MysticalBoss {
             })
             .hit((b, l, t, i) -> {
                this.strike(l, 4.4, 28.0F, 20.0F, 0.9, FAE);
-               Vfx.slashArc(l, this.chest(), this.getYaw(), 0.0F, 4.4, FAE, 40.0F);
+               Vfx.slashArc(l, this.chest(), this.getYRot(), 0.0F, 4.4, FAE, 40.0F);
                Vfx.streaks(l, this.chest(), this.fwd(), FAE, 8);
                Vfx.glint(l, this.thrustTip(), FAE.core(), 1.2);
                if (this.phase() >= 3) {
-                  Vec3d from = this.thrustTip();
-                  Vec3d dir = t != null ? t.getEntityPos().add(0.0, t.getHeight() * 0.6, 0.0).subtract(from) : this.fwd();
-                  dir = dir.lengthSquared() < 1.0E-4 ? this.fwd() : dir.normalize();
-                  BossBolt.shoot(l, this, BossBolt.Style.THORN, from, dir.multiply(1.3), this.dmg(12.0F)).life(10);
+                  Vec3 from = this.thrustTip();
+                  Vec3 dir = t != null ? t.position().add(0.0, t.getBbHeight() * 0.6, 0.0).subtract(from) : this.fwd();
+                  dir = dir.lengthSqr() < 1.0E-4 ? this.fwd() : dir.normalize();
+                  BossBolt.shoot(l, this, BossBolt.Style.THORN, from, dir.scale(1.3), this.dmg(12.0F)).life(10);
                }
             })
       );
@@ -496,7 +496,7 @@ public class LiraelBoss extends MysticalBoss {
                }
 
                if (k == 2 || k == 11) {
-                  Vfx.telegraphCone(l, this.feet(l), this.getYaw(), 70.0F, 4.6, 6, FAE);
+                  Vfx.telegraphCone(l, this.feet(l), this.getYRot(), 70.0F, 4.6, 6, FAE);
                } else if (k == 18) {
                   Vfx.telegraphCircle(l, this.feet(l), 5.0, 9, FAE);
                }
@@ -504,10 +504,10 @@ public class LiraelBoss extends MysticalBoss {
             .hit((b, l, t, i) -> {
                if (i < 2) {
                   this.strike(l, 4.6, 70.0F, 15.0F, 0.5, FAE);
-                  Vfx.slashArc(l, this.chest(), this.getYaw(), 5.0F, i == 0 ? 0.0F : 35.0F, 4.6, FAE, i == 0 ? -160.0F : 160.0F);
+                  Vfx.slashArc(l, this.chest(), this.getYRot(), 5.0F, i == 0 ? 0.0F : 35.0F, 4.6, FAE, i == 0 ? -160.0F : 160.0F);
                } else {
                   this.strike(l, 5.0, 180.0F, 22.0F, 1.2, FAE);
-                  Vfx.slashArc(l, this.waist(), this.getYaw(), 0.0F, 0.0F, 5.0, FAE, 360.0F);
+                  Vfx.slashArc(l, this.waist(), this.getYRot(), 0.0F, 0.0F, 5.0, FAE, 360.0F);
                   this.petals(l, this.waist(), 16, 0.45);
                }
             })
@@ -539,8 +539,8 @@ public class LiraelBoss extends MysticalBoss {
                }
 
                this.strike(l, 4.8, 25.0F, 26.0F, 1.0, FAE);
-               Vfx.slashArc(l, this.chest(), this.getYaw(), 0.0F, 4.8, FAE, 30.0F);
-               Vec3d at = t != null ? t.getEntityPos().add(0.0, t.getHeight() * 0.5, 0.0) : this.thrustTip();
+               Vfx.slashArc(l, this.chest(), this.getYRot(), 0.0F, 4.8, FAE, 30.0F);
+               Vec3 at = t != null ? t.position().add(0.0, t.getBbHeight() * 0.5, 0.0) : this.thrustTip();
                Vfx.impact(l, at, FAE, 1.0);
                Vfx.shards(l, at, 16759008, 12, 0.45);
                Vfx.glint(l, this.thrustTip(), 16777215, 2.0);
@@ -564,7 +564,7 @@ public class LiraelBoss extends MysticalBoss {
             .hit(
                (b, l, t, i) -> {
                   if (t != null) {
-                     double f = MathHelper.clamp(this.distanceTo(t) - 1.5, 0.0, 4.2);
+                     double f = Mth.clamp(this.distanceTo(t) - 1.5, 0.0, 4.2);
                      if (i == 0) {
                         this.fan(
                            l,
@@ -575,7 +575,7 @@ public class LiraelBoss extends MysticalBoss {
                            9.0F,
                            0.9,
                            this.dmg(11.0F),
-                           new StatusEffectInstance(StatusEffects.POISON, 60, 0),
+                           new MobEffectInstance(MobEffects.POISON, 60, 0),
                            true
                         );
                      } else {
@@ -588,7 +588,7 @@ public class LiraelBoss extends MysticalBoss {
                            6.0F,
                            1.05,
                            this.dmg(12.0F),
-                           new StatusEffectInstance(StatusEffects.GLOWING, 100, 0),
+                           new MobEffectInstance(MobEffects.GLOWING, 100, 0),
                            false
                         );
                      }
@@ -610,7 +610,7 @@ public class LiraelBoss extends MysticalBoss {
                   this.charmVictim = v;
                   Vfx.chargeUp(l, this.eyes(), FAE, 14);
                   if (v != null) {
-                     Vfx.runeCircle(l, this.spotGround(l, v.getEntityPos()), 1.3, FAE, 14, 0.08F, Vfx.Rune.GLYPH);
+                     Vfx.runeCircle(l, this.spotGround(l, v.position()), 1.3, FAE, 14, 0.08F, Vfx.Rune.GLYPH);
                   }
                }
             })
@@ -668,7 +668,7 @@ public class LiraelBoss extends MysticalBoss {
             .weight(6)
             .tags("summon")
             .utility(
-               (b, t, c) -> this.getEntityWorld() instanceof ServerWorld sl && this.myMinions(sl, 32.0).size() >= 5
+               (b, t, c) -> this.level() instanceof ServerLevel sl && this.myMinions(sl, 32.0).size() >= 5
                   ? 0.0F
                   : (c.engagedPlayers >= 2 ? 1.5F : 1.0F)
             )
@@ -680,7 +680,7 @@ public class LiraelBoss extends MysticalBoss {
             .hit((b, l, t, i) -> {
                int p = this.phase();
                this.summonCourt(l, 2 + p, p >= 1 ? (p >= 3 ? 2 : 1) : 0, true);
-               Vec3d g = this.feet(l);
+               Vec3 g = this.feet(l);
                Vfx.nova(l, g, FAE, 3.5);
                Vfx.auraRing(l, g, FAE, 2.5);
             })
@@ -700,15 +700,15 @@ public class LiraelBoss extends MysticalBoss {
                }
             })
             .hit((b, l, t, i) -> {
-               Vec3d g = this.moveCenter != null ? this.moveCenter : this.feet(l);
+               Vec3 g = this.moveCenter != null ? this.moveCenter : this.feet(l);
                BossFx.slam(l, this, g, 6.0, 16.0F, 1.8);
-               BossFx.effect(l, this, g, 6.0, new StatusEffectInstance(StatusEffects.SLOWNESS, 60, 1));
+               BossFx.effect(l, this, g, 6.0, new MobEffectInstance(MobEffects.SLOWNESS, 60, 1));
                Vfx.nova(l, g.add(0.0, 0.5, 0.0), FAE, 6.0);
                this.petals(l, this.chest(), 30, 0.7);
 
                for (int n = 0; n < 6; n++) {
-                  Vec3d d = Vec3d.fromPolar(0.0F, this.getYaw() + n * 60);
-                  Vfx.streaks(l, g.add(0.0, 1.0, 0.0).add(d.multiply(1.5)), d.multiply(2.5), FAE, 3);
+                  Vec3 d = Vec3.directionFromRotation(0.0F, this.getYRot() + n * 60);
+                  Vfx.streaks(l, g.add(0.0, 1.0, 0.0).add(d.scale(1.5)), d.scale(2.5), FAE, 3);
                }
             })
       );
@@ -718,20 +718,20 @@ public class LiraelBoss extends MysticalBoss {
             .cooldown(120)
             .weight(10)
             .tags("ranged")
-            .utility((b, t, c) -> (c.kitingTicks > 40 ? 2.0F : 1.0F) * (t != null && t.isOnGround() ? 1.2F : 1.0F) * (c.targetFlying ? 0.2F : 1.0F))
+            .utility((b, t, c) -> (c.kitingTicks > 40 ? 2.0F : 1.0F) * (t != null && t.onGround() ? 1.2F : 1.0F) * (c.targetFlying ? 0.2F : 1.0F))
             .start((b, l, t, i) -> {
                this.spots.clear();
                if (t != null) {
                   this.spots.add(this.spotGround(l, this.predict(t, 18.0)));
                   if (this.phase() >= 2) {
-                     Vec3d far = this.predict(t, 30.0);
-                     Vec3d d = t.getEntityPos().subtract(this.getEntityPos()).getHorizontal();
-                     Vec3d side = d.lengthSquared() < 1.0E-4 ? Vec3d.fromPolar(0.0F, this.getYaw() + 90.0F) : new Vec3d(-d.z, 0.0, d.x).normalize();
-                     this.spots.add(this.spotGround(l, far.add(side.multiply(3.0))));
-                     this.spots.add(this.spotGround(l, far.subtract(side.multiply(3.0))));
+                     Vec3 far = this.predict(t, 30.0);
+                     Vec3 d = t.position().subtract(this.position()).horizontal();
+                     Vec3 side = d.lengthSqr() < 1.0E-4 ? Vec3.directionFromRotation(0.0F, this.getYRot() + 90.0F) : new Vec3(-d.z, 0.0, d.x).normalize();
+                     this.spots.add(this.spotGround(l, far.add(side.scale(3.0))));
+                     this.spots.add(this.spotGround(l, far.subtract(side.scale(3.0))));
                   }
 
-                  for (Vec3d s : this.spots) {
+                  for (Vec3 s : this.spots) {
                      Vfx.telegraphCircle(l, s, 3.0, 18, THORN);
                   }
                }
@@ -739,11 +739,11 @@ public class LiraelBoss extends MysticalBoss {
             .hit((b, l, t, i) -> {
                Set<Integer> hit = new HashSet<>();
 
-               for (Vec3d s : this.spots) {
+               for (Vec3 s : this.spots) {
                   for (LivingEntity e : this.around(l, s, 3.0, 3.0)) {
                      if (hit.add(e.getId()) && this.phys(l, e, 18.0F)) {
-                        this.effect(e, StatusEffects.SLOWNESS, 30, 6);
-                        this.effect(e, StatusEffects.POISON, 60, 0);
+                        this.effect(e, MobEffects.SLOWNESS, 30, 6);
+                        this.effect(e, MobEffects.POISON, 60, 0);
                      }
                   }
 
@@ -763,32 +763,32 @@ public class LiraelBoss extends MysticalBoss {
       }).utility((b, t, c) -> c.targetFlying ? 2.0F : 1.0F).start((b, l, t, i) -> {
          this.moveCenter = null;
          if (t != null) {
-            Vec3d p = t.isGliding() && t == this.ctx().target ? t.getEntityPos().add(this.ctx().targetVelocity.multiply(12.0)) : this.predict(t, 12.0);
+            Vec3 p = t.isFallFlying() && t == this.ctx().target ? t.position().add(this.ctx().targetVelocity.scale(12.0)) : this.predict(t, 12.0);
             this.moveCenter = p;
             Vfx.chargeUp(l, p.add(0.0, 0.9, 0.0), MOON, 12);
-            Vec3d g = groundBelow(l, p.x, p.y + 0.5, p.z, 30);
+            Vec3 g = groundBelow(l, p.x, p.y + 0.5, p.z, 30);
             if (g != null) {
                Vfx.telegraphCircle(l, g, 2.0, 12, MOON);
             }
          }
       }).hit((b, l, t, i) -> {
-         Vec3d p = this.moveCenter;
+         Vec3 p = this.moveCenter;
          if (p != null) {
             Vfx.lightning(l, p.add(0.0, 16.0, 0.0), p, MOON, 3);
             Vfx.impact(l, p, MOON, 1.2);
 
             for (LivingEntity e : BossFx.victims(l, this, p.add(0.0, 0.9, 0.0), 2.4)) {
                this.magic(l, e, 22.0F);
-               if (e.isGliding()) {
-                  e.stopGliding();
+               if (e.isFallFlying()) {
+                  e.stopFallFlying();
                }
 
-               e.removeStatusEffect(StatusEffects.SLOW_FALLING);
-               e.removeStatusEffect(StatusEffects.LEVITATION);
-               Vec3d v = e.getVelocity();
-               e.setVelocity(v.x * 0.2, -1.6, v.z * 0.2);
-               e.knockedBack = true;
-               this.effect(e, StatusEffects.SLOWNESS, 40, 0);
+               e.removeEffect(MobEffects.SLOW_FALLING);
+               e.removeEffect(MobEffects.LEVITATION);
+               Vec3 v = e.getDeltaMovement();
+               e.setDeltaMovement(v.x * 0.2, -1.6, v.z * 0.2);
+               e.syncVelocity = true;
+               this.effect(e, MobEffects.SLOWNESS, 40, 0);
             }
          }
       }));
@@ -811,16 +811,16 @@ public class LiraelBoss extends MysticalBoss {
             .hit((b, l, t, i) -> {
                for (LivingEntity e : this.cone(l, 6.0, 180.0F)) {
                   if (this.phys(l, e, 20.0F)) {
-                     this.effect(e, StatusEffects.POISON, 60, 0);
-                     Vec3d away = new Vec3d(e.getX() - this.getX(), 0.0, e.getZ() - this.getZ());
-                     away = away.lengthSquared() < 1.0E-4 ? this.fwd() : away.normalize();
-                     e.addVelocity(away.x * 1.2, 0.3, away.z * 1.2);
-                     e.knockedBack = true;
-                     Vfx.claw(l, e.getEntityPos().add(0.0, e.getHeight() * 0.6, 0.0), this.yawTo(e.getX(), e.getZ()), 0.0F, 1.2, THORN);
+                     this.effect(e, MobEffects.POISON, 60, 0);
+                     Vec3 away = new Vec3(e.getX() - this.getX(), 0.0, e.getZ() - this.getZ());
+                     away = away.lengthSqr() < 1.0E-4 ? this.fwd() : away.normalize();
+                     e.push(away.x * 1.2, 0.3, away.z * 1.2);
+                     e.syncVelocity = true;
+                     Vfx.claw(l, e.position().add(0.0, e.getBbHeight() * 0.6, 0.0), this.yawTo(e.getX(), e.getZ()), 0.0F, 1.2, THORN);
                   }
                }
 
-               Vfx.slashArc(l, this.waist(), this.getYaw(), 0.0F, 0.0F, 6.0, THORN, 360.0F);
+               Vfx.slashArc(l, this.waist(), this.getYRot(), 0.0F, 0.0F, 6.0, THORN, 360.0F);
                this.leaves(l, this.waist(), 16, 0.5);
             })
       );
@@ -837,9 +837,9 @@ public class LiraelBoss extends MysticalBoss {
             .utility((b, t, c) -> (!c.targetAiming && !c.targetHealing ? 1.0F : 3.0F) * (c.targetUnreachable ? 2.0F : 1.0F))
             .tick((b, l, t, k) -> {
                if (k == 2) {
-                  Vec3d f = this.feet(l);
-                  Vec3d d = (t != null ? this.predict(t, 12.0) : f.add(this.fwd())).subtract(f).getHorizontal();
-                  this.lineDir = d.lengthSquared() < 1.0E-4 ? this.fwd() : d.normalize();
+                  Vec3 f = this.feet(l);
+                  Vec3 d = (t != null ? this.predict(t, 12.0) : f.add(this.fwd())).subtract(f).horizontal();
+                  this.lineDir = d.lengthSqr() < 1.0E-4 ? this.fwd() : d.normalize();
                   this.lineFrom = f;
                   this.lineLen = Math.min(18.0F, (t != null ? this.distanceTo(t) : 10.0F) + 2.0F);
                   Vfx.telegraphLine(l, f, this.lineDir, this.lineLen, 1.4, 12, THORN);
@@ -852,7 +852,7 @@ public class LiraelBoss extends MysticalBoss {
          BossAction.of("garden_of_thorns", 2.2, 1.2).range(0.0, 30.0).anyTarget().cooldown(340).weight(7).phase(1).tags("ranged aoe").start((b, l, t, i) -> {
             this.spots.clear();
 
-            for (ServerPlayerEntity p : this.engaged()) {
+            for (ServerPlayer p : this.engaged()) {
                if (this.spots.size() >= 4) {
                   break;
                }
@@ -861,24 +861,24 @@ public class LiraelBoss extends MysticalBoss {
             }
 
             LivingEntity anchor = t != null ? t : (this.engaged().isEmpty() ? null : (LivingEntity)this.engaged().get(0));
-            Vec3d base = anchor != null ? anchor.getEntityPos() : this.feet(l);
+            Vec3 base = anchor != null ? anchor.position() : this.feet(l);
 
             for (int n = 0; n < 2 && this.spots.size() < 6; n++) {
                this.spots.add(BossFx.around(l, this, base, 3.0, 5.0));
             }
 
-            for (Vec3d s : this.spots) {
+            for (Vec3 s : this.spots) {
                Vfx.telegraphCircle(l, s, 2.8, 24, THORN);
             }
          }).hit((b, l, t, i) -> {
             Set<Integer> hit = new HashSet<>();
 
-            for (Vec3d s : this.spots) {
+            for (Vec3 s : this.spots) {
                for (LivingEntity e : this.around(l, s, 2.8, 3.0)) {
                   if (hit.add(e.getId()) && this.phys(l, e, 24.0F)) {
-                     this.effect(e, StatusEffects.POISON, 80, 0);
-                     e.addVelocity(0.0, 0.5, 0.0);
-                     e.knockedBack = true;
+                     this.effect(e, MobEffects.POISON, 80, 0);
+                     e.push(0.0, 0.5, 0.0);
+                     e.syncVelocity = true;
                   }
                }
 
@@ -907,14 +907,14 @@ public class LiraelBoss extends MysticalBoss {
                }
 
                if (k >= 4 && k <= 17) {
-                  this.setVelocity(0.0, 0.2, 0.0);
+                  this.setDeltaMovement(0.0, 0.2, 0.0);
                } else if (k >= 22 && k <= 36) {
                   double dy = (this.moveCenter != null ? this.moveCenter.y : this.feet(l).y) + 0.75 - this.getY();
-                  this.setVelocity(0.0, k <= 25 ? MathHelper.clamp(dy, -1.3, 0.0) : MathHelper.clamp(dy, -0.5, 0.0), 0.0);
+                  this.setDeltaMovement(0.0, k <= 25 ? Mth.clamp(dy, -1.3, 0.0) : Mth.clamp(dy, -0.5, 0.0), 0.0);
                }
             })
             .hit((b, l, t, i) -> {
-               Vec3d g = this.moveCenter != null ? this.moveCenter : this.feet(l);
+               Vec3 g = this.moveCenter != null ? this.moveCenter : this.feet(l);
 
                for (LivingEntity e : BossFx.victims(l, this, g, 7.0)) {
                   this.guardBreak(l, e, 100);
@@ -953,11 +953,11 @@ public class LiraelBoss extends MysticalBoss {
             })
             .hit((b, l, t, i) -> {
                if (i < this.spots.size()) {
-                  Vec3d pt = this.spots.get(i);
+                  Vec3 pt = this.spots.get(i);
 
                   for (LivingEntity e : this.column(l, pt, 2.6, 10.0)) {
                      if (this.magic(l, e, 24.0F)) {
-                        this.effect(e, StatusEffects.GLOWING, 100, 0);
+                        this.effect(e, MobEffects.GLOWING, 100, 0);
                      }
                   }
 
@@ -987,20 +987,20 @@ public class LiraelBoss extends MysticalBoss {
 
                switch (k) {
                   case 1:
-                     Vfx.telegraphCone(l, this.feet(l), this.getYaw(), 30.0F, 4.8, 6, FAE);
+                     Vfx.telegraphCone(l, this.feet(l), this.getYRot(), 30.0F, 4.8, 6, FAE);
                      break;
                   case 8:
-                     Vfx.telegraphCone(l, this.feet(l), this.getYaw(), 80.0F, 4.8, 6, MOON);
+                     Vfx.telegraphCone(l, this.feet(l), this.getYRot(), 80.0F, 4.8, 6, MOON);
                      break;
                   case 15:
-                     Vfx.telegraphCone(l, this.feet(l), this.getYaw(), 80.0F, 4.8, 6, FAE);
+                     Vfx.telegraphCone(l, this.feet(l), this.getYRot(), 80.0F, 4.8, 6, FAE);
                      break;
                   case 21:
-                     Vec3d f = this.feet(l);
+                     Vec3 f = this.feet(l);
                      this.lineFrom = f;
                      this.lineDir = this.fwd();
                      Vfx.telegraphLine(l, f, this.lineDir, 10.0, 2.0, 10, MOON);
-                     Vfx.telegraphCone(l, f, this.getYaw(), 90.0F, 5.0, 10, MOON);
+                     Vfx.telegraphCone(l, f, this.getYRot(), 90.0F, 5.0, 10, MOON);
                }
             })
             .hit((b, l, t, i) -> this.crescentCut(l, i))
@@ -1027,7 +1027,7 @@ public class LiraelBoss extends MysticalBoss {
                }
 
                if (k == 2) {
-                  Vfx.telegraphCone(l, this.feet(l), this.getYaw(), 75.0F, 9.0, 17, MOON);
+                  Vfx.telegraphCone(l, this.feet(l), this.getYRot(), 75.0F, 9.0, 17, MOON);
                }
             })
             .hit((b, l, t, i) -> {
@@ -1035,10 +1035,10 @@ public class LiraelBoss extends MysticalBoss {
                this.strike(l, 9.0, 75.0F, 30.0F, 1.4, MOON);
 
                for (LivingEntity e : reaped) {
-                  this.effect(e, StatusEffects.SLOWNESS, 40, 0);
+                  this.effect(e, MobEffects.SLOWNESS, 40, 0);
                }
 
-               Vfx.slashArc(l, this.chest(), this.getYaw(), 8.0F, 0.0F, 9.0, MOON, 200.0F);
+               Vfx.slashArc(l, this.chest(), this.getYRot(), 8.0F, 0.0F, 9.0, MOON, 200.0F);
                Vfx.streaks(l, this.chest(), this.fwd(), MOON, 10);
                Vfx.glint(l, this.local(0.0, 1.6, 2.2), MOON.core(), 1.4);
             })
@@ -1058,15 +1058,15 @@ public class LiraelBoss extends MysticalBoss {
                   this.faceTarget(t, 360.0F);
                }
 
-               this.beamYaw0 = this.getYaw();
+               this.beamYaw0 = this.getYRot();
                this.beamDir = -this.beamDir;
                this.beaming = true;
                this.beamHits.clear();
                this.beamPitch = 9.0F;
                if (t != null) {
-                  Vec3d from = this.beamFrom();
+                  Vec3 from = this.beamFrom();
                   double hd = Math.max(1.0, flat(t, from));
-                  this.beamPitch = (float)MathHelper.clamp(Math.toDegrees(Math.atan2(from.y - (t.getY() + 1.0), hd)), 4.0, 24.0);
+                  this.beamPitch = (float)Mth.clamp(Math.toDegrees(Math.atan2(from.y - (t.getY() + 1.0), hd)), 4.0, 24.0);
                }
 
                Vfx.telegraphCone(l, this.feet(l), this.beamYaw0, 55.0F, 28.0, 24, MOON);
@@ -1090,20 +1090,20 @@ public class LiraelBoss extends MysticalBoss {
             .tags("ranged aoe ultimate")
             .telegraph(0.2, 4.6)
             .start((b, l, t, i) -> {
-               Vec3d c = this.feet(l);
+               Vec3 c = this.feet(l);
                this.moveCenter = c;
                this.sanctuaries.clear();
                this.waves.clear();
                Vfx.chargeUp(l, this.crown(), ECLIPSE, 44);
                Vfx.runeCircle(l, c, 6.0, ECLIPSE, 110, 0.04F, Vfx.Rune.ASTRAL);
                Vfx.screen(l, c, 48.0, 0.15, 30, 1182238, 0.45F);
-               this.setVelocity(0.0, 0.15, 0.0);
+               this.setDeltaMovement(0.0, 0.15, 0.0);
             })
             .tick((b, l, t, k) -> {
-               Vec3d c = this.moveCenter;
+               Vec3 c = this.moveCenter;
                if (c != null) {
                   if (k <= 16) {
-                     this.setVelocity(0.0, 0.15, 0.0);
+                     this.setDeltaMovement(0.0, 0.15, 0.0);
                   }
 
                   if (k == 16) {
@@ -1145,9 +1145,9 @@ public class LiraelBoss extends MysticalBoss {
                if (k != 4 && k != 22 && k != 40) {
                   int d = (k - 13) % 18;
                   if (k >= 13 && k <= 51 && d >= 0 && d <= 2 && this.huntLand != null) {
-                     this.setVelocity(0.0, -1.8, 0.0);
+                     this.setDeltaMovement(0.0, -1.8, 0.0);
                      if (d == 0) {
-                        Vfx.dashTrail(l, this.getEntityPos().add(0.0, 2.0, 0.0), this.huntLand.add(0.0, 1.0, 0.0), FAE);
+                        Vfx.dashTrail(l, this.position().add(0.0, 2.0, 0.0), this.huntLand.add(0.0, 1.0, 0.0), FAE);
                      }
                   }
                } else {
@@ -1182,13 +1182,13 @@ public class LiraelBoss extends MysticalBoss {
             })
             .hit((b, l, t, i) -> {
                for (LivingEntity e : this.strike(l, 4.6, 30.0F, 28.0F, 1.0, FAE)) {
-                  this.effect(e, StatusEffects.SLOWNESS, 40, 1);
+                  this.effect(e, MobEffects.SLOWNESS, 40, 1);
                }
 
-               Vfx.slashArc(l, this.chest(), this.getYaw(), 0.0F, 4.6, FAE, 40.0F);
+               Vfx.slashArc(l, this.chest(), this.getYRot(), 0.0F, 4.6, FAE, 40.0F);
                Vfx.glint(l, this.thrustTip(), FAE.core(), 1.4);
 
-               for (Vec3d d : this.decoys) {
+               for (Vec3 d : this.decoys) {
                   this.petals(l, d.add(0.0, 1.2, 0.0), 16, 0.4);
                   Vfx.smoke(l, d.add(0.0, 1.0, 0.0), 16759008, 6, 0.6, 1.2);
                }
@@ -1213,13 +1213,13 @@ public class LiraelBoss extends MysticalBoss {
             .tags("aoe ultimate")
             .telegraph(0.4, 4.8)
             .start((b, l, t, i) -> {
-               Vec3d c = this.feet(l);
+               Vec3 c = this.feet(l);
                this.moveCenter = c;
                Vfx.runeCircle(l, c, 4.0, THORN, 112, 0.05F, Vfx.Rune.GLYPH);
                Vfx.chargeUp(l, this.chest(), THORN, 40);
             })
             .tick((b, l, t, k) -> {
-               Vec3d c = this.moveCenter;
+               Vec3 c = this.moveCenter;
                if (c != null) {
                   if (k == 18 || k == 66) {
                      Vfx.telegraphCircle(l, c, 6.5, 30, THORN);
@@ -1247,7 +1247,7 @@ public class LiraelBoss extends MysticalBoss {
             .start((b, l, t, i) -> {
                this.moveCenter = this.feet(l);
                this.bloomArmed = false;
-               Vfx.screen(l, this.getEntityPos(), 48.0, 0.2, 30, 1706516, 0.45F);
+               Vfx.screen(l, this.position(), 48.0, 0.2, 30, 1706516, 0.45F);
                Vfx.chargeUp(l, this.chest(), THORN, 20);
             })
             .tick((b, l, t, k) -> this.bloomTick(l, k))
@@ -1263,26 +1263,26 @@ public class LiraelBoss extends MysticalBoss {
    }
 
    private void fan(
-      ServerWorld level,
+      ServerLevel level,
       LivingEntity target,
-      Vec3d from,
+      Vec3 from,
       BossBolt.Style style,
       int count,
       float spread,
       double speed,
       float damage,
-      StatusEffectInstance effect,
+      MobEffectInstance effect,
       boolean homing
    ) {
-      double ticks = from.distanceTo(target.getEyePos()) / speed;
-      Vec3d aim = this.predict(target, ticks).add(0.0, target.getStandingEyeHeight(), 0.0).subtract(from);
-      aim = aim.lengthSquared() < 1.0E-4 ? this.fwd() : aim.normalize();
+      double ticks = from.distanceTo(target.getEyePosition()) / speed;
+      Vec3 aim = this.predict(target, ticks).add(0.0, target.getEyeHeight(), 0.0).subtract(from);
+      aim = aim.lengthSqr() < 1.0E-4 ? this.fwd() : aim.normalize();
 
       for (int n = 0; n < count; n++) {
          float a = (n - (count - 1) / 2.0F) * spread;
-         BossBolt bolt = BossBolt.shoot(level, this, style, from, aim.rotateY(a * (float) (Math.PI / 180.0)).multiply(speed), damage)
+         BossBolt bolt = BossBolt.shoot(level, this, style, from, aim.yRot(a * (float) (Math.PI / 180.0)).scale(speed), damage)
             .life(60)
-            .effect(new StatusEffectInstance(effect));
+            .effect(new MobEffectInstance(effect));
          if (homing) {
             bolt.homing(target, 0.025);
          }
@@ -1294,12 +1294,12 @@ public class LiraelBoss extends MysticalBoss {
    }
 
    private @Nullable LivingEntity charmTarget(@Nullable LivingEntity target) {
-      ServerPlayerEntity best = null;
+      ServerPlayer best = null;
       double bestD = 576.0;
 
-      for (ServerPlayerEntity p : this.engaged()) {
-         double d = p.squaredDistanceTo(this);
-         if (p.isUsingItem() && d <= bestD && this.canSee(p)) {
+      for (ServerPlayer p : this.engaged()) {
+         double d = p.distanceToSqr(this);
+         if (p.isUsingItem() && d <= bestD && this.hasLineOfSight(p)) {
             best = p;
             bestD = d;
          }
@@ -1308,52 +1308,52 @@ public class LiraelBoss extends MysticalBoss {
       return (LivingEntity)(best != null ? best : target);
    }
 
-   private void gaze(ServerWorld level) {
+   private void gaze(ServerLevel level) {
       LivingEntity v = this.charmVictim;
       this.charmVictim = null;
       if (v != null && v.isAlive()) {
-         Vec3d eyes = this.eyes();
-         Vec3d toHer = eyes.subtract(v.getEyePos());
-         boolean looking = toHer.lengthSquared() > 1.0E-4 && v.getRotationVec(1.0F).dotProduct(toHer.normalize()) > 0.45 && v.canSee(this);
+         Vec3 eyes = this.eyes();
+         Vec3 toHer = eyes.subtract(v.getEyePosition());
+         boolean looking = toHer.lengthSqr() > 1.0E-4 && v.getViewVector(1.0F).dot(toHer.normalize()) > 0.45 && v.hasLineOfSight(this);
          if (!looking) {
-            this.effect(v, StatusEffects.GLOWING, 60, 0);
+            this.effect(v, MobEffects.GLOWING, 60, 0);
             Vfx.glint(level, eyes, FAE.glow(), 0.9);
             Vfx.smoke(level, eyes, 16759008, 4, 0.3, 0.6);
          } else {
-            v.clearActiveItem();
+            v.stopUsingItem();
             this.magic(level, v, 8.0F);
-            this.effect(v, StatusEffects.SLOWNESS, 60, 1);
-            this.effect(v, StatusEffects.WEAKNESS, 100, 0);
-            this.effect(v, StatusEffects.NAUSEA, 60, 0);
-            Vec3d pull = this.local(0.0, 0.0, 2.5).subtract(v.getEntityPos()).getHorizontal();
-            if (pull.lengthSquared() > 1.0E-4) {
-               pull = pull.normalize().multiply(1.4);
-               v.addVelocity(pull.x, 0.35, pull.z);
-               v.knockedBack = true;
+            this.effect(v, MobEffects.SLOWNESS, 60, 1);
+            this.effect(v, MobEffects.WEAKNESS, 100, 0);
+            this.effect(v, MobEffects.NAUSEA, 60, 0);
+            Vec3 pull = this.local(0.0, 0.0, 2.5).subtract(v.position()).horizontal();
+            if (pull.lengthSqr() > 1.0E-4) {
+               pull = pull.normalize().scale(1.4);
+               v.push(pull.x, 0.35, pull.z);
+               v.syncVelocity = true;
             }
 
-            Vfx.beam(level, eyes, v.getEyePos(), FAE, 0.35, 8);
-            this.petals(level, v.getEyePos(), 12, 0.3);
-            Vfx.flare(level, v.getEyePos(), FAE.glow(), 1.6, 8);
+            Vfx.beam(level, eyes, v.getEyePosition(), FAE, 0.35, 8);
+            this.petals(level, v.getEyePosition(), 12, 0.3);
+            Vfx.flare(level, v.getEyePosition(), FAE.glow(), 1.6, 8);
          }
       }
    }
 
-   private void petalStep(ServerWorld level, @Nullable LivingEntity target) {
+   private void petalStep(ServerLevel level, @Nullable LivingEntity target) {
       if (target != null) {
-         Vec3d from = this.getEntityPos();
-         Vec3d tp = target.getEntityPos();
-         Vec3d dest;
+         Vec3 from = this.position();
+         Vec3 tp = target.position();
+         Vec3 dest;
          if (this.distanceTo(target) > 10.0F) {
-            Vec3d toMe = from.subtract(tp).getHorizontal();
-            dest = toMe.lengthSquared() > 1.0E-4 ? tp.add(toMe.normalize().multiply(3.2)) : tp;
+            Vec3 toMe = from.subtract(tp).horizontal();
+            dest = toMe.lengthSqr() > 1.0E-4 ? tp.add(toMe.normalize().scale(3.2)) : tp;
          } else {
-            Vec3d look = target.getRotationVector().getHorizontal();
-            if (look.lengthSquared() < 1.0E-4) {
-               look = Vec3d.fromPolar(0.0F, target.getYaw());
+            Vec3 look = target.getLookAngle().horizontal();
+            if (look.lengthSqr() < 1.0E-4) {
+               look = Vec3.directionFromRotation(0.0F, target.getYRot());
             }
 
-            dest = tp.subtract(look.normalize().multiply(3.2));
+            dest = tp.subtract(look.normalize().scale(3.2));
          }
 
          if (!this.blinkTo(dest.add(0.0, this.hoverHeight(), 0.0))) {
@@ -1361,11 +1361,11 @@ public class LiraelBoss extends MysticalBoss {
          }
 
          this.faceTarget(target, 360.0F);
-         Vfx.dashTrail(level, from.add(0.0, 1.7, 0.0), this.getEntityPos().add(0.0, 1.7, 0.0), FAE);
+         Vfx.dashTrail(level, from.add(0.0, 1.7, 0.0), this.position().add(0.0, 1.7, 0.0), FAE);
          this.petals(level, from.add(0.0, 1.7, 0.0), 12, 0.35);
-         this.petals(level, this.getEntityPos().add(0.0, 1.7, 0.0), 12, 0.35);
+         this.petals(level, this.position().add(0.0, 1.7, 0.0), 12, 0.35);
          if (this.phase() >= 2) {
-            Vec3d mine = this.spotGround(level, from.subtract(0.0, 1.0, 0.0));
+            Vec3 mine = this.spotGround(level, from.subtract(0.0, 1.0, 0.0));
             Vfx.telegraphCircle(level, mine, 2.5, 20, MOON);
             int epoch = this.hazardEpoch;
             this.schedule(20, () -> {
@@ -1381,22 +1381,22 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void lance(ServerWorld level) {
-      Vec3d f = this.lineFrom;
+   private void lance(ServerLevel level) {
+      Vec3 f = this.lineFrom;
       if (f != null) {
-         Vec3d a = f.add(0.0, 1.0, 0.0);
-         Vec3d dir = this.lineDir;
+         Vec3 a = f.add(0.0, 1.0, 0.0);
+         Vec3 dir = this.lineDir;
          double len = this.lineLen;
          LivingEntity best = null;
          double bestAlong = Double.MAX_VALUE;
 
-         for (LivingEntity e : BossFx.victims(level, this, a.add(dir.multiply(len * 0.5)), len * 0.5 + 3.0)) {
-            Vec3d rel = e.getEntityPos().add(0.0, e.getHeight() * 0.5, 0.0).subtract(a);
+         for (LivingEntity e : BossFx.victims(level, this, a.add(dir.scale(len * 0.5)), len * 0.5 + 3.0)) {
+            Vec3 rel = e.position().add(0.0, e.getBbHeight() * 0.5, 0.0).subtract(a);
             double along = rel.x * dir.x + rel.z * dir.z;
             if (!(along < 0.0) && !(along > len)) {
                double ox = rel.x - dir.x * along;
                double oz = rel.z - dir.z * along;
-               if (!(Math.sqrt(ox * ox + oz * oz) > 1.3 + e.getWidth() * 0.5) && !(Math.abs(rel.y) > 2.5) && along < bestAlong) {
+               if (!(Math.sqrt(ox * ox + oz * oz) > 1.3 + e.getBbWidth() * 0.5) && !(Math.abs(rel.y) > 2.5) && along < bestAlong) {
                   best = e;
                   bestAlong = along;
                }
@@ -1404,20 +1404,20 @@ public class LiraelBoss extends MysticalBoss {
          }
 
          if (best == null) {
-            Vfx.groundCrack(level, f.add(dir.multiply(len)), 1.5, THORN);
+            Vfx.groundCrack(level, f.add(dir.scale(len)), 1.5, THORN);
          } else {
-            Vec3d chestAt = best.getEntityPos().add(0.0, best.getHeight() * 0.6, 0.0);
-            best.clearActiveItem();
+            Vec3 chestAt = best.position().add(0.0, best.getBbHeight() * 0.6, 0.0);
+            best.stopUsingItem();
             this.phys(level, best, 12.0F);
-            this.effect(best, StatusEffects.SLOWNESS, 30, 3);
-            Vec3d pt = this.local(0.0, 0.0, 2.6);
-            Vec3d v = pt.subtract(best.getEntityPos()).multiply(0.32);
+            this.effect(best, MobEffects.SLOWNESS, 30, 3);
+            Vec3 pt = this.local(0.0, 0.0, 2.6);
+            Vec3 v = pt.subtract(best.position()).scale(0.32);
             if (v.length() > 2.2) {
-               v = v.normalize().multiply(2.2);
+               v = v.normalize().scale(2.2);
             }
 
-            best.setVelocity(v.x, v.y + 0.35, v.z);
-            best.knockedBack = true;
+            best.setDeltaMovement(v.x, v.y + 0.35, v.z);
+            best.syncVelocity = true;
             Vfx.beam(level, this.chest(), chestAt, THORN, 0.3, 10);
             Vfx.dashTrail(level, chestAt, pt, THORN);
             Vfx.claw(level, chestAt, this.yawTo(best.getX(), best.getZ()), 0.0F, 1.2, THORN);
@@ -1425,19 +1425,19 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void moonColumn(ServerWorld level, @Nullable LivingEntity target, int k) {
+   private void moonColumn(ServerLevel level, @Nullable LivingEntity target, int k) {
       List<LivingEntity> order = new ArrayList<>();
       if (target != null) {
          order.add(target);
       }
 
-      for (ServerPlayerEntity p : this.engaged()) {
+      for (ServerPlayer p : this.engaged()) {
          if (p != target) {
             order.add(p);
          }
       }
 
-      Vec3d pt;
+      Vec3 pt;
       if (order.isEmpty()) {
          pt = BossFx.around(level, this, this.feet(level), 3.0, 8.0);
       } else {
@@ -1448,8 +1448,8 @@ public class LiraelBoss extends MysticalBoss {
       Vfx.telegraphCircle(level, pt, 2.6, 20, MOON);
    }
 
-   private void crescentCut(ServerWorld level, int i) {
-      float yaw = this.getYaw();
+   private void crescentCut(ServerLevel level, int i) {
+      float yaw = this.getYRot();
       switch (i) {
          case 0:
             this.strike(level, 4.8, 30.0F, 14.0F, 0.6, FAE);
@@ -1468,38 +1468,38 @@ public class LiraelBoss extends MysticalBoss {
             this.strike(level, 5.0, 90.0F, 24.0F, 1.2, MOON);
             Vfx.slashArc(level, this.chest(), yaw, 5.0F, 45.0F, 5.0, MOON, 200.0F);
             Vfx.slashArc(level, this.chest(), yaw, 5.0F, -45.0F, 5.0, FAE, -200.0F);
-            Vec3d f = this.lineFrom;
+            Vec3 f = this.lineFrom;
             if (f == null) {
                return;
             }
 
-            Vec3d dir = this.lineDir;
+            Vec3 dir = this.lineDir;
 
-            for (LivingEntity e : BossFx.victims(level, this, f.add(dir.multiply(7.5)), 6.0)) {
+            for (LivingEntity e : BossFx.victims(level, this, f.add(dir.scale(7.5)), 6.0)) {
                double rx = e.getX() - f.x;
                double rz = e.getZ() - f.z;
                double along = rx * dir.x + rz * dir.z;
                double side = Math.abs(rx * dir.z - rz * dir.x);
-               if (along >= 5.0 && along <= 10.0 && side <= 1.0 + e.getWidth() * 0.5 && Math.abs(e.getY() - f.y) <= 3.0) {
+               if (along >= 5.0 && along <= 10.0 && side <= 1.0 + e.getBbWidth() * 0.5 && Math.abs(e.getY() - f.y) <= 3.0) {
                   this.phys(level, e, 18.0F);
                }
             }
 
-            Vfx.slashArc(level, f.add(dir.multiply(7.0)).add(0.0, 1.2, 0.0), yawOf(dir), 0.0F, 3.0, MOON, 160.0F);
+            Vfx.slashArc(level, f.add(dir.scale(7.0)).add(0.0, 1.2, 0.0), yawOf(dir), 0.0F, 3.0, MOON, 160.0F);
       }
    }
 
-   private void sweepBeam(ServerWorld level, int k) {
+   private void sweepBeam(ServerLevel level, int k) {
       if (this.beaming && k >= 22 && k <= 58) {
          float yaw = this.beamYaw0 - 55 * this.beamDir + 110 * this.beamDir * (k - 22) / 36.0F;
-         this.setYaw(yaw);
-         this.setBodyYaw(yaw);
-         this.setHeadYaw(yaw);
-         Vec3d from = this.beamFrom();
-         Vec3d to = from.add(Vec3d.fromPolar(this.beamPitch, yaw).multiply(28.0));
-         HitResult hit = level.raycast(new RaycastContext(from, to, ShapeType.COLLIDER, FluidHandling.NONE, this));
+         this.setYRot(yaw);
+         this.setYBodyRot(yaw);
+         this.setYHeadRot(yaw);
+         Vec3 from = this.beamFrom();
+         Vec3 to = from.add(Vec3.directionFromRotation(this.beamPitch, yaw).scale(28.0));
+         HitResult hit = level.clip(new ClipContext(from, to, Block.COLLIDER, Fluid.NONE, this));
          boolean blocked = hit.getType() != Type.MISS;
-         Vec3d end = blocked ? hit.getPos() : to;
+         Vec3 end = blocked ? hit.getLocation() : to;
          if (k % 2 == 0) {
             Vfx.beam(level, from, end, MOON, 0.7);
          }
@@ -1514,33 +1514,33 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void beamDamage(ServerWorld level, Vec3d from, Vec3d end, int k) {
-      Vec3d mid = from.add(end).multiply(0.5);
+   private void beamDamage(ServerLevel level, Vec3 from, Vec3 end, int k) {
+      Vec3 mid = from.add(end).scale(0.5);
 
       for (LivingEntity e : BossFx.victims(level, this, mid, from.distanceTo(end) * 0.5 + 3.0)) {
          Integer last = this.beamHits.get(e.getId());
          if (last == null || k - last >= 8) {
-            Box box = e.getBoundingBox().expand(1.3);
-            if ((box.contains(from) || box.raycast(from, end).isPresent()) && this.magic(level, e, 13.0F)) {
+            AABB box = e.getBoundingBox().inflate(1.3);
+            if ((box.contains(from) || box.clip(from, end).isPresent()) && this.magic(level, e, 13.0F)) {
                this.beamHits.put(e.getId(), k);
-               this.effect(e, StatusEffects.GLOWING, 100, 0);
-               this.effect(e, StatusEffects.WEAKNESS, 60, 0);
-               Vfx.impact(level, e.getEntityPos().add(0.0, e.getHeight() * 0.5, 0.0), MOON, 0.6);
+               this.effect(e, MobEffects.GLOWING, 100, 0);
+               this.effect(e, MobEffects.WEAKNESS, 60, 0);
+               Vfx.impact(level, e.position().add(0.0, e.getBbHeight() * 0.5, 0.0), MOON, 0.6);
             }
          }
       }
    }
 
-   private void placeSanctuaries(ServerWorld level, Vec3d c) {
+   private void placeSanctuaries(ServerLevel level, Vec3 c) {
       this.sanctuaries.clear();
       double a0 = this.random.nextDouble() * Math.PI * 2.0;
 
       for (int n = 0; n < 3; n++) {
          double a = a0 + n * Math.PI * 2.0 / 3.0;
-         Vec3d spot = null;
+         Vec3 spot = null;
 
          for (int tries = 0; tries < 6 && spot == null; tries++) {
-            Vec3d p = this.ringPoint(level, c, 9.0 + this.random.nextDouble() * 3.0, a);
+            Vec3 p = this.ringPoint(level, c, 9.0 + this.random.nextDouble() * 3.0, a);
             if (BossFx.safeGround(level, p, 2.0)) {
                spot = p;
             }
@@ -1559,15 +1559,15 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void eclipseWave(ServerWorld level) {
-      List<Vec3d> wave = new ArrayList<>();
+   private void eclipseWave(ServerLevel level) {
+      List<Vec3> wave = new ArrayList<>();
 
-      for (ServerPlayerEntity p : this.engaged()) {
+      for (ServerPlayer p : this.engaged()) {
          if (wave.size() >= 4) {
             break;
          }
 
-         Vec3d pt = this.spotGround(level, this.predict(p, 26.0));
+         Vec3 pt = this.spotGround(level, this.predict(p, 26.0));
          wave.add(pt);
          Vfx.telegraphCircle(level, pt, 3.0, 26, ECLIPSE);
       }
@@ -1575,30 +1575,30 @@ public class LiraelBoss extends MysticalBoss {
       this.waves.add(wave);
    }
 
-   private void eclipseShards(ServerWorld level, int i) {
+   private void eclipseShards(ServerLevel level, int i) {
       if (i < this.waves.size()) {
          Set<Integer> hit = new HashSet<>();
 
-         for (Vec3d pt : this.waves.get(i)) {
+         for (Vec3 pt : this.waves.get(i)) {
             Vfx.lightning(level, pt.add(0.0, 18.0, 0.0), pt, ECLIPSE, 2);
             Vfx.heavyImpact(level, pt, ECLIPSE, 1.2);
 
             for (LivingEntity e : this.around(level, pt, 3.0, 4.0)) {
                if (hit.add(e.getId()) && this.magic(level, e, 30.0F)) {
-                  this.effect(e, StatusEffects.SLOWNESS, 40, 1);
+                  this.effect(e, MobEffects.SLOWNESS, 40, 1);
                }
             }
          }
       }
    }
 
-   private void totality(ServerWorld level) {
-      Vec3d c = this.moveCenter != null ? this.moveCenter : this.feet(level);
+   private void totality(ServerLevel level) {
+      Vec3 c = this.moveCenter != null ? this.moveCenter : this.feet(level);
 
       for (LivingEntity e : BossFx.victims(level, this, c, 20.0)) {
          boolean safe = false;
 
-         for (Vec3d s : this.sanctuaries) {
+         for (Vec3 s : this.sanctuaries) {
             if (flat(e, s) <= 2.4 && Math.abs(e.getY() - s.y) < 4.0) {
                safe = true;
                break;
@@ -1606,14 +1606,14 @@ public class LiraelBoss extends MysticalBoss {
          }
 
          if (safe) {
-            Vfx.shieldBubble(level, e.getEntityPos().add(0.0, 0.9, 0.0), 1.2, MOON, 16);
-            Vfx.glint(level, e.getEyePos(), MOON.core(), 1.0);
+            Vfx.shieldBubble(level, e.position().add(0.0, 0.9, 0.0), 1.2, MOON, 16);
+            Vfx.glint(level, e.getEyePosition(), MOON.core(), 1.0);
          } else if (this.magic(level, e, 58.0F)) {
-            this.effect(e, StatusEffects.WITHER, 60, 0);
-            Vec3d away = new Vec3d(e.getX() - c.x, 0.0, e.getZ() - c.z);
-            away = away.lengthSquared() < 1.0E-4 ? this.fwd() : away.normalize();
-            e.addVelocity(away.x * 1.2, 0.4, away.z * 1.2);
-            e.knockedBack = true;
+            this.effect(e, MobEffects.WITHER, 60, 0);
+            Vec3 away = new Vec3(e.getX() - c.x, 0.0, e.getZ() - c.z);
+            away = away.lengthSqr() < 1.0E-4 ? this.fwd() : away.normalize();
+            e.push(away.x * 1.2, 0.4, away.z * 1.2);
+            e.syncVelocity = true;
          }
       }
 
@@ -1623,7 +1623,7 @@ public class LiraelBoss extends MysticalBoss {
       Vfx.explosion(level, this.chest(), ECLIPSE, 3.0);
    }
 
-   private void huntBlink(ServerWorld level, @Nullable LivingEntity target, int k) {
+   private void huntBlink(ServerLevel level, @Nullable LivingEntity target, int k) {
       LivingEntity quarry = k == 1 ? this.weakest(24.0) : null;
       if (quarry == null) {
          quarry = target;
@@ -1632,24 +1632,24 @@ public class LiraelBoss extends MysticalBoss {
       if (quarry == null) {
          this.huntLand = null;
       } else {
-         Vec3d land = this.spotGround(level, this.predict(quarry, 12.0));
+         Vec3 land = this.spotGround(level, this.predict(quarry, 12.0));
          if (!this.blinkTo(land.add(0.0, 5.5, 0.0))) {
-            land = BossFx.around(level, this, quarry.getEntityPos(), 2.0, 4.0);
+            land = BossFx.around(level, this, quarry.position(), 2.0, 4.0);
             this.blinkTo(land.add(0.0, 5.5, 0.0));
          }
 
          this.faceTarget(quarry, 360.0F);
          this.huntLand = land;
          Vfx.telegraphCircle(level, land, k == 2 ? 4.0 : 3.0, 12, MOON);
-         this.petals(level, this.getEntityPos().add(0.0, 1.7, 0.0), 12, 0.35);
+         this.petals(level, this.position().add(0.0, 1.7, 0.0), 12, 0.35);
       }
    }
 
-   private void huntStrike(ServerWorld level, int k) {
-      Vec3d land = this.huntLand;
+   private void huntStrike(ServerLevel level, int k) {
+      Vec3 land = this.huntLand;
       if (land != null) {
-         if (level.isSpaceEmpty(this, this.getBoundingBox().offset(land.x - this.getX(), land.y + 0.1 - this.getY(), land.z - this.getZ()))) {
-            this.requestTeleport(land.x, land.y + 0.1, land.z);
+         if (level.noCollision(this, this.getBoundingBox().move(land.x - this.getX(), land.y + 0.1 - this.getY(), land.z - this.getZ()))) {
+            this.teleportTo(land.x, land.y + 0.1, land.z);
          }
 
          boolean last = k == 2;
@@ -1659,11 +1659,11 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private @Nullable ServerPlayerEntity weakest(double r) {
-      ServerPlayerEntity best = null;
+   private @Nullable ServerPlayer weakest(double r) {
+      ServerPlayer best = null;
 
-      for (ServerPlayerEntity p : this.engaged()) {
-         if (p.squaredDistanceTo(this) <= r * r && (best == null || p.getHealth() < best.getHealth())) {
+      for (ServerPlayer p : this.engaged()) {
+         if (p.distanceToSqr(this) <= r * r && (best == null || p.getHealth() < best.getHealth())) {
             best = p;
          }
       }
@@ -1671,19 +1671,19 @@ public class LiraelBoss extends MysticalBoss {
       return best;
    }
 
-   private void vanish(ServerWorld level, @Nullable LivingEntity target) {
+   private void vanish(ServerLevel level, @Nullable LivingEntity target) {
       this.vanished = true;
       this.setInvisible(true);
-      BossFx.blink(level, this, this.getEntityPos());
-      this.petals(level, this.getEntityPos().add(0.0, 1.7, 0.0), 20, 0.4);
+      BossFx.blink(level, this, this.position());
+      this.petals(level, this.position().add(0.0, 1.7, 0.0), 20, 0.4);
       this.decoys.clear();
       this.trueSpot = null;
       if (target != null) {
-         float back = target.getYaw() + 180.0F;
+         float back = target.getYRot() + 180.0F;
          int real = this.random.nextFloat() < 0.6F ? 0 : this.random.nextInt(3);
 
          for (int n = 0; n < 3; n++) {
-            Vec3d s = this.spotGround(level, target.getEntityPos().add(Vec3d.fromPolar(0.0F, back + 120 * n).multiply(4.0)));
+            Vec3 s = this.spotGround(level, target.position().add(Vec3.directionFromRotation(0.0F, back + 120 * n).scale(4.0)));
             Vfx.vortex(level, s, 1.0, 3.0, FAE, 23);
             if (n == real) {
                this.trueSpot = s;
@@ -1694,23 +1694,23 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void ambushTells(ServerWorld level, @Nullable LivingEntity target) {
-      Vec3d s = this.trueSpot;
+   private void ambushTells(ServerLevel level, @Nullable LivingEntity target) {
+      Vec3 s = this.trueSpot;
       if (s != null) {
          Vfx.chargeUp(level, s.add(0.0, 1.6, 0.0), MOON, 11);
-         Vec3d d = (target != null ? target.getEntityPos() : s.add(this.fwd())).subtract(s).getHorizontal();
-         Vfx.telegraphLine(level, s, d.lengthSquared() > 1.0E-4 ? d.normalize() : this.fwd(), d.length() + 2.5, 1.6, 11, MOON);
+         Vec3 d = (target != null ? target.position() : s.add(this.fwd())).subtract(s).horizontal();
+         Vfx.telegraphLine(level, s, d.lengthSqr() > 1.0E-4 ? d.normalize() : this.fwd(), d.length() + 2.5, 1.6, 11, MOON);
       }
 
-      for (Vec3d d : this.decoys) {
+      for (Vec3 d : this.decoys) {
          Vfx.chargeUp(level, d.add(0.0, 1.6, 0.0), FAE, 11);
       }
    }
 
-   private void ambushBlink(ServerWorld level, @Nullable LivingEntity target) {
-      Vec3d s = this.trueSpot;
+   private void ambushBlink(ServerLevel level, @Nullable LivingEntity target) {
+      Vec3 s = this.trueSpot;
       if (s != null && !this.blinkTo(s.add(0.0, 0.6, 0.0)) && target != null) {
-         this.blinkTo(BossFx.around(level, this, target.getEntityPos(), 3.0, 5.0).add(0.0, 0.6, 0.0));
+         this.blinkTo(BossFx.around(level, this, target.position(), 3.0, 5.0).add(0.0, 0.6, 0.0));
       }
 
       if (target != null) {
@@ -1725,7 +1725,7 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void ringTelegraph(ServerWorld level, Vec3d c, int count, double radius, double r, int ticks) {
+   private void ringTelegraph(ServerLevel level, Vec3 c, int count, double radius, double r, int ticks) {
       double a0 = this.random.nextDouble() * Math.PI * 2.0;
 
       for (int n = 0; n < count; n++) {
@@ -1733,17 +1733,17 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void bloomRing(ServerWorld level, int i) {
-      Vec3d c = this.moveCenter;
+   private void bloomRing(ServerLevel level, int i) {
+      Vec3 c = this.moveCenter;
       if (c != null) {
          double r0 = i == 1 ? 6.5 : (i == 2 ? 12.5 : 0.0);
          double r1 = i == 1 ? 12.5 : (i == 2 ? 18.5 : 6.5);
 
          for (LivingEntity e : BossFx.victims(level, this, c, r1 + 4.0)) {
             if (inBand(c, e, r0, r1, 4.0) && this.phys(level, e, 46.0F)) {
-               this.effect(e, StatusEffects.POISON, 80, 1);
-               e.addVelocity(0.0, 0.7, 0.0);
-               e.knockedBack = true;
+               this.effect(e, MobEffects.POISON, 80, 1);
+               e.push(0.0, 0.7, 0.0);
+               e.syncVelocity = true;
             }
          }
 
@@ -1752,7 +1752,7 @@ public class LiraelBoss extends MysticalBoss {
          double a0 = this.random.nextDouble() * Math.PI * 2.0;
 
          for (int p = 0; p < n; p++) {
-            Vec3d at = this.ringPoint(level, c, mid, a0 + p * Math.PI * 2.0 / n);
+            Vec3 at = this.ringPoint(level, c, mid, a0 + p * Math.PI * 2.0 / n);
             Vfx.pillar(level, at, THORN, 4.0, 1.0);
             if (p % 2 == 0) {
                Vfx.groundCrack(level, at, 2.0, THORN);
@@ -1771,8 +1771,8 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void sealBud(ServerWorld level) {
-      Vec3d g = this.moveCenter != null ? this.moveCenter : this.feet(level);
+   private void sealBud(ServerLevel level) {
+      Vec3 g = this.moveCenter != null ? this.moveCenter : this.feet(level);
       this.shield(this.getMaxHealth() * 0.3F, 122);
       Vfx.shieldBubble(level, this.chest(), 2.6, THORN, 130);
       Vfx.ward(level, g, 3.0, FAE, 130);
@@ -1782,7 +1782,7 @@ public class LiraelBoss extends MysticalBoss {
       this.nextBeat = 21;
    }
 
-   private void bloomTick(ServerWorld level, int k) {
+   private void bloomTick(ServerLevel level, int k) {
       if (this.bloomArmed && k > 20 && k < 140) {
          if (!this.warded()) {
             this.bloomArmed = false;
@@ -1795,7 +1795,7 @@ public class LiraelBoss extends MysticalBoss {
             this.cancelMove(level, 30);
          } else {
             if (k >= this.nextBeat) {
-               Vec3d g = this.moveCenter != null ? this.moveCenter : this.feet(level);
+               Vec3 g = this.moveCenter != null ? this.moveCenter : this.feet(level);
                Vfx.auraRing(level, g, THORN, 2.0);
                Vfx.flare(level, this.brooch(), THORN.glow(), 1.4, 6);
                Vfx.flare(level, this.brooch(), 16777215, 0.6, 4);
@@ -1805,28 +1805,28 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void bloom(ServerWorld level) {
+   private void bloom(ServerLevel level) {
       if (this.bloomArmed) {
          this.bloomArmed = false;
          Set<LivingEntity> hit = new LinkedHashSet<>();
 
-         for (ServerPlayerEntity p : this.engaged()) {
-            if (p.squaredDistanceTo(this) <= 2304.0) {
+         for (ServerPlayer p : this.engaged()) {
+            if (p.distanceToSqr(this) <= 2304.0) {
                hit.add(p);
             }
          }
 
-         hit.addAll(BossFx.victims(level, this, this.getEntityPos(), 32.0));
+         hit.addAll(BossFx.victims(level, this, this.position(), 32.0));
 
          for (LivingEntity e : hit) {
             if (this.magic(level, e, 62.0F)) {
-               this.effect(e, StatusEffects.WITHER, 100, 1);
-               this.effect(e, StatusEffects.WEAKNESS, 200, 1);
+               this.effect(e, MobEffects.WITHER, 100, 1);
+               this.effect(e, MobEffects.WEAKNESS, 200, 1);
             }
          }
 
          this.heal(this.getMaxHealth() * 0.1F);
-         Vec3d g = this.moveCenter != null ? this.moveCenter : this.feet(level);
+         Vec3 g = this.moveCenter != null ? this.moveCenter : this.feet(level);
          Vfx.nova(level, g, THORN, 30.0);
          Vfx.impactFrame(level, g, 64.0, 16759008, 1.0F);
          Vfx.explosion(level, this.chest(), FAE, 5.0);
@@ -1834,7 +1834,7 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void addPatch(ServerWorld level, Vec3d c, double r, int life) {
+   private void addPatch(ServerLevel level, Vec3 c, double r, int life) {
       while (this.patches.size() >= 6) {
          this.patches.remove(0);
       }
@@ -1844,11 +1844,11 @@ public class LiraelBoss extends MysticalBoss {
       Vfx.runeCircle(level, c, r, THORN, life, 0.01F, Vfx.Rune.GLYPH);
    }
 
-   private void tickPatches(ServerWorld level) {
+   private void tickPatches(ServerLevel level) {
       if (!this.patches.isEmpty()) {
-         boolean hurt = this.age % 10 == 0;
-         boolean fx = this.age % 40 == 0;
-         boolean crack = this.age % 60 == 0;
+         boolean hurt = this.tickCount % 10 == 0;
+         boolean fx = this.tickCount % 40 == 0;
+         boolean crack = this.tickCount % 60 == 0;
          Iterator<LiraelBoss.Patch> it = this.patches.iterator();
 
          while (it.hasNext()) {
@@ -1857,11 +1857,11 @@ public class LiraelBoss extends MysticalBoss {
                it.remove();
             } else {
                if (hurt) {
-                  for (ServerPlayerEntity pl : this.engaged()) {
+                  for (ServerPlayer pl : this.engaged()) {
                      if (inBand(p.c, pl, 0.0, p.r + 0.3, 2.0) && this.magic(level, pl, 3.0F)) {
-                        this.effect(pl, StatusEffects.SLOWNESS, 30, 1);
-                        if (!pl.hasStatusEffect(StatusEffects.POISON)) {
-                           this.effect(pl, StatusEffects.POISON, 40, 0);
+                        this.effect(pl, MobEffects.SLOWNESS, 30, 1);
+                        if (!pl.hasEffect(MobEffects.POISON)) {
+                           this.effect(pl, MobEffects.POISON, 40, 0);
                         }
                      }
                   }
@@ -1880,22 +1880,22 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void tickMoonfall(ServerWorld level) {
+   private void tickMoonfall(ServerLevel level) {
       if (this.phase() >= 2 && !this.engaged().isEmpty() && !this.staggered() && !this.invulnerableNow()) {
          BossAction cur = this.currentMove();
          if (cur == null || !cur.anim().equals("eclipse") && !cur.anim().equals("last_bloom")) {
             if (--this.moonfallTimer <= 0) {
                int base = this.phase() >= 3 ? 100 : 140;
                this.moonfallTimer = this.enraged() ? Math.round(base * 0.6F) : base;
-               ServerPlayerEntity p = this.engaged().get(this.random.nextInt(this.engaged().size()));
-               Vec3d pt = this.spotGround(level, this.predict(p, 30.0));
+               ServerPlayer p = this.engaged().get(this.random.nextInt(this.engaged().size()));
+               Vec3 pt = this.spotGround(level, this.predict(p, 30.0));
                Vfx.telegraphCircle(level, pt, 2.5, 30, MOON);
                int epoch = this.hazardEpoch;
                this.schedule(30, () -> {
                   if (epoch == this.hazardEpoch && this.isAlive()) {
                      for (LivingEntity e : this.column(level, pt, 2.5, 10.0)) {
                         if (this.magic(level, e, 18.0F)) {
-                           this.effect(e, StatusEffects.GLOWING, 60, 0);
+                           this.effect(e, MobEffects.GLOWING, 60, 0);
                         }
                      }
 
@@ -1908,12 +1908,12 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private Vec3d pickCageCenter(ServerWorld level) {
+   private Vec3 pickCageCenter(ServerLevel level) {
       BlockPos h = this.home();
       if (h != null) {
-         Vec3d hc = Vec3d.ofBottomCenter(h);
-         if (hc.distanceTo(this.getEntityPos()) <= 24.0) {
-            Vec3d g = groundBelow(level, hc.x, hc.y + 2.0, hc.z, 8);
+         Vec3 hc = Vec3.atBottomCenterOf(h);
+         if (hc.distanceTo(this.position()) <= 24.0) {
+            Vec3 g = groundBelow(level, hc.x, hc.y + 2.0, hc.z, 8);
             return g != null ? g : hc;
          }
       }
@@ -1921,8 +1921,8 @@ public class LiraelBoss extends MysticalBoss {
       return this.feet(level);
    }
 
-   private void raiseCage(ServerWorld level) {
-      Vec3d c = this.cageCenter != null ? this.cageCenter : this.pickCageCenter(level);
+   private void raiseCage(ServerLevel level) {
+      Vec3 c = this.cageCenter != null ? this.cageCenter : this.pickCageCenter(level);
       this.cageCenter = c;
       this.cageRadius = 22.0;
       this.cageUp = true;
@@ -1935,7 +1935,7 @@ public class LiraelBoss extends MysticalBoss {
       this.cageFx(level, c);
    }
 
-   private void tickCage(ServerWorld level) {
+   private void tickCage(ServerLevel level) {
       if (this.phase() >= 3) {
          if (!this.cageUp) {
             if (!this.cagePending && !this.engaged().isEmpty()) {
@@ -1943,7 +1943,7 @@ public class LiraelBoss extends MysticalBoss {
                this.raiseCage(level);
             }
          } else {
-            Vec3d c = this.cageCenter;
+            Vec3 c = this.cageCenter;
             if (c == null) {
                this.cageUp = false;
             } else {
@@ -1951,28 +1951,28 @@ public class LiraelBoss extends MysticalBoss {
                   this.cageRadius = Math.max(13.0, this.cageRadius - 0.005);
                }
 
-               if (this.age % 10 == 0) {
-                  for (ServerPlayerEntity p : this.engaged()) {
+               if (this.tickCount % 10 == 0) {
+                  for (ServerPlayer p : this.engaged()) {
                      double dx = p.getX() - c.x;
                      double dz = p.getZ() - c.z;
                      double h = Math.sqrt(dx * dx + dz * dz);
                      if (!(h <= this.cageRadius)) {
                         this.magic(level, p, 4.0F);
-                        this.effect(p, StatusEffects.SLOWNESS, 30, 2);
-                        if (!p.hasStatusEffect(StatusEffects.POISON)) {
-                           this.effect(p, StatusEffects.POISON, 40, 0);
+                        this.effect(p, MobEffects.SLOWNESS, 30, 2);
+                        if (!p.hasEffect(MobEffects.POISON)) {
+                           this.effect(p, MobEffects.POISON, 40, 0);
                         }
 
                         if (h > 0.001) {
-                           p.addVelocity(-dx / h * 0.6, 0.2, -dz / h * 0.6);
+                           p.push(-dx / h * 0.6, 0.2, -dz / h * 0.6);
                         }
 
-                        p.knockedBack = true;
+                        p.syncVelocity = true;
                      }
                   }
                }
 
-               if (this.age % 40 == 0) {
+               if (this.tickCount % 40 == 0) {
                   this.cageFx(level, c);
                }
             }
@@ -1980,12 +1980,12 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void cageFx(ServerWorld level, Vec3d c) {
+   private void cageFx(ServerLevel level, Vec3 c) {
       Vfx.ring(level, c.add(0.0, 0.2, 0.0), THORN.glow(), this.cageRadius, 40);
       this.cageSpin += 0.26;
 
       for (int n = 0; n < 12; n++) {
-         Vec3d p = this.ringPoint(level, c, this.cageRadius, this.cageSpin + n * Math.PI * 2.0 / 12.0);
+         Vec3 p = this.ringPoint(level, c, this.cageRadius, this.cageSpin + n * Math.PI * 2.0 / 12.0);
          Vfx.pillar(level, p, THORN, 2.2, 0.5);
          if (n % 2 == 0) {
             this.leaves(level, p.add(0.0, 1.0, 0.0), 3, 0.25);
@@ -2004,8 +2004,8 @@ public class LiraelBoss extends MysticalBoss {
    }
 
    @Override
-   protected void mobTick(ServerWorld world) {
-      super.mobTick(world);
+   protected void customServerAiStep(ServerLevel world) {
+      super.customServerAiStep(world);
       if (this.isAlive() && !this.inIntro()) {
          if (this.stepGuard > 0) {
             this.stepGuard--;
@@ -2038,20 +2038,20 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void tickStaggerDrop(ServerWorld level) {
+   private void tickStaggerDrop(ServerLevel level) {
       if (this.staggerDrop > 0) {
          if (!this.staggered()) {
             this.staggerDrop = 0;
          } else {
-            Vec3d v = this.getVelocity();
-            Vec3d g = groundBelow(level, this.getX(), this.getY() + 0.5, this.getZ(), 8);
+            Vec3 v = this.getDeltaMovement();
+            Vec3 g = groundBelow(level, this.getX(), this.getY() + 0.5, this.getZ(), 8);
             double dy = g != null ? g.y + 0.8 - this.getY() : 0.0;
             if (!(Math.abs(dy) <= 0.05) && --this.staggerDrop > 0) {
-               this.setVelocity(v.x * 0.5, MathHelper.clamp(dy, -0.35, 0.2), v.z * 0.5);
+               this.setDeltaMovement(v.x * 0.5, Mth.clamp(dy, -0.35, 0.2), v.z * 0.5);
             } else {
                this.staggerDrop = 0;
-               this.setVelocity(v.x * 0.5, 0.0, v.z * 0.5);
-               Vec3d at = g != null ? g : this.getEntityPos();
+               this.setDeltaMovement(v.x * 0.5, 0.0, v.z * 0.5);
+               Vec3 at = g != null ? g : this.position();
                this.petals(level, at.add(0.0, 0.6, 0.0), 24, 0.5);
                Vfx.impact(level, at, FAE, 0.8);
             }
@@ -2059,7 +2059,7 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void tickWardFx(ServerWorld level) {
+   private void tickWardFx(ServerLevel level) {
       if (this.wardFx > 0) {
          if (!this.warded()) {
             this.wardFx = 0;
@@ -2071,23 +2071,23 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void tickDodgeFlair(ServerWorld level) {
+   private void tickDodgeFlair(ServerLevel level) {
       boolean d = this.dodging();
       if (d && !this.wasDodging) {
-         this.dodgeFrom = this.getEntityPos();
+         this.dodgeFrom = this.position();
          this.dodgeTrail = 7;
-         this.petals(level, this.getEntityPos().add(0.0, 1.7, 0.0), 10, 0.35);
+         this.petals(level, this.position().add(0.0, 1.7, 0.0), 10, 0.35);
       }
 
       this.wasDodging = d;
       if (this.dodgeTrail > 0 && --this.dodgeTrail == 0) {
-         Vfx.dashTrail(level, this.dodgeFrom.add(0.0, 1.7, 0.0), this.getEntityPos().add(0.0, 1.7, 0.0), FAE);
+         Vfx.dashTrail(level, this.dodgeFrom.add(0.0, 1.7, 0.0), this.position().add(0.0, 1.7, 0.0), FAE);
       }
    }
 
-   private void ambient(ServerWorld level) {
+   private void ambient(ServerLevel level) {
       if (!this.isInvisible()) {
-         int t = this.age;
+         int t = this.tickCount;
          if (t % 10 == 0) {
             this.petals(level, this.local(0.0, 0.3, 0.0), 2, 0.12);
          }
@@ -2098,7 +2098,7 @@ public class LiraelBoss extends MysticalBoss {
 
          if (this.phase() >= 1 && t % 16 == 0) {
             double side = this.random.nextBoolean() ? 0.82 : -0.82;
-            Vec3d tipAt = this.random.nextBoolean() ? this.local(side, 3.44, 0.52) : this.local(side * 0.56, 0.7, -1.56);
+            Vec3 tipAt = this.random.nextBoolean() ? this.local(side, 3.44, 0.52) : this.local(side * 0.56, 0.7, -1.56);
             Vfx.embers(level, tipAt, 14166106, 2, 0.15);
             this.leaves(level, tipAt, 1, 0.1);
          }
@@ -2121,21 +2121,21 @@ public class LiraelBoss extends MysticalBoss {
    }
 
    @Override
-   public boolean damage(ServerWorld world, DamageSource source, float amount) {
-      boolean bypass = source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY);
+   public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
+      boolean bypass = source.is(DamageTypeTags.BYPASSES_INVULNERABILITY);
       if (bypass || !this.vanished && this.stepGuard <= 0) {
          LivingEntity attacker = null;
          if (!bypass
             && this.warded()
-            && !source.isOf(DamageTypes.THORNS)
-            && !source.isIn(DamageTypeTags.IS_PROJECTILE)
-            && source.getAttacker() instanceof LivingEntity a
-            && source.getSource() == a
-            && a.squaredDistanceTo(this) <= 25.0) {
+            && !source.is(DamageTypes.THORNS)
+            && !source.is(DamageTypeTags.IS_PROJECTILE)
+            && source.getEntity() instanceof LivingEntity a
+            && source.getDirectEntity() == a
+            && a.distanceToSqr(this) <= 25.0) {
             attacker = a;
          }
 
-         boolean landed = super.damage(world, source, amount);
+         boolean landed = super.hurtServer(world, source, amount);
          if (landed && attacker != null && attacker.isAlive()) {
             this.thorns(world, attacker);
          }
@@ -2146,8 +2146,8 @@ public class LiraelBoss extends MysticalBoss {
       }
    }
 
-   private void thorns(ServerWorld level, LivingEntity a) {
-      int now = this.age;
+   private void thorns(ServerLevel level, LivingEntity a) {
+      int now = this.tickCount;
       Integer last = this.thornsHit.get(a.getId());
       if (last == null || now - last >= 10) {
          this.thornsHit.put(a.getId(), now);
@@ -2155,21 +2155,21 @@ public class LiraelBoss extends MysticalBoss {
             this.thornsHit.entrySet().removeIf(e -> now - e.getValue() > 200);
          }
 
-         a.damage(level, this.getDamageSources().thorns(this), this.dmg(5.0F));
-         this.effect(a, StatusEffects.POISON, 60, 0);
-         Vec3d away = a.getEntityPos().subtract(this.getEntityPos()).getHorizontal();
-         if (away.lengthSquared() > 1.0E-4) {
-            away = away.normalize().multiply(0.5);
-            a.addVelocity(away.x, 0.15, away.z);
-            a.knockedBack = true;
+         a.hurtServer(level, this.damageSources().thorns(this), this.dmg(5.0F));
+         this.effect(a, MobEffects.POISON, 60, 0);
+         Vec3 away = a.position().subtract(this.position()).horizontal();
+         if (away.lengthSqr() > 1.0E-4) {
+            away = away.normalize().scale(0.5);
+            a.push(away.x, 0.15, away.z);
+            a.syncVelocity = true;
          }
 
-         Vfx.claw(level, a.getEntityPos().add(0.0, a.getHeight() * 0.6, 0.0), this.yawTo(a.getX(), a.getZ()), 0.0F, 1.2, THORN);
+         Vfx.claw(level, a.position().add(0.0, a.getBbHeight() * 0.6, 0.0), this.yawTo(a.getX(), a.getZ()), 0.0F, 1.2, THORN);
       }
    }
 
    @Override
-   protected void onPhaseChange(ServerWorld level, int phase) {
+   protected void onPhaseChange(ServerLevel level, int phase) {
       this.clearVanish();
       this.stepGuard = 0;
       this.beaming = false;
@@ -2187,8 +2187,8 @@ public class LiraelBoss extends MysticalBoss {
    }
 
    @Override
-   protected void phaseBurst(ServerWorld level, int phase) {
-      Vec3d g = this.feet(level);
+   protected void phaseBurst(ServerLevel level, int phase) {
+      Vec3 g = this.feet(level);
       if (phase == 1) {
          BossFx.slam(level, this, g, 7.0, 10.0F, 1.6);
          Vfx.explosion(level, this.chest(), THORN, 3.5);
@@ -2200,7 +2200,7 @@ public class LiraelBoss extends MysticalBoss {
          }
 
          this.summonCourt(level, 2, 2, false);
-         Vfx.shake(level, this.getEntityPos(), 40.0, 1.0, 16);
+         Vfx.shake(level, this.position(), 40.0, 1.0, 16);
       } else if (phase == 2) {
          BossFx.knockback(level, this, g, 8.0, 1.4);
          Vfx.nova(level, this.chest(), MOON, 10.0);
@@ -2217,7 +2217,7 @@ public class LiraelBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onStagger(ServerWorld level) {
+   protected void onStagger(ServerLevel level) {
       this.staggerDrop = 24;
       this.clearVanish();
       this.stepGuard = 0;
@@ -2225,23 +2225,23 @@ public class LiraelBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onEnrage(ServerWorld level) {
+   protected void onEnrage(ServerLevel level) {
       Vfx.auraRing(level, this.feet(level), THORN, 3.0);
       Vfx.nova(level, this.chest(), THORN, 5.0);
       this.summonCourt(level, 0, 1, false);
    }
 
    @Override
-   protected void desperation(ServerWorld level) {
+   protected void desperation(ServerLevel level) {
       this.bloomPending = true;
    }
 
    @Override
-   protected void onIntroTick(ServerWorld level, int left) {
+   protected void onIntroTick(ServerLevel level, int left) {
       int t = this.introTicks() - 1 - left;
       if (t == 0) {
          Vfx.runeCircle(level, this.feet(level), 5.0, FAE, 140, 0.02F, Vfx.Rune.ARCANE);
-         Vfx.beam(level, this.getEntityPos().add(0.0, 28.0, 0.0), this.getEntityPos().add(0.0, 1.0, 0.0), MOON, 1.0, 60);
+         Vfx.beam(level, this.position().add(0.0, 28.0, 0.0), this.position().add(0.0, 1.0, 0.0), MOON, 1.0, 60);
       }
 
       if (t < 60 && t % 4 == 0) {
@@ -2257,42 +2257,42 @@ public class LiraelBoss extends MysticalBoss {
       } else if (t == 60) {
          Vfx.nova(level, this.chest(), FAE, 4.0);
          this.petals(level, this.chest(), 30, 0.7);
-         Vfx.flash(level, this.getEntityPos(), 32.0, 16769268, 0.35F);
+         Vfx.flash(level, this.position(), 32.0, 16769268, 0.35F);
       } else if (t == 84) {
-         Vec3d right = Vec3d.fromPolar(0.0F, this.getYaw() + 90.0F);
-         Vfx.streaks(level, this.chest(), right.multiply(2.5), FAE, 8);
-         Vfx.streaks(level, this.chest(), right.multiply(-2.5), FAE, 8);
+         Vec3 right = Vec3.directionFromRotation(0.0F, this.getYRot() + 90.0F);
+         Vfx.streaks(level, this.chest(), right.scale(2.5), FAE, 8);
+         Vfx.streaks(level, this.chest(), right.scale(-2.5), FAE, 8);
          Vfx.wisps(level, this.chest(), FAE, 8, 2.5, 50);
       } else if (t == 108) {
          Vfx.glint(level, this.eyes(), FAE.core(), 1.0);
       } else if (t == 120) {
-         Vec3d g = this.feet(level);
+         Vec3 g = this.feet(level);
          Vfx.shockwave(level, g, FAE, 6.0);
          BossFx.knockback(level, this, g, 6.0, 1.0);
          Vfx.runeCircle(level, g, 3.0, MOON, 30, 0.08F, Vfx.Rune.ASTRAL);
-         Vfx.shake(level, this.getEntityPos(), 40.0, 0.6, 12);
+         Vfx.shake(level, this.position(), 40.0, 0.6, 12);
       }
    }
 
    @Override
-   protected void onDeathTick(ServerWorld level, int tick) {
+   protected void onDeathTick(ServerLevel level, int tick) {
       int t = tick - 1;
       if (t == 0) {
          this.clearHazards();
 
          for (RealmMob m : this.myMinions(level, 40.0)) {
-            this.petals(level, m.getEntityPos().add(0.0, m.getHeight() * 0.5, 0.0), 8, 0.3);
-            Vfx.smoke(level, m.getEntityPos().add(0.0, 0.5, 0.0), 16759008, 4, 0.4, 0.8);
+            this.petals(level, m.position().add(0.0, m.getBbHeight() * 0.5, 0.0), 8, 0.3);
+            Vfx.smoke(level, m.position().add(0.0, 0.5, 0.0), 16759008, 4, 0.4, 0.8);
             m.discard();
          }
 
          Vfx.impactFrame(level, this.chest(), 40.0, 16765168, 0.7F);
       }
 
-      Vec3d v = this.getVelocity();
-      Vec3d floor = groundBelow(level, this.getX(), this.getY() + 0.5, this.getZ(), 8);
+      Vec3 v = this.getDeltaMovement();
+      Vec3 floor = groundBelow(level, this.getX(), this.getY() + 0.5, this.getZ(), 8);
       double dy = floor != null && t < 50 ? floor.y + 0.9 - this.getY() : 0.0;
-      this.setVelocity(v.x * 0.5, MathHelper.clamp(dy, -0.09, 0.09), v.z * 0.5);
+      this.setDeltaMovement(v.x * 0.5, Mth.clamp(dy, -0.09, 0.09), v.z * 0.5);
       if (t >= 6 && t <= 24 && t % 3 == 0) {
          Vfx.sparks(level, this.chest(), FAE.glow(), 6, 0.3, 0.18);
          Vfx.shards(level, this.chest(), 16759008, 6, 0.35);
@@ -2321,7 +2321,7 @@ public class LiraelBoss extends MysticalBoss {
          Vfx.nova(level, this.chest(), FAE, 5.0);
          Vfx.radialFlash(level, this.chest(), 40.0, 16771318, 0.5F);
       } else if (t == 138) {
-         Vfx.flash(level, this.getEntityPos(), 40.0, 16777215, 0.4F);
+         Vfx.flash(level, this.position(), 40.0, 16777215, 0.4F);
       }
    }
 
@@ -2333,7 +2333,7 @@ public class LiraelBoss extends MysticalBoss {
          this.looks[n] = this.holdAnim("look_" + n);
       }
 
-      controllers.add(new AnimationController("look", 0, test -> test.setAndContinue(this.looks[MathHelper.clamp(this.phase(), 0, 3)])).additiveAnimations());
+      controllers.add(new AnimationController("look", 0, test -> test.setAndContinue(this.looks[Mth.clamp(this.phase(), 0, 3)])).additiveAnimations());
    }
 
    @Override
@@ -2354,11 +2354,11 @@ public class LiraelBoss extends MysticalBoss {
    }
 
    private static final class Patch {
-      final Vec3d c;
+      final Vec3 c;
       final double r;
       int left;
 
-      Patch(Vec3d c, double r, int left) {
+      Patch(Vec3 c, double r, int left) {
          this.c = c;
          this.r = r;
          this.left = left;

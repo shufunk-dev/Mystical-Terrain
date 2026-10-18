@@ -3,22 +3,20 @@ package com.vexira.mysticalterrain.gear;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
-import net.minecraft.component.type.TooltipDisplayComponent;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Item.Settings;
-import net.minecraft.item.Item.TooltipContext;
-import net.minecraft.item.tooltip.TooltipType;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.GeoItem;
-import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
-import software.bernie.geckolib.util.GeckoLibUtil;
+import com.geckolib.animatable.GeoItem;
+import com.geckolib.animatable.instance.AnimatableInstanceCache;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.util.GeckoLibUtil;
 
 public class MysticArmor extends Item implements GeoItem {
    private static final EquipmentSlot[] SLOTS = new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
@@ -28,7 +26,7 @@ public class MysticArmor extends Item implements GeoItem {
    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
    private Object renderProvider;
 
-   public MysticArmor(Settings properties, String set, String model, EquipmentSlot slot) {
+   public MysticArmor(Properties properties, String set, String model, EquipmentSlot slot) {
       super(properties);
       this.set = set;
       this.model = model;
@@ -47,11 +45,11 @@ public class MysticArmor extends Item implements GeoItem {
       return this.slot;
    }
 
-   public static Map<String, Integer> worn(PlayerEntity player) {
+   public static Map<String, Integer> worn(Player player) {
       Map<String, Integer> counts = new LinkedHashMap<>(2);
 
       for (EquipmentSlot s : SLOTS) {
-         if (player.getEquippedStack(s).getItem() instanceof MysticArmor a) {
+         if (player.getItemBySlot(s).getItem() instanceof MysticArmor a) {
             counts.merge(a.set, 1, Integer::sum);
          }
       }
@@ -59,11 +57,11 @@ public class MysticArmor extends Item implements GeoItem {
       return counts;
    }
 
-   public static int pieces(PlayerEntity player, String set) {
+   public static int pieces(Player player, String set) {
       int n = 0;
 
       for (EquipmentSlot s : SLOTS) {
-         if (player.getEquippedStack(s).getItem() instanceof MysticArmor a && a.set.equals(set)) {
+         if (player.getItemBySlot(s).getItem() instanceof MysticArmor a && a.set.equals(set)) {
             n++;
          }
       }
@@ -71,16 +69,16 @@ public class MysticArmor extends Item implements GeoItem {
       return n;
    }
 
-   public static boolean wearsFullSet(PlayerEntity player, String set) {
+   public static boolean wearsFullSet(Player player, String set) {
       return pieces(player, set) == 4;
    }
 
-   public static @Nullable String fullSet(PlayerEntity player) {
-      return player.getEquippedStack(EquipmentSlot.CHEST).getItem() instanceof MysticArmor chest && wearsFullSet(player, chest.set) ? chest.set : null;
+   public static @Nullable String fullSet(Player player) {
+      return player.getItemBySlot(EquipmentSlot.CHEST).getItem() instanceof MysticArmor chest && wearsFullSet(player, chest.set) ? chest.set : null;
    }
 
-   public void appendTooltip(ItemStack stack, TooltipContext context, TooltipDisplayComponent displayComponent, Consumer<Text> textConsumer, TooltipType type) {
-      PlayerEntity viewer = ClientView.player.get();
+   public void appendHoverText(ItemStack stack, TooltipContext context, TooltipDisplay displayComponent, Consumer<Component> textConsumer, TooltipFlag type) {
+      Player viewer = ClientView.player.get();
       GearTooltips.armor(this.set, viewer == null ? 0 : pieces(viewer, this.set), textConsumer);
    }
 

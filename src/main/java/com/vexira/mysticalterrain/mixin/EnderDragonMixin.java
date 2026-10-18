@@ -6,26 +6,26 @@ import com.vexira.mysticalterrain.boss.dragon.DragonAccess;
 import com.vexira.mysticalterrain.boss.dragon.DragonRework;
 import com.vexira.mysticalterrain.boss.dragon.DragonReworkHolder;
 import java.util.List;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.PositionInterpolator;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonPart;
-import net.minecraft.entity.boss.dragon.phase.Phase;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.data.TrackedData;
-import net.minecraft.entity.data.TrackedDataHandlerRegistry;
-import net.minecraft.entity.data.DataTracker.Builder;
-import net.minecraft.entity.decoration.EndCrystalEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.particle.ParticleEffect;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.storage.ReadView;
-import net.minecraft.storage.WriteView;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.network.syncher.SynchedEntityData.Builder;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.InterpolationHandler;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
+import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -34,29 +34,29 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(EnderDragonEntity.class)
-public abstract class EnderDragonMixin extends MobEntity implements DragonReworkHolder, DragonAccess {
+@Mixin(EnderDragon.class)
+public abstract class EnderDragonMixin extends Mob implements DragonReworkHolder, DragonAccess {
    @Unique
-   private static final TrackedData<Integer> MYSTICALTERRAIN_STATE = DataTracker.registerData(EnderDragonEntity.class, TrackedDataHandlerRegistry.INTEGER);
+   private static final EntityDataAccessor<Integer> MYSTICALTERRAIN_STATE = SynchedEntityData.defineId(EnderDragon.class, EntityDataSerializers.INT);
    @Unique
    private DragonRework mysticalterrain$rework;
 
-   protected EnderDragonMixin(EntityType<? extends MobEntity> type, World level) {
+   protected EnderDragonMixin(EntityType<? extends Mob> type, Level level) {
       super(type, level);
    }
 
    @Shadow
-   protected abstract void parentDamage(ServerWorld var1, DamageSource var2, float var3);
+   protected abstract void reallyHurt(ServerLevel var1, DamageSource var2, float var3);
 
-   @Inject(method = "initDataTracker", at = @At("TAIL"))
+   @Inject(method = "defineSynchedData", at = @At("TAIL"))
    private void mysticalterrain$defineState(Builder builder, CallbackInfo ci) {
-      builder.add(MYSTICALTERRAIN_STATE, 0);
+      builder.define(MYSTICALTERRAIN_STATE, 0);
    }
 
    @Override
    public DragonRework mysticalterrain$rework() {
       if (this.mysticalterrain$rework == null) {
-         this.mysticalterrain$rework = new DragonRework((EnderDragonEntity)(Object)this);
+         this.mysticalterrain$rework = new DragonRework((EnderDragon)(Object)this);
       }
 
       return this.mysticalterrain$rework;
@@ -64,110 +64,110 @@ public abstract class EnderDragonMixin extends MobEntity implements DragonRework
 
    @Override
    public int mysticalterrain$state() {
-      return (Integer)this.dataTracker.get(MYSTICALTERRAIN_STATE);
+      return (Integer)this.entityData.get(MYSTICALTERRAIN_STATE);
    }
 
    @Override
    public void mysticalterrain$setState(int state) {
-      this.dataTracker.set(MYSTICALTERRAIN_STATE, state);
+      this.entityData.set(MYSTICALTERRAIN_STATE, state);
    }
 
    @Override
-   public void mysticalterrain$reallyHurt(ServerWorld level, DamageSource source, float amount) {
-      this.parentDamage(level, source, amount);
+   public void mysticalterrain$reallyHurt(ServerLevel level, DamageSource source, float amount) {
+      this.reallyHurt(level, source, amount);
    }
 
-   @WrapOperation(method = "tickMovement", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/boss/dragon/phase/Phase;getPathTarget()Lnet/minecraft/util/math/Vec3d;"))
-   private Vec3d mysticalterrain$holdCourse(Phase phase, Operation<Vec3d> original) {
-      return !this.getEntityWorld().isClient() && this.mysticalterrain$rework().steering() ? null : (Vec3d)original.call(new Object[]{phase});
+   @WrapOperation(method = "aiStep", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/boss/enderdragon/phases/DragonPhaseInstance;getFlyTargetLocation()Lnet/minecraft/world/phys/Vec3;"))
+   private Vec3 mysticalterrain$holdCourse(DragonPhaseInstance phase, Operation<Vec3> original) {
+      return !this.level().isClientSide() && this.mysticalterrain$rework().steering() ? null : (Vec3)original.call(new Object[]{phase});
    }
 
-   @WrapOperation(method = "tickMovement", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/boss/dragon/phase/Phase;serverTick(Lnet/minecraft/server/world/ServerWorld;)V"))
-   private void mysticalterrain$holdPhase(Phase phase, ServerWorld level, Operation<Void> original) {
+   @WrapOperation(method = "aiStep", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/boss/enderdragon/phases/DragonPhaseInstance;doServerTick(Lnet/minecraft/server/level/ServerLevel;)V"))
+   private void mysticalterrain$holdPhase(DragonPhaseInstance phase, ServerLevel level, Operation<Void> original) {
       if (!this.mysticalterrain$rework().holdsPhase()) {
          original.call(new Object[]{phase, level});
       }
    }
 
    @WrapOperation(
-      method = "tickMovement",
-      at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/boss/dragon/EnderDragonEntity;launchLivingEntities(Lnet/minecraft/server/world/ServerWorld;Ljava/util/List;)V"),
+      method = "aiStep",
+      at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/boss/enderdragon/EnderDragon;knockBack(Lnet/minecraft/server/level/ServerLevel;Ljava/util/List;)V"),
       require = 0
    )
-   private void mysticalterrain$spareKnockBack(EnderDragonEntity self, ServerWorld level, List<Entity> hit, Operation<Void> original) {
+   private void mysticalterrain$spareKnockBack(EnderDragon self, ServerLevel level, List<Entity> hit, Operation<Void> original) {
       original.call(new Object[]{self, level, this.mysticalterrain$rework().spare(hit)});
    }
 
    @WrapOperation(
-      method = "tickMovement",
-      at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/boss/dragon/EnderDragonEntity;damageLivingEntities(Lnet/minecraft/server/world/ServerWorld;Ljava/util/List;)V"),
+      method = "aiStep",
+      at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/boss/enderdragon/EnderDragon;hurt(Lnet/minecraft/server/level/ServerLevel;Ljava/util/List;)V"),
       require = 0
    )
-   private void mysticalterrain$spareBite(EnderDragonEntity self, ServerWorld level, List<Entity> hit, Operation<Void> original) {
+   private void mysticalterrain$spareBite(EnderDragon self, ServerLevel level, List<Entity> hit, Operation<Void> original) {
       original.call(new Object[]{self, level, this.mysticalterrain$rework().spare(hit)});
    }
 
-   @Inject(method = "updatePostDeath", at = @At("HEAD"), cancellable = true)
+   @Inject(method = "tickDeath", at = @At("HEAD"), cancellable = true)
    private void mysticalterrain$customDeath(CallbackInfo ci) {
       ci.cancel();
-      if (this.getEntityWorld() instanceof ServerWorld server) {
+      if (this.level() instanceof ServerLevel server) {
          this.mysticalterrain$rework().customDeath(server);
       } else {
-         ((EnderDragonEntity)(Object)this).ticksSinceDeath++;
-         PositionInterpolator interpolation = this.getInterpolator();
+         ((EnderDragon)(Object)this).dragonDeathTime++;
+         InterpolationHandler interpolation = this.getInterpolation();
          if (interpolation != null) {
-            interpolation.tick();
+            interpolation.interpolate();
          }
       }
    }
 
    @WrapOperation(
-      method = "tickMovement",
-      at = @At(value = "INVOKE", target = "Lnet/minecraft/world/World;addParticle(Lnet/minecraft/particle/ParticleEffect;DDDDDD)V"),
+      method = "aiStep",
+      at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;addParticle(Lnet/minecraft/core/particles/ParticleOptions;DDDDDD)V"),
       require = 0
    )
    private void mysticalterrain$noVanillaDeathParticles(
-      World level, ParticleEffect p, double x, double y, double z, double dx, double dy, double dz, Operation<Void> original
+      Level level, ParticleOptions p, double x, double y, double z, double dx, double dy, double dz, Operation<Void> original
    ) {
-      if (!((EnderDragonEntity)(Object)this).isDead()) {
+      if (!((EnderDragon)(Object)this).isDeadOrDying()) {
          original.call(new Object[]{level, p, x, y, z, dx, dy, dz});
       }
    }
 
-   @Inject(method = "tickMovement", at = @At("HEAD"))
+   @Inject(method = "aiStep", at = @At("HEAD"))
    private void mysticalterrain$followNoAi(CallbackInfo ci) {
-      if (this.getEntityWorld().isClient() && this.isAiDisabled() && !this.isDead()) {
-         PositionInterpolator interpolation = this.getInterpolator();
+      if (this.level().isClientSide() && this.isNoAi() && !this.isDeadOrDying()) {
+         InterpolationHandler interpolation = this.getInterpolation();
          if (interpolation != null) {
-            interpolation.tick();
+            interpolation.interpolate();
          }
       }
    }
 
-   @Inject(method = "tickMovement", at = @At("TAIL"))
+   @Inject(method = "aiStep", at = @At("TAIL"))
    private void mysticalterrain$tickRework(CallbackInfo ci) {
-      if (this.getEntityWorld() instanceof ServerWorld server && !this.isAiDisabled()) {
+      if (this.level() instanceof ServerLevel server && !this.isNoAi()) {
          this.mysticalterrain$rework().tick(server);
       }
    }
 
-   @Inject(method = "damagePart", at = @At("HEAD"), cancellable = true)
-   private void mysticalterrain$hurt(ServerWorld level, EnderDragonPart part, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
+   @Inject(method = "hurt(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/entity/boss/enderdragon/EnderDragonPart;Lnet/minecraft/world/damagesource/DamageSource;F)Z", at = @At("HEAD"), cancellable = true)
+   private void mysticalterrain$hurt(ServerLevel level, EnderDragonPart part, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
       cir.setReturnValue(this.mysticalterrain$rework().hurt(level, part, source, amount));
    }
 
-   @Inject(method = "crystalDestroyed", at = @At("HEAD"))
-   private void mysticalterrain$crystalDestroyed(ServerWorld level, EndCrystalEntity crystal, BlockPos pos, DamageSource source, CallbackInfo ci) {
+   @Inject(method = "onCrystalDestroyed", at = @At("HEAD"))
+   private void mysticalterrain$crystalDestroyed(ServerLevel level, EndCrystal crystal, BlockPos pos, DamageSource source, CallbackInfo ci) {
       this.mysticalterrain$rework().onCrystalDestroyed(level, crystal, source);
    }
 
-   @Inject(method = "writeCustomData", at = @At("TAIL"))
-   private void mysticalterrain$save(WriteView output, CallbackInfo ci) {
+   @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
+   private void mysticalterrain$save(ValueOutput output, CallbackInfo ci) {
       this.mysticalterrain$rework().save(output);
    }
 
-   @Inject(method = "readCustomData", at = @At("TAIL"))
-   private void mysticalterrain$load(ReadView input, CallbackInfo ci) {
+   @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
+   private void mysticalterrain$load(ValueInput input, CallbackInfo ci) {
       this.mysticalterrain$rework().load(input);
    }
 }

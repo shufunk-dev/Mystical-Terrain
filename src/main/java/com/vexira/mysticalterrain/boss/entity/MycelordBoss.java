@@ -17,38 +17,38 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.BlockPos.MutableBlockPos;
+import net.minecraft.core.Direction.Axis;
+import net.minecraft.core.Holder;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.BossEvent.BossBarColor;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier.Builder;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import java.util.Map.Entry;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.attribute.DefaultAttributeContainer.Builder;
-import net.minecraft.entity.boss.BossBar.Color;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.tag.DamageTypeTags;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.BlockPos.Mutable;
-import net.minecraft.util.math.Direction.Axis;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.World;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
 
 public class MycelordBoss extends MysticalBoss {
    private static final BossSounds SOUNDS = BossSounds.of("mycelord");
@@ -78,35 +78,35 @@ public class MycelordBoss extends MysticalBoss {
    private final List<MycelordBoss.Patch> patches = new ArrayList<>();
    private final List<MycelordBoss.Mine> mines = new ArrayList<>();
    private final List<MycelordBoss.Strip> strips = new ArrayList<>();
-   private final List<Vec3d> rings = new ArrayList<>();
+   private final List<Vec3> rings = new ArrayList<>();
    private double ringRadius = 2.2;
-   private @Nullable Vec3d fogAt;
-   private List<Vec3d> fogRings = List.of();
+   private @Nullable Vec3 fogAt;
+   private List<Vec3> fogRings = List.of();
    private double fogRingRadius = 2.2;
    private int fogUntil;
    private int stormNext = -1;
    private int vortexNext;
    private int wardPulse;
-   private Vec3d anchor = Vec3d.ZERO;
+   private Vec3 anchor = Vec3.ZERO;
    private float anchorYaw;
-   private final Vec3d[] impaleFrom = new Vec3d[4];
-   private final List<Vec3d> blightSpots = new ArrayList<>();
+   private final Vec3[] impaleFrom = new Vec3[4];
+   private final List<Vec3> blightSpots = new ArrayList<>();
    private @Nullable LivingEntity grabbed;
-   private Vec3d grabSpot = Vec3d.ZERO;
+   private Vec3 grabSpot = Vec3.ZERO;
    private boolean vaulting;
-   private Vec3d vaultFrom = Vec3d.ZERO;
-   private Vec3d vaultTo = Vec3d.ZERO;
+   private Vec3 vaultFrom = Vec3.ZERO;
+   private Vec3 vaultTo = Vec3.ZERO;
    private double vaultApex = 3.0;
-   private @Nullable Vec3d snareAt;
-   private @Nullable Vec3d boltAim;
-   private @Nullable Vec3d geyserNext;
-   private @Nullable Vec3d crownAt;
+   private @Nullable Vec3 snareAt;
+   private @Nullable Vec3 boltAim;
+   private @Nullable Vec3 geyserNext;
+   private @Nullable Vec3 crownAt;
    private @Nullable LivingEntity sporefallMark;
    private float torrentHalf = 30.0F;
    private double torrentRange = 12.0;
    private boolean underground;
    private int burrowTicks;
-   private @Nullable Vec3d emergeAt;
+   private @Nullable Vec3 emergeAt;
    private boolean pendingDesperation;
    private int phaseSeen;
    private int lonely;
@@ -119,8 +119,8 @@ public class MycelordBoss extends MysticalBoss {
       return MysticalBoss.bossAttributes(960.0, 16.0, 0.22, 12.0);
    }
 
-   public MycelordBoss(EntityType<? extends HostileEntity> type, World level) {
-      super(type, level, "mycelord", Color.BLUE);
+   public MycelordBoss(EntityType<? extends Monster> type, Level level) {
+      super(type, level, "mycelord", BossBarColor.BLUE);
    }
 
    @Override
@@ -224,7 +224,7 @@ public class MycelordBoss extends MysticalBoss {
             .hit((b, level, t, i) -> {
                for (LivingEntity e : this.sector(level, this.anchor, this.anchorYaw, 65.0F, 6.5)) {
                   this.physical(level, e, 18.0F);
-                  this.shove(e, this.getEntityPos(), 1.1, 0.35);
+                  this.shove(e, this.position(), 1.1, 0.35);
                   Vfx.impact(level, mid(e), this.pal(), 0.7);
                }
 
@@ -250,18 +250,18 @@ public class MycelordBoss extends MysticalBoss {
                Vfx.telegraphCone(level, this.anchor, this.anchorYaw, 45.0F, 6.0, 10, this.pal());
             })
             .hit((b, level, t, i) -> {
-               Vec3d hand = this.local(1.2, 1.8, 1.0);
+               Vec3 hand = this.local(1.2, 1.8, 1.0);
 
                for (LivingEntity e : this.sector(level, this.anchor, this.anchorYaw, 45.0F, 6.0)) {
-                  boolean guarded = e.getBlockingItem() != null;
+                  boolean guarded = e.getItemBlockingWith() != null;
                   this.physical(level, e, 16.0F);
                   if (!guarded) {
-                     this.afflict(e, StatusEffects.WITHER, 60, 0);
+                     this.afflict(e, MobEffects.WITHER, 60, 0);
                      this.infest(level, e, 1);
                   }
 
-                  if (e.getEntityPos().subtract(this.getEntityPos()).horizontalLength() > 2.5) {
-                     this.shove(e, this.getEntityPos(), -0.9, 0.15);
+                  if (e.position().subtract(this.position()).horizontalDistance() > 2.5) {
+                     this.shove(e, this.position(), -0.9, 0.15);
                   }
                }
 
@@ -271,7 +271,7 @@ public class MycelordBoss extends MysticalBoss {
             .end((b, level, t, i) -> {
                this.guard(i);
                if (i == -1) {
-                  this.chainTick = this.age;
+                  this.chainTick = this.tickCount;
                }
             })
       );
@@ -309,7 +309,7 @@ public class MycelordBoss extends MysticalBoss {
             .lockFacing()
             .superArmor()
             .telegraph(0.0, 1.45)
-            .when((b, t) -> this.age - this.chainTick <= 1)
+            .when((b, t) -> this.tickCount - this.chainTick <= 1)
             .start((b, level, t, i) -> {
                this.begin();
                this.aim(t, 12, 90.0F);
@@ -319,7 +319,7 @@ public class MycelordBoss extends MysticalBoss {
             .tick((b, level, t, tick) -> {
                if (tick == 19) {
                   Vfx.smoke(level, this.local(2.5, 0.3, 0.0), this.pal().smoke(), 6, 1.2, 0.8);
-                  Vfx.shake(level, this.getEntityPos(), 16.0, 0.25, 4);
+                  Vfx.shake(level, this.position(), 16.0, 0.25, 4);
                } else if (tick >= 20 && tick <= 28 && tick % 2 == 0) {
                   Vfx.gather(level, this.local(0.0, 5.2, 0.0), this.pal(), 3.0, 8);
                }
@@ -342,7 +342,7 @@ public class MycelordBoss extends MysticalBoss {
                Vfx.telegraphCircle(level, this.feet(level), 5.0, 14, this.pal());
             })
             .hit((b, level, t, i) -> {
-               Vec3d f = this.feet(level);
+               Vec3 f = this.feet(level);
                if (i == 0) {
                   BossFx.slam(level, this, f, 5.0, 22.0F, 1.2);
                   Vfx.heavyImpact(level, f, this.pal(), 1.0);
@@ -370,22 +370,22 @@ public class MycelordBoss extends MysticalBoss {
             .start((b, level, t, i) -> {
                this.begin();
                this.anchor = this.feet(level);
-               this.anchorYaw = this.getYaw() + 180.0F;
+               this.anchorYaw = this.getYRot() + 180.0F;
                Vfx.telegraphCone(level, this.anchor, this.anchorYaw, 70.0F, 7.0, 9, this.pal());
                Vfx.chargeUp(level, this.sacs(), this.pal(), 9);
             })
             .hit((b, level, t, i) -> {
-               Vec3d sacs = this.local(0.2, 4.0, 0.0);
+               Vec3 sacs = this.local(0.2, 4.0, 0.0);
 
                for (LivingEntity e : this.sector(level, this.anchor, this.anchorYaw, 70.0F, 7.0)) {
                   this.magic(level, e, 20.0F);
-                  this.afflict(e, StatusEffects.POISON, 60, 1);
+                  this.afflict(e, MobEffects.POISON, 60, 1);
                   this.infest(level, e, 2);
-                  this.shove(e, this.getEntityPos(), 1.3, 0.4);
+                  this.shove(e, this.position(), 1.3, 0.4);
                }
 
                Vfx.explosion(level, sacs, this.pal(), 2.0);
-               Vfx.streaks(level, sacs, this.fwd().multiply(-1.0), this.pal(), 12);
+               Vfx.streaks(level, sacs, this.fwd().scale(-1.0), this.pal(), 12);
                Vfx.smoke(level, sacs, this.pal().smoke(), 12, 2.0, 2.0);
             })
             .end((b, level, t, i) -> this.guard(i))
@@ -408,20 +408,20 @@ public class MycelordBoss extends MysticalBoss {
                this.aim(t, 8, 90.0F);
                this.setAnchor(level, 1.5);
                Vfx.telegraphCone(level, this.anchor, this.anchorYaw, 30.0F, 6.5, 11, this.pal());
-               this.grabSpot = this.groundAt(level, this.feet(level).add(dirOf(this.anchorYaw).multiply(3.5)), 6);
+               this.grabSpot = this.groundAt(level, this.feet(level).add(dirOf(this.anchorYaw).scale(3.5)), 6);
                Vfx.telegraphCircle(level, this.grabSpot, 3.5, 32, this.pal());
             })
             .tick((b, level, t, tick) -> {
                LivingEntity g = this.grabbed;
                if (g != null && tick >= 12 && tick <= 31) {
-                  if (g.isAlive() && g.getEntityWorld() == this.getEntityWorld() && !(g.squaredDistanceTo(this) > 144.0)) {
+                  if (g.isAlive() && g.level() == this.level() && !(g.distanceToSqr(this) > 144.0)) {
                      double k = Math.min(1.0, (tick - 11) / 13.0);
-                     Vec3d hand = this.local(3.6 - 2.0 * k, 0.9 + 3.3 * k, 0.6);
-                     g.setVelocity(hand.subtract(g.getEntityPos()).multiply(0.6));
-                     g.knockedBack = true;
-                     g.onLanding();
+                     Vec3 hand = this.local(3.6 - 2.0 * k, 0.9 + 3.3 * k, 0.6);
+                     g.setDeltaMovement(hand.subtract(g.position()).scale(0.6));
+                     g.syncVelocity = true;
+                     g.resetFallDistance();
                      if (tick % 10 == 0) {
-                        this.afflict(g, StatusEffects.WITHER, 40, 1);
+                        this.afflict(g, MobEffects.WITHER, 40, 1);
                         this.infest(level, g, 1);
                      }
 
@@ -438,12 +438,12 @@ public class MycelordBoss extends MysticalBoss {
                   this.grab(level);
                } else {
                   LivingEntity g = this.grabbed;
-                  Vec3d at = this.grabSpot;
+                  Vec3 at = this.grabSpot;
                   if (g != null && g.isAlive()) {
-                     g.requestTeleport(at.x, at.y + 0.1, at.z);
-                     g.setVelocity(Vec3d.ZERO);
+                     g.teleportTo(at.x, at.y + 0.1, at.z);
+                     g.setDeltaMovement(Vec3.ZERO);
                      this.physical(level, g, 28.0F);
-                     this.afflict(g, StatusEffects.SLOWNESS, 40, 2);
+                     this.afflict(g, MobEffects.SLOWNESS, 40, 2);
                      this.infest(level, g, 2);
                   }
 
@@ -455,7 +455,7 @@ public class MycelordBoss extends MysticalBoss {
 
                   this.releaseGrab();
                   if (g != null && g.isAlive()) {
-                     this.shove(g, this.getEntityPos(), 0.4, 0.8);
+                     this.shove(g, this.position(), 0.4, 0.8);
                   }
 
                   Vfx.heavyImpact(level, at, this.pal(), 1.3);
@@ -490,15 +490,15 @@ public class MycelordBoss extends MysticalBoss {
                } else {
                   if (tick > 10 && tick <= 30 && this.vaulting) {
                      double s = (tick - 10) / 20.0;
-                     Vec3d p = this.vaultFrom.lerp(this.vaultTo, s).add(0.0, this.vaultApex * 4.0 * s * (1.0 - s), 0.0);
-                     Vec3d v = p.subtract(this.getEntityPos());
-                     if (v.lengthSquared() > 9.0) {
-                        v = v.normalize().multiply(3.0);
+                     Vec3 p = this.vaultFrom.lerp(this.vaultTo, s).add(0.0, this.vaultApex * 4.0 * s * (1.0 - s), 0.0);
+                     Vec3 v = p.subtract(this.position());
+                     if (v.lengthSqr() > 9.0) {
+                        v = v.normalize().scale(3.0);
                      }
 
-                     this.setVelocity(v);
-                     if (v.horizontalLengthSquared() > 0.0025) {
-                        this.face((float)(MathHelper.atan2(v.z, v.x) * 180.0F / (float)Math.PI) - 90.0F);
+                     this.setDeltaMovement(v);
+                     if (v.horizontalDistanceSqr() > 0.0025) {
+                        this.face((float)(Mth.atan2(v.z, v.x) * 180.0F / (float)Math.PI) - 90.0F);
                      }
 
                      if (tick % 2 == 0) {
@@ -539,7 +539,7 @@ public class MycelordBoss extends MysticalBoss {
             })
             .tick((b, level, t, tick) -> {
                if (tick >= 4 && tick <= 22 && tick % 4 == 0) {
-                  Vec3d f = this.feet(level);
+                  Vec3 f = this.feet(level);
                   Vfx.debris(level, f, Vfx.Debris.ASH, this.pal().smoke(), 8, 0.2);
                   Vfx.smoke(level, f, this.pal().smoke(), 4, 1.5, 0.6);
                }
@@ -574,7 +574,7 @@ public class MycelordBoss extends MysticalBoss {
             .combo("rot_grasp", 0.2F)
             .start((b, level, t, i) -> this.begin())
             .hit((b, level, t, i) -> {
-               Vec3d f = this.feet(level);
+               Vec3 f = this.feet(level);
 
                for (LivingEntity e : this.column(level, f, 4.5, 1.5, 4.0)) {
                   this.physical(level, e, 30.0F);
@@ -588,7 +588,7 @@ public class MycelordBoss extends MysticalBoss {
                if (this.phase() >= 2) {
                   for (int k = 0; k < 6; k++) {
                      double a = k * Math.PI / 3.0 + this.getRandom().nextDouble() * 0.3;
-                     Vec3d s = this.groundAt(level, f.add(Math.cos(a) * 6.0, 0.0, Math.sin(a) * 6.0), 6);
+                     Vec3 s = this.groundAt(level, f.add(Math.cos(a) * 6.0, 0.0, Math.sin(a) * 6.0), 6);
                      Vfx.telegraphCircle(level, s, 1.3, 8, this.pal());
                      this.later(8, () -> {
                         for (LivingEntity e : this.column(level, s, 1.3, 1.0, 3.0)) {
@@ -620,35 +620,35 @@ public class MycelordBoss extends MysticalBoss {
             })
             .tick((b, level, t, tick) -> {
                if (tick == 3 && t != null) {
-                  Vec3d at = this.groundAt(level, this.predict(t, 14.0), 40);
+                  Vec3 at = this.groundAt(level, this.predict(t, 14.0), 40);
                   this.snareAt = at;
                   Vfx.telegraphCircle(level, at, 2.2, 14, this.pal());
-                  Vec3d f = this.feet(level);
-                  Vec3d d = at.subtract(f).getHorizontal();
-                  if (d.lengthSquared() > 0.01) {
+                  Vec3 f = this.feet(level);
+                  Vec3 d = at.subtract(f).horizontal();
+                  if (d.lengthSqr() > 0.01) {
                      Vfx.telegraphLine(level, f, d.normalize(), d.length(), 1.2, 14, this.pal());
                   }
                }
             })
             .hit((b, level, t, i) -> {
-               Vec3d at = this.snareAt;
+               Vec3 at = this.snareAt;
                if (at != null) {
                   for (LivingEntity e : this.column(level, at, 2.2, 1.0, 8.0)) {
                      this.magic(level, e, 14.0F);
-                     this.afflict(e, StatusEffects.SLOWNESS, 25, 6);
+                     this.afflict(e, MobEffects.SLOWNESS, 25, 6);
                      this.infest(level, e, 1);
-                     if (e.isGliding()) {
-                        e.stopGliding();
+                     if (e.isFallFlying()) {
+                        e.stopFallFlying();
                      }
 
-                     Vfx.beam(level, this.local(0.6, 1.5, 1.5), e.getEntityPos().add(0.0, 1.0, 0.0), this.pal(), 0.35, 12);
+                     Vfx.beam(level, this.local(0.6, 1.5, 1.5), e.position().add(0.0, 1.0, 0.0), this.pal(), 0.35, 12);
 
                      for (int k = 1; k <= 8; k++) {
                         this.later(k, () -> {
-                           if (e.isAlive() && !(e.getEntityPos().subtract(this.getEntityPos()).horizontalLength() <= 3.5)) {
-                              Vec3d v = this.getEntityPos().subtract(e.getEntityPos()).getHorizontal().normalize().multiply(0.9);
-                              e.setVelocity(v.x, 0.12, v.z);
-                              e.knockedBack = true;
+                           if (e.isAlive() && !(e.position().subtract(this.position()).horizontalDistance() <= 3.5)) {
+                              Vec3 v = this.position().subtract(e.position()).horizontal().normalize().scale(0.9);
+                              e.setDeltaMovement(v.x, 0.12, v.z);
+                              e.syncVelocity = true;
                            }
                         });
                      }
@@ -671,11 +671,11 @@ public class MycelordBoss extends MysticalBoss {
             .hit((b, level, t, i) -> {
                if (t != null) {
                   int n = (this.phase() == 0 ? 1 : 2) + (this.enraged() ? 1 : 0);
-                  Vec3d first = this.groundAt(level, this.predict(t, 20.0), 24);
-                  Vec3d from = this.local(3.3, 2.2, 0.15);
+                  Vec3 first = this.groundAt(level, this.predict(t, 20.0), 24);
+                  Vec3 from = this.local(3.3, 2.2, 0.15);
 
                   for (int k = 0; k < n; k++) {
-                     Vec3d at = k == 0 ? first : this.groundAt(level, BossFx.around(level, this, first, 2.5, 5.0), 6);
+                     Vec3 at = k == 0 ? first : this.groundAt(level, BossFx.around(level, this, first, 2.5, 5.0), 6);
                      this.lob(level, from, at);
                      if (this.phase() >= 2 && k % 2 == 0) {
                         this.later(21, () -> this.addMine(level, at));
@@ -702,7 +702,7 @@ public class MycelordBoss extends MysticalBoss {
                boolean bloom = this.phase() >= 3;
                this.torrentHalf = bloom ? 40.0F : 30.0F;
                this.torrentRange = bloom ? 14.0 : 12.0;
-               Vfx.telegraphCone(level, this.feet(level), this.getYaw(), this.torrentHalf, this.torrentRange, 20, this.pal());
+               Vfx.telegraphCone(level, this.feet(level), this.getYRot(), this.torrentHalf, this.torrentRange, 20, this.pal());
             })
             .tick((b, level, t, tick) -> {
                if (tick >= 21 && tick <= 39 && t != null) {
@@ -710,27 +710,27 @@ public class MycelordBoss extends MysticalBoss {
                }
             })
             .hit((b, level, t, i) -> {
-               Vec3d f = this.feet(level);
-               float yaw = this.getYaw();
+               Vec3 f = this.feet(level);
+               float yaw = this.getYRot();
 
                for (LivingEntity e : this.sector(level, f, yaw, this.torrentHalf, this.torrentRange)) {
                   this.magic(level, e, 9.0F);
-                  this.afflict(e, StatusEffects.NAUSEA, 100, 0);
-                  this.afflict(e, StatusEffects.POISON, 40, 0);
+                  this.afflict(e, MobEffects.NAUSEA, 100, 0);
+                  this.afflict(e, MobEffects.POISON, 40, 0);
                   this.infest(level, e, 1);
                }
 
-               Vec3d fw = dirOf(yaw);
-               Vec3d maw = this.maw();
+               Vec3 fw = dirOf(yaw);
+               Vec3 maw = this.maw();
                Vfx.streaks(level, maw, fw.add(0.0, -0.25, 0.0), this.pal(), 14);
-               Vfx.smoke(level, maw.add(fw.multiply(this.torrentRange * 0.5)), this.pal().smoke(), 10, this.torrentRange * 0.35, 1.2);
-               Vfx.debris(level, maw.add(fw.multiply(3.0)), Vfx.Debris.ASH, this.pal().glow(), 12, 0.5);
+               Vfx.smoke(level, maw.add(fw.scale(this.torrentRange * 0.5)), this.pal().smoke(), 10, this.torrentRange * 0.35, 1.2);
+               Vfx.debris(level, maw.add(fw.scale(3.0)), Vfx.Debris.ASH, this.pal().glow(), 12, 0.5);
                double spreadK = Math.tan(Math.toRadians(this.torrentHalf)) * 0.5;
 
                for (int k = 1; k <= 6; k++) {
                   double along = this.torrentRange * k / 6.5;
-                  Vec3d p = f.add(fw.multiply(along)).add(0.0, 1.0 + 2.5 * (1.0 - k / 6.0), 0.0);
-                  level.spawnParticles(ParticleTypes.WARPED_SPORE, p.x, p.y, p.z, 5, along * spreadK, 0.4, along * spreadK, 0.02);
+                  Vec3 p = f.add(fw.scale(along)).add(0.0, 1.0 + 2.5 * (1.0 - k / 6.0), 0.0);
+                  level.sendParticles(ParticleTypes.WARPED_SPORE, p.x, p.y, p.z, 5, along * spreadK, 0.4, along * spreadK, 0.02);
                }
             })
             .end((b, level, t, i) -> this.guard(i))
@@ -748,27 +748,27 @@ public class MycelordBoss extends MysticalBoss {
                Vfx.chargeUp(level, this.maw(), this.pal(), 7);
                this.boltAim = null;
                if (t != null) {
-                  Vec3d aimAt = this.predict(t, Math.sqrt(this.squaredDistanceTo(t)) / 2.2);
+                  Vec3 aimAt = this.predict(t, Math.sqrt(this.distanceToSqr(t)) / 2.2);
                   this.boltAim = aimAt;
-                  Vec3d f = this.feet(level);
-                  Vec3d d = aimAt.subtract(f).getHorizontal();
-                  if (d.lengthSquared() > 0.01) {
+                  Vec3 f = this.feet(level);
+                  Vec3 d = aimAt.subtract(f).horizontal();
+                  if (d.lengthSqr() > 0.01) {
                      Vfx.telegraphLine(level, f, d.normalize(), d.length(), 0.8, 7, this.pal());
                   }
                }
             })
             .hit(
                (b, level, t, i) -> {
-                  Vec3d aimAt = this.boltAim;
+                  Vec3 aimAt = this.boltAim;
                   if (aimAt != null) {
-                     Vec3d maw = this.maw();
-                     Vec3d dir = aimAt.add(0.0, 1.0, 0.0).subtract(maw).normalize();
+                     Vec3 maw = this.maw();
+                     Vec3 dir = aimAt.add(0.0, 1.0, 0.0).subtract(maw).normalize();
                      int shots = this.phase() >= 2 ? 3 : 1;
 
                      for (int k = 0; k < shots; k++) {
-                        Vec3d d = k == 0 ? dir : dir.rotateY((float)Math.toRadians(k == 1 ? 6.0 : -6.0));
-                        BossBolt.shoot(level, this, BossBolt.Style.SPORE, maw, d.multiply(2.2), this.dmg(16.0F))
-                           .effect(new StatusEffectInstance(StatusEffects.BLINDNESS, 60, 0))
+                        Vec3 d = k == 0 ? dir : dir.yRot((float)Math.toRadians(k == 1 ? 6.0 : -6.0));
+                        BossBolt.shoot(level, this, BossBolt.Style.SPORE, maw, d.scale(2.2), this.dmg(16.0F))
+                           .effect(new MobEffectInstance(MobEffects.BLINDNESS, 60, 0))
                            .life(30);
                      }
 
@@ -795,15 +795,15 @@ public class MycelordBoss extends MysticalBoss {
             .tick((b, level, t, tick) -> {
                if (this.phase() >= 2 && t != null) {
                   if (tick == 4) {
-                     Vec3d g = this.groundAt(level, this.predict(t, 22.0), 40);
+                     Vec3 g = this.groundAt(level, this.predict(t, 22.0), 40);
                      this.geyserNext = g;
                      this.geyserMark(level, g, 18);
                      this.later(18, () -> this.geyser(level, g));
                   } else if (tick == 8 && this.geyserNext != null) {
-                     Vec3d v = this.ctx().target == t ? this.ctx().targetVelocity.getHorizontal() : t.getVelocity().getHorizontal();
-                     Vec3d d = v.lengthSquared() > 0.001 ? v.normalize() : this.geyserNext.subtract(this.getEntityPos()).getHorizontal();
-                     d = d.lengthSquared() > 1.0E-4 ? d.normalize() : this.fwd();
-                     Vec3d g = this.groundAt(level, this.geyserNext.add(d.multiply(4.0)), 40);
+                     Vec3 v = this.ctx().target == t ? this.ctx().targetVelocity.horizontal() : t.getDeltaMovement().horizontal();
+                     Vec3 d = v.lengthSqr() > 0.001 ? v.normalize() : this.geyserNext.subtract(this.position()).horizontal();
+                     d = d.lengthSqr() > 1.0E-4 ? d.normalize() : this.fwd();
+                     Vec3 g = this.groundAt(level, this.geyserNext.add(d.scale(4.0)), 40);
                      this.geyserMark(level, g, 18);
                      this.later(18, () -> this.geyser(level, g));
                   }
@@ -825,39 +825,39 @@ public class MycelordBoss extends MysticalBoss {
             .start((b, level, t, i) -> {
                this.begin();
                this.aim(t, 12, 90.0F);
-               this.anchorYaw = this.getYaw();
-               Vec3d f = this.feet(level);
-               Vec3d fw = dirOf(this.anchorYaw);
-               Vec3d left = dirOf(this.anchorYaw - 90.0F);
+               this.anchorYaw = this.getYRot();
+               Vec3 f = this.feet(level);
+               Vec3 fw = dirOf(this.anchorYaw);
+               Vec3 left = dirOf(this.anchorYaw - 90.0F);
 
                for (int k = 0; k < 4; k++) {
-                  Vec3d d = dirOf(this.anchorYaw + IMPALE_YAW[k]);
-                  this.impaleFrom[k] = this.groundAt(level, f.add(fw.multiply(IMPALE_AT[k][0])).add(left.multiply(IMPALE_AT[k][1])), 4);
+                  Vec3 d = dirOf(this.anchorYaw + IMPALE_YAW[k]);
+                  this.impaleFrom[k] = this.groundAt(level, f.add(fw.scale(IMPALE_AT[k][0])).add(left.scale(IMPALE_AT[k][1])), 4);
                   Vfx.telegraphLine(level, this.impaleFrom[k], d, IMPALE_LEN[k], 2.0, IMPALE_TICK[k], this.pal());
                }
             })
             .hit((b, level, t, i) -> {
-               Vec3d from = this.impaleFrom[i];
+               Vec3 from = this.impaleFrom[i];
                if (from != null) {
                   float yaw = this.anchorYaw + IMPALE_YAW[i];
-                  Vec3d d = dirOf(yaw);
+                  Vec3 d = dirOf(yaw);
                   double len = IMPALE_LEN[i];
 
                   for (LivingEntity e : this.rect(level, from, yaw, len, 1.3)) {
                      this.physical(level, e, 20.0F);
-                     this.shove(e, this.getEntityPos(), 0.2, 0.7);
+                     this.shove(e, this.position(), 0.2, 0.7);
                      this.infest(level, e, 1);
                   }
 
                   Vfx.groundCrack(level, from, 1.2, this.pal());
 
                   for (int s = 1; s <= (int)(len / 2.0); s++) {
-                     Vfx.pillar(level, this.groundAt(level, from.add(d.multiply(s * 2 - 1)), 4), this.pal(), 2.5, 0.5);
+                     Vfx.pillar(level, this.groundAt(level, from.add(d.scale(s * 2 - 1)), 4), this.pal(), 2.5, 0.5);
                   }
 
-                  Vfx.shards(level, from.add(d.multiply(5.0)).add(0.0, 0.6, 0.0), this.pal().glow(), 6, 0.35);
-                  Vfx.shards(level, from.add(d.multiply(len - 5.0)).add(0.0, 0.6, 0.0), this.pal().glow(), 6, 0.35);
-                  Vfx.groundCrack(level, this.groundAt(level, from.add(d.multiply(len / 2.0)), 4), 2.5, this.pal());
+                  Vfx.shards(level, from.add(d.scale(5.0)).add(0.0, 0.6, 0.0), this.pal().glow(), 6, 0.35);
+                  Vfx.shards(level, from.add(d.scale(len - 5.0)).add(0.0, 0.6, 0.0), this.pal().glow(), 6, 0.35);
+                  Vfx.groundCrack(level, this.groundAt(level, from.add(d.scale(len / 2.0)), 4), 2.5, this.pal());
                   if (this.phase() >= 3) {
                      this.addStrip(from, yaw, len, 60);
                   }
@@ -879,7 +879,7 @@ public class MycelordBoss extends MysticalBoss {
             .utility((b, t, c) -> (c.engagedPlayers >= 2 ? 1.4F : 1.0F) * (c.dist > 8.0 ? 1.3F : 1.0F))
             .start((b, level, t, i) -> {
                this.begin();
-               Vec3d f = this.feet(level);
+               Vec3 f = this.feet(level);
                Vfx.vortex(level, f, 16.0, 10.0, this.pal(), 60);
                Vfx.runeCircle(level, f, 5.0, this.pal(), 60, 0.08F);
             })
@@ -889,11 +889,11 @@ public class MycelordBoss extends MysticalBoss {
                }
             })
             .hit((b, level, t, i) -> {
-               Vec3d f = this.feet(level);
+               Vec3 f = this.feet(level);
 
                for (LivingEntity e : this.column(level, f, 16.0, 2.0, 5.0)) {
                   this.magic(level, e, 6.0F);
-                  this.afflict(e, StatusEffects.POISON, 40, 0);
+                  this.afflict(e, MobEffects.POISON, 40, 0);
                   this.infest(level, e, 1);
                }
 
@@ -901,7 +901,7 @@ public class MycelordBoss extends MysticalBoss {
                if (i == 3) {
                   for (LivingEntity e : this.column(level, f, 5.0, 2.0, 4.0)) {
                      this.magic(level, e, 18.0F);
-                     this.afflict(e, StatusEffects.SLOWNESS, 30, 1);
+                     this.afflict(e, MobEffects.SLOWNESS, 30, 1);
                   }
                }
             })
@@ -927,20 +927,20 @@ public class MycelordBoss extends MysticalBoss {
                }
 
                for (int tries = 0; this.blightSpots.size() < n && tries < n * 4; tries++) {
-                  Vec3d s = BossFx.around(level, this, this.getEntityPos(), 5.0, 16.0);
-                  if (spaced(s, this.blightSpots, 4.0) && s.subtract(this.getEntityPos()).horizontalLength() >= 3.0) {
+                  Vec3 s = BossFx.around(level, this, this.position(), 5.0, 16.0);
+                  if (spaced(s, this.blightSpots, 4.0) && s.subtract(this.position()).horizontalDistance() >= 3.0) {
                      this.blightSpots.add(s);
                   }
                }
 
-               for (Vec3d s : this.blightSpots) {
+               for (Vec3 s : this.blightSpots) {
                   Vfx.telegraphCircle(level, s, 3.0, 22, this.pal());
                }
             })
             .hit((b, level, t, i) -> {
                int life = this.patchLife();
 
-               for (Vec3d s : this.blightSpots) {
+               for (Vec3 s : this.blightSpots) {
                   for (LivingEntity e : this.column(level, s, 3.0, 1.0, 3.0)) {
                      this.magic(level, e, 16.0F);
                      this.infest(level, e, 1);
@@ -1014,7 +1014,7 @@ public class MycelordBoss extends MysticalBoss {
                this.begin();
                this.placeRings(level, 3, 8.0, 13.0, 2.2);
 
-               for (Vec3d r : this.rings) {
+               for (Vec3 r : this.rings) {
                   Vfx.ward(level, r, 2.2, P, 48);
                   Vfx.runeCircle(level, r, 2.2, P, 48, 0.05F, Vfx.Rune.ARCANE);
                }
@@ -1028,7 +1028,7 @@ public class MycelordBoss extends MysticalBoss {
                }
             })
             .hit((b, level, t, i) -> {
-               Vec3d f = this.feet(level);
+               Vec3 f = this.feet(level);
                Vfx.nova(level, this.local(0.0, 3.0, 0.0), ROT, 14.0);
                Vfx.heavyImpact(level, f, ROT, 2.5);
                Vfx.impactFrame(level, f, 40.0, 12602088, 0.6F);
@@ -1038,18 +1038,18 @@ public class MycelordBoss extends MysticalBoss {
                      this.infest(level, e, -2);
                   } else {
                      this.physical(level, e, 52.0F);
-                     this.afflict(e, StatusEffects.WITHER, 100, 1);
+                     this.afflict(e, MobEffects.WITHER, 100, 1);
                      this.infest(level, e, 3);
                      this.shove(e, f, 1.6, 0.5);
                   }
                }
 
-               for (Vec3d r : this.rings) {
+               for (Vec3 r : this.rings) {
                   Vfx.auraRing(level, r, P, 2.2);
                }
 
                if (this.phase() >= 3) {
-                  List<Vec3d> safe = List.copyOf(this.rings);
+                  List<Vec3> safe = List.copyOf(this.rings);
                   double rr = this.ringRadius;
                   this.later(1, () -> this.startFog(level, f, safe, rr));
                }
@@ -1073,7 +1073,7 @@ public class MycelordBoss extends MysticalBoss {
                this.begin();
                this.sporefallMark = t;
                this.crownAt = null;
-               if (t instanceof ServerPlayerEntity sp) {
+               if (t instanceof ServerPlayer sp) {
                   this.markTarget(sp, 90);
                }
 
@@ -1081,22 +1081,22 @@ public class MycelordBoss extends MysticalBoss {
             })
             .tick((b, level, t, tick) -> {
                if (tick >= 8 && tick <= 28 && tick % 4 == 0) {
-                  Vfx.streaks(level, this.local(0.0, 6.0, 0.0), new Vec3d(0.0, 1.0, 0.0), this.pal(), 10);
+                  Vfx.streaks(level, this.local(0.0, 6.0, 0.0), new Vec3(0.0, 1.0, 0.0), this.pal(), 10);
                }
             })
             .hit((b, level, t, i) -> {
                if (i < 4) {
-                  List<ServerPlayerEntity> players = this.engaged();
+                  List<ServerPlayer> players = this.engaged();
                   LivingEntity victim = !players.isEmpty() ? (LivingEntity)players.get(this.getRandom().nextInt(players.size())) : t;
 
                   for (int k = 0; k < 4; k++) {
-                     Vec3d at;
+                     Vec3 at;
                      if (k < 2 && victim != null) {
                         double a = this.getRandom().nextDouble() * Math.PI * 2.0;
                         double r = this.getRandom().nextDouble() * 1.5;
                         at = this.groundAt(level, this.predict(victim, 20.0).add(Math.cos(a) * r, 0.0, Math.sin(a) * r), 24);
                      } else {
-                        at = BossFx.around(level, this, this.getEntityPos(), 4.0, 18.0);
+                        at = BossFx.around(level, this, this.position(), 4.0, 18.0);
                      }
 
                      this.sporeMote(level, at);
@@ -1104,18 +1104,18 @@ public class MycelordBoss extends MysticalBoss {
 
                   if (i == 2) {
                      LivingEntity m = this.sporefallMark != null && this.sporefallMark.isAlive() ? this.sporefallMark : t;
-                     Vec3d c = m != null ? this.groundAt(level, this.predict(m, 24.0), 24) : this.feet(level);
+                     Vec3 c = m != null ? this.groundAt(level, this.predict(m, 24.0), 24) : this.feet(level);
                      this.crownAt = c;
                      Vfx.telegraphCircle(level, c, 5.5, 24, ROT);
                      Vfx.chargeUp(level, c.add(0.0, 12.0, 0.0), ROT, 24);
                   }
                } else {
-                  Vec3d c = this.crownAt;
+                  Vec3 c = this.crownAt;
                   if (c != null) {
                      BossFx.slam(level, this, c, 5.5, 48.0F, 1.5);
 
                      for (LivingEntity e : this.column(level, c, 5.5, 1.5, 4.0)) {
-                        this.afflict(e, StatusEffects.WITHER, 80, 0);
+                        this.afflict(e, MobEffects.WITHER, 80, 0);
                         this.infest(level, e, 2);
                      }
 
@@ -1148,11 +1148,11 @@ public class MycelordBoss extends MysticalBoss {
                this.rings.clear();
                int extra = Math.max(0, this.engaged().size() - 1);
                this.shield(this.getMaxHealth() * (0.04F + 0.03F * extra), 130);
-               Vec3d f = this.feet(level);
+               Vec3 f = this.feet(level);
                Vfx.shieldBubble(level, this.local(0.0, 3.0, 0.0), 4.5, ROT, 32);
                Vfx.telegraphCircle(level, f, 24.0, 120, ROT);
                Vfx.vortex(level, f, 20.0, 16.0, ROT, 120);
-               Vfx.screen(level, this.getEntityPos(), 48.0, 0.15, 120, ROT.smoke(), 0.3F);
+               Vfx.screen(level, this.position(), 48.0, 0.15, 120, ROT.smoke(), 0.3F);
             })
             .tick((b, level, t, tick) -> {
                if (tick % 30 == 0 && tick < 130 && this.shield() > 0.0F) {
@@ -1160,12 +1160,12 @@ public class MycelordBoss extends MysticalBoss {
                }
             })
             .hit((b, level, t, i) -> {
-               Vec3d f = this.feet(level);
+               Vec3 f = this.feet(level);
                switch (i) {
                   case 0:
                      this.placeRings(level, 3, 10.0, 16.0, 2.5);
 
-                     for (Vec3d r : this.rings) {
+                     for (Vec3 r : this.rings) {
                         Vfx.ward(level, r, 2.5, P, 90);
                         Vfx.runeCircle(level, r, 2.5, P, 90, 0.04F);
                      }
@@ -1184,7 +1184,7 @@ public class MycelordBoss extends MysticalBoss {
 
                      this.wave(level, f, 20.0, 30, 16.0F, 0.8);
 
-                     for (Vec3d r : this.rings) {
+                     for (Vec3 r : this.rings) {
                         Vfx.runeCircle(level, r, 2.5, ROT, 28, 0.12F);
                      }
                      break;
@@ -1194,8 +1194,8 @@ public class MycelordBoss extends MysticalBoss {
                            this.infest(level, e, -2);
                         } else {
                            this.physical(level, e, 66.0F);
-                           this.afflict(e, StatusEffects.WITHER, 160, 1);
-                           this.afflict(e, StatusEffects.DARKNESS, 100, 0);
+                           this.afflict(e, MobEffects.WITHER, 160, 1);
+                           this.afflict(e, MobEffects.DARKNESS, 100, 0);
                            this.infest(level, e, 5);
                         }
                      }
@@ -1223,7 +1223,7 @@ public class MycelordBoss extends MysticalBoss {
             .when((b, t) -> false)
             .start((b, level, t, i) -> this.begin())
             .hit((b, level, t, i) -> {
-               Vec3d f = this.feet(level);
+               Vec3 f = this.feet(level);
                BossFx.slam(level, this, f, 5.0, 8.0F, 1.4);
                Vfx.nova(level, this.local(0.0, 3.0, 0.0), ROT, 6.0);
                BossFx.wardShatter(level, this);
@@ -1234,17 +1234,17 @@ public class MycelordBoss extends MysticalBoss {
       );
    }
 
-   private void capCrash(ServerWorld level, double halfWidth, float base, double power) {
-      Vec3d dir = dirOf(this.anchorYaw);
+   private void capCrash(ServerLevel level, double halfWidth, float base, double power) {
+      Vec3 dir = dirOf(this.anchorYaw);
 
       for (LivingEntity e : this.rect(level, this.anchor, this.anchorYaw, 8.0, halfWidth)) {
          this.guardBreak(level, e, 100);
          this.physical(level, e, base);
-         this.afflict(e, StatusEffects.NAUSEA, 60, 0);
-         this.shove(e, this.getEntityPos(), 0.8, 0.6);
+         this.afflict(e, MobEffects.NAUSEA, 60, 0);
+         this.shove(e, this.position(), 0.8, 0.6);
       }
 
-      Vec3d at = this.groundAt(level, this.anchor.add(dir.multiply(1.5)), 6);
+      Vec3 at = this.groundAt(level, this.anchor.add(dir.scale(1.5)), 6);
       Vfx.heavyImpact(level, at, this.pal(), power);
       Vfx.groundCrack(level, at, 4.0, this.pal());
       Vfx.smoke(level, at, this.pal().smoke(), 10, 2.0, 1.5);
@@ -1257,27 +1257,27 @@ public class MycelordBoss extends MysticalBoss {
       if (this.phase() >= 3) {
          for (int s = -1; s <= 1; s += 2) {
             float yaw = this.anchorYaw + 25 * s;
-            Vec3d d = dirOf(yaw);
+            Vec3 d = dirOf(yaw);
             this.later(6, () -> Vfx.telegraphLine(level, at, d, 8.0, 1.4, 6, ROT));
             this.later(12, () -> {
                for (LivingEntity e : this.rect(level, at, yaw, 8.0, 1.0)) {
                   this.physical(level, e, 14.0F);
                }
 
-               Vfx.groundCrack(level, this.groundAt(level, at.add(d.multiply(4.0)), 4), 3.0, ROT);
+               Vfx.groundCrack(level, this.groundAt(level, at.add(d.scale(4.0)), 4), 3.0, ROT);
             });
          }
       }
    }
 
-   private void grab(ServerWorld level) {
-      Vec3d hand = this.local(3.3, 2.35, 0.1);
-      Vec3d f = dirOf(this.anchorYaw);
+   private void grab(ServerLevel level) {
+      Vec3 hand = this.local(3.3, 2.35, 0.1);
+      Vec3 f = dirOf(this.anchorYaw);
       LivingEntity best = null;
       double bestOff = Double.MAX_VALUE;
 
       for (LivingEntity e : this.sector(level, this.anchor, this.anchorYaw, 30.0F, 6.5)) {
-         if (e instanceof PlayerEntity) {
+         if (e instanceof Player) {
             double dx = e.getX() - this.anchor.x;
             double dz = e.getZ() - this.anchor.z;
             double off = Math.abs(dx * f.z - dz * f.x);
@@ -1299,17 +1299,17 @@ public class MycelordBoss extends MysticalBoss {
 
    private void releaseGrab() {
       if (this.grabbed != null) {
-         this.grabbed.onLanding();
+         this.grabbed.resetFallDistance();
          this.grabbed = null;
       }
    }
 
-   private void vaultLaunch(ServerWorld level, @Nullable LivingEntity t) {
-      Vec3d from = this.getEntityPos();
-      Vec3d to = from;
+   private void vaultLaunch(ServerLevel level, @Nullable LivingEntity t) {
+      Vec3 from = this.position();
+      Vec3 to = from;
       double apex = 3.0;
       if (t != null) {
-         Vec3d spot = this.landingSpot(level, t, 20);
+         Vec3 spot = this.landingSpot(level, t, 20);
          double a = this.vaultApex(level, from, spot);
          if (a > 0.0) {
             to = spot;
@@ -1321,7 +1321,7 @@ public class MycelordBoss extends MysticalBoss {
       this.vaultTo = to;
       this.vaultApex = apex;
       Vfx.telegraphCircle(level, to, 6.0, 20, this.pal());
-      Vec3d f = this.feet(level);
+      Vec3 f = this.feet(level);
       BossFx.slam(level, this, f, 3.5, 10.0F, 1.0);
       Vfx.explosion(level, f, this.pal(), 2.2);
       Vfx.pillar(level, f, this.pal(), 4.0, 1.2);
@@ -1330,16 +1330,16 @@ public class MycelordBoss extends MysticalBoss {
       this.vaulting = true;
    }
 
-   private void vaultLand(ServerWorld level) {
+   private void vaultLand(ServerLevel level) {
       this.setNoGravity(false);
       this.vaulting = false;
-      Vec3d to = this.vaultTo;
-      if (this.getEntityPos().distanceTo(to) <= 2.5 && this.fitsAt(level, to)) {
-         this.requestTeleport(to.x, to.y, to.z);
+      Vec3 to = this.vaultTo;
+      if (this.position().distanceTo(to) <= 2.5 && this.fitsAt(level, to)) {
+         this.teleportTo(to.x, to.y, to.z);
       }
 
-      this.setVelocity(Vec3d.ZERO);
-      Vec3d land = this.getEntityPos().distanceTo(to) <= 1.0 ? to : this.feet(level);
+      this.setDeltaMovement(Vec3.ZERO);
+      Vec3 land = this.position().distanceTo(to) <= 1.0 ? to : this.feet(level);
       BossFx.slam(level, this, land, 6.0, 36.0F, 1.6);
       Vfx.heavyImpact(level, land, this.pal(), 1.8);
       Vfx.groundCrack(level, land, 6.0, this.pal());
@@ -1352,9 +1352,9 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    private float vaultScore(@Nullable LivingEntity t, BossContext c) {
-      if (t != null && this.getEntityWorld() instanceof ServerWorld level) {
-         Vec3d spot = this.landingSpot(level, t, 20);
-         if (spot.subtract(this.getEntityPos()).horizontalLength() < 3.0 || this.vaultApex(level, this.getEntityPos(), spot) <= 0.0) {
+      if (t != null && this.level() instanceof ServerLevel level) {
+         Vec3 spot = this.landingSpot(level, t, 20);
+         if (spot.subtract(this.position()).horizontalDistance() < 3.0 || this.vaultApex(level, this.position(), spot) <= 0.0) {
             return 0.0F;
          } else if (c.targetUnreachable) {
             return 0.2F;
@@ -1366,16 +1366,16 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private Vec3d landingSpot(ServerWorld level, LivingEntity t, int lead) {
-      Vec3d from = this.getEntityPos();
-      Vec3d aim = this.predict(t, lead);
-      Vec3d d = aim.subtract(from).getHorizontal();
+   private Vec3 landingSpot(ServerLevel level, LivingEntity t, int lead) {
+      Vec3 from = this.position();
+      Vec3 aim = this.predict(t, lead);
+      Vec3 d = aim.subtract(from).horizontal();
       double len = Math.min(22.0, d.length());
       if (len < 0.5) {
          return from;
       }
 
-      Vec3d dir = d.normalize();
+      Vec3 dir = d.normalize();
 
       for (int k = 0; k < 12; k++) {
          double back = k * 1.5;
@@ -1383,8 +1383,8 @@ public class MycelordBoss extends MysticalBoss {
             break;
          }
 
-         Vec3d p = from.add(dir.multiply(len - back));
-         Vec3d g = this.groundAt(level, new Vec3d(p.x, aim.y, p.z), 12);
+         Vec3 p = from.add(dir.scale(len - back));
+         Vec3 g = this.groundAt(level, new Vec3(p.x, aim.y, p.z), 12);
          if (BossFx.safeGround(level, g, 3.0) && this.fitsAt(level, g)) {
             return g;
          }
@@ -1393,9 +1393,9 @@ public class MycelordBoss extends MysticalBoss {
       return from;
    }
 
-   private double vaultApex(ServerWorld level, Vec3d from, Vec3d to) {
+   private double vaultApex(ServerLevel level, Vec3 from, Vec3 to) {
       double rise = Math.max(0.0, to.y - from.y);
-      Box box = this.getBoundingBox().contract(0.1);
+      AABB box = this.getBoundingBox().deflate(0.1);
 
       for (int apex = 7; apex >= 3; apex--) {
          double a = apex + rise;
@@ -1403,8 +1403,8 @@ public class MycelordBoss extends MysticalBoss {
 
          for (int k = 1; k <= 3 && clear; k++) {
             double s = k * 0.25;
-            Vec3d p = from.lerp(to, s).add(0.0, a * 4.0 * s * (1.0 - s), 0.0);
-            clear = level.isSpaceEmpty(this, box.offset(p.x - this.getX(), p.y - this.getY(), p.z - this.getZ()));
+            Vec3 p = from.lerp(to, s).add(0.0, a * 4.0 * s * (1.0 - s), 0.0);
+            clear = level.noCollision(this, box.move(p.x - this.getX(), p.y - this.getY(), p.z - this.getZ()));
          }
 
          if (clear) {
@@ -1415,16 +1415,16 @@ public class MycelordBoss extends MysticalBoss {
       return -1.0;
    }
 
-   private void lob(ServerWorld level, Vec3d from, Vec3d at) {
+   private void lob(ServerLevel level, Vec3 from, Vec3 at) {
       int n = 20;
       double g = 0.05;
-      Vec3d aimAt = at.add(0.0, -0.2, 0.0);
-      Vec3d v = aimAt.subtract(from).multiply(1.0 / n).add(0.0, g * (n + 1) / 2.0, 0.0);
+      Vec3 aimAt = at.add(0.0, -0.2, 0.0);
+      Vec3 v = aimAt.subtract(from).scale(1.0 / n).add(0.0, g * (n + 1) / 2.0, 0.0);
       Vfx.telegraphCircle(level, at, 2.5, n, this.pal());
       BossBolt.shoot(level, this, BossBolt.Style.SPORE, from, v, this.dmg(14.0F))
          .gravity(g)
          .aoe(2.5)
-         .effect(new StatusEffectInstance(StatusEffects.POISON, 80, 1))
+         .effect(new MobEffectInstance(MobEffects.POISON, 80, 1))
          .life(n + 6);
       this.later(n, () -> {
          for (LivingEntity e : this.column(level, at, 2.5, 1.5, 3.0)) {
@@ -1433,42 +1433,42 @@ public class MycelordBoss extends MysticalBoss {
       });
    }
 
-   private void geyserMark(ServerWorld level, Vec3d g, int ticks) {
+   private void geyserMark(ServerLevel level, Vec3 g, int ticks) {
       Vfx.telegraphCircle(level, g, 2.5, ticks, this.pal());
       Vfx.beam(level, g, g.add(0.0, 22.0, 0.0), this.pal(), 0.12, ticks);
    }
 
-   private void geyser(ServerWorld level, Vec3d g) {
+   private void geyser(ServerLevel level, Vec3 g) {
       for (LivingEntity e : this.column(level, g, 2.5, 1.0, 22.0)) {
          this.physical(level, e, 24.0F);
-         if (e.isGliding()) {
-            e.stopGliding();
+         if (e.isFallFlying()) {
+            e.stopFallFlying();
          }
 
-         Vec3d v = e.getVelocity();
-         e.setVelocity(v.x * 0.2, -1.2, v.z * 0.2);
-         e.knockedBack = true;
-         this.afflict(e, StatusEffects.SLOWNESS, 60, 1);
+         Vec3 v = e.getDeltaMovement();
+         e.setDeltaMovement(v.x * 0.2, -1.2, v.z * 0.2);
+         e.syncVelocity = true;
+         this.afflict(e, MobEffects.SLOWNESS, 60, 1);
          this.infest(level, e, 2);
       }
 
       Vfx.pillar(level, g, this.pal(), 22.0, 2.2);
       Vfx.heavyImpact(level, g, this.pal(), 1.0);
-      Vfx.streaks(level, g, new Vec3d(0.0, 1.0, 0.0), this.pal(), 14);
+      Vfx.streaks(level, g, new Vec3(0.0, 1.0, 0.0), this.pal(), 14);
    }
 
-   private void sporeMote(ServerWorld level, Vec3d at) {
+   private void sporeMote(ServerLevel level, Vec3 at) {
       Vfx.telegraphCircle(level, at, 3.0, 20, this.pal());
 
       for (int k = 4; k <= 19; k += 2) {
          double h = 20 - k;
-         this.later(k, () -> Vfx.meteorTrail(level, at.add(0.0, h, 0.0), new Vec3d(0.0, -1.0, 0.0), this.pal()));
+         this.later(k, () -> Vfx.meteorTrail(level, at.add(0.0, h, 0.0), new Vec3(0.0, -1.0, 0.0), this.pal()));
       }
 
       this.later(20, () -> {
          for (LivingEntity e : this.column(level, at, 3.0, 1.0, 20.0)) {
             this.magic(level, e, 26.0F);
-            this.afflict(e, StatusEffects.POISON, 60, 1);
+            this.afflict(e, MobEffects.POISON, 60, 1);
             this.infest(level, e, 1);
          }
 
@@ -1476,7 +1476,7 @@ public class MycelordBoss extends MysticalBoss {
       });
    }
 
-   private void wave(ServerWorld level, Vec3d c, double maxR, int ticks, float base, double push) {
+   private void wave(ServerLevel level, Vec3 c, double maxR, int ticks, float base, double push) {
       Set<Integer> hit = new HashSet<>();
       Vfx.ring(level, c, this.pal().glow(), maxR, (int)(ticks * 1.3));
       Vfx.flare(level, c.add(0.0, 0.4, 0.0), this.pal().core(), 2.5, 6);
@@ -1492,13 +1492,13 @@ public class MycelordBoss extends MysticalBoss {
             if (step % 3 == 0) {
                for (int j = 0; j < 6; j++) {
                   double a = j * Math.PI / 3.0 + step * 0.3;
-                  level.spawnParticles(ParticleTypes.WARPED_SPORE, c.x + Math.cos(a) * r, c.y + 0.3, c.z + Math.sin(a) * r, 3, 0.3, 0.1, 0.3, 0.01);
+                  level.sendParticles(ParticleTypes.WARPED_SPORE, c.x + Math.cos(a) * r, c.y + 0.3, c.z + Math.sin(a) * r, 3, 0.3, 0.1, 0.3, 0.01);
                }
             }
 
             for (LivingEntity e : this.column(level, c, r + 1.0, 1.0, 3.0)) {
                double d = Math.sqrt(sq(e.getX() - c.x) + sq(e.getZ() - c.z));
-               if (Math.abs(d - r) < 1.0 && e.isOnGround() && hit.add(e.getId())) {
+               if (Math.abs(d - r) < 1.0 && e.onGround() && hit.add(e.getId())) {
                   this.physical(level, e, base);
                   this.shove(e, c, push, 0.4);
                }
@@ -1507,20 +1507,20 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void brood(ServerWorld level, int count, boolean fast) {
+   private void brood(ServerLevel level, int count, boolean fast) {
       EntityType<RealmMob> type = RealmMobs.type("sporeling");
       int n = Math.min(count, 8 - this.sporelingsNear());
       if (type != null && n > 0) {
          BossFx.summonMinions(level, this, type, n, 6.0, null, m -> {
             if (fast) {
-               m.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 600, 0));
+               m.addEffect(new MobEffectInstance(MobEffects.SPEED, 600, 0));
             }
          });
          this.countTick = -1;
       }
    }
 
-   private void summonShaman(ServerWorld level) {
+   private void summonShaman(ServerLevel level) {
       EntityType<RealmMob> type = RealmMobs.type("myconid_shaman");
       if (type != null && this.countNear("myconid_shaman") < 2) {
          BossFx.summonMinions(level, this, type, 1, 6.0, null, m -> {});
@@ -1528,8 +1528,8 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    private int sporelingsNear() {
-      if (this.countTick != this.age) {
-         this.countTick = this.age;
+      if (this.countTick != this.tickCount) {
+         this.countTick = this.tickCount;
          this.sporelingCount = this.countNear("sporeling");
       }
 
@@ -1537,43 +1537,43 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    private int countNear(String kind) {
-      return this.getEntityWorld().getEntitiesByClass(RealmMob.class, this.getBoundingBox().expand(24.0), e -> e.isAlive() && kind.equals(e.bossId())).size();
+      return this.level().getEntitiesOfClass(RealmMob.class, this.getBoundingBox().inflate(24.0), e -> e.isAlive() && kind.equals(e.bossId())).size();
    }
 
-   private void placeRings(ServerWorld level, int count, double minR, double maxR, double radius) {
+   private void placeRings(ServerLevel level, int count, double minR, double maxR, double radius) {
       this.rings.clear();
       this.ringRadius = radius;
-      Vec3d c = this.getEntityPos();
+      Vec3 c = this.position();
       double base = this.getRandom().nextDouble() * Math.PI * 2.0;
 
       for (int k = 0; k < count; k++) {
-         Vec3d pick = null;
-         Vec3d fallback = null;
+         Vec3 pick = null;
+         Vec3 fallback = null;
 
          for (int tries = 0; tries < 6 && pick == null; tries++) {
             double a = base + k * Math.PI * 2.0 / count + Math.toRadians(this.getRandom().nextDouble() * 40.0 - 20.0);
             double r = minR + this.getRandom().nextDouble() * (maxR - minR);
-            Vec3d at = this.groundAt(level, c.add(Math.cos(a) * r, 0.0, Math.sin(a) * r), 12);
+            Vec3 at = this.groundAt(level, c.add(Math.cos(a) * r, 0.0, Math.sin(a) * r), 12);
             if (fallback == null) {
                fallback = at;
             }
 
-            if (at.subtract(c).horizontalLength() >= 6.0 && BossFx.safeGround(level, at, 3.0) && spaced(at, this.rings, 5.0)) {
+            if (at.subtract(c).horizontalDistance() >= 6.0 && BossFx.safeGround(level, at, 3.0) && spaced(at, this.rings, 5.0)) {
                pick = at;
             }
          }
 
-         Vec3d at = pick != null ? pick : fallback;
+         Vec3 at = pick != null ? pick : fallback;
          if (at != null) {
             this.rings.add(at);
          }
       }
    }
 
-   private static boolean inRing(LivingEntity e, List<Vec3d> rings, double radius) {
+   private static boolean inRing(LivingEntity e, List<Vec3> rings, double radius) {
       double rr = (radius + 0.3) * (radius + 0.3);
 
-      for (Vec3d r : rings) {
+      for (Vec3 r : rings) {
          if (sq(e.getX() - r.x) + sq(e.getZ() - r.z) <= rr && Math.abs(e.getY() - r.y) <= 2.0) {
             return true;
          }
@@ -1582,21 +1582,21 @@ public class MycelordBoss extends MysticalBoss {
       return false;
    }
 
-   private void startFog(ServerWorld level, Vec3d at, List<Vec3d> safe, double radius) {
+   private void startFog(ServerLevel level, Vec3 at, List<Vec3> safe, double radius) {
       this.fogAt = at;
       this.fogRings = safe;
       this.fogRingRadius = radius;
-      this.fogUntil = this.age + 80;
+      this.fogUntil = this.tickCount + 80;
       Vfx.vortex(level, at, 14.0, 3.0, ROT, 80);
       Vfx.smoke(level, at.add(0.0, 1.0, 0.0), ROT.smoke(), 16, 8.0, 3.0);
    }
 
    private boolean canBurrow() {
-      return this.getEntityWorld() instanceof ServerWorld level && this.isOnGround() && BossFx.safeGround(level, this.getEntityPos(), 1.0);
+      return this.level() instanceof ServerLevel level && this.onGround() && BossFx.safeGround(level, this.position(), 1.0);
    }
 
    @Override
-   protected boolean ownCourse(ServerWorld level, @Nullable LivingEntity target) {
+   protected boolean ownCourse(ServerLevel level, @Nullable LivingEntity target) {
       if (!this.underground) {
          return false;
       }
@@ -1609,48 +1609,48 @@ public class MycelordBoss extends MysticalBoss {
 
       this.burrowTicks--;
       if (this.burrowTicks == 16) {
-         Vec3d at = target != null ? this.groundAt(level, this.predict(target, 21.0), 24) : this.getEntityPos();
+         Vec3 at = target != null ? this.groundAt(level, this.predict(target, 21.0), 24) : this.position();
          if (!BossFx.safeGround(level, at, 3.0) || !this.fitsAt(level, at)) {
-            at = this.getEntityPos();
+            at = this.position();
          }
 
          this.emergeAt = at;
          Vfx.telegraphCircle(level, at, 4.5, 21, this.pal());
       }
 
-      Vec3d goal = this.emergeAt != null ? this.emergeAt : (target != null ? this.predict(target, Math.max(0, this.burrowTicks)) : this.getEntityPos());
-      Vec3d d = goal.subtract(this.getEntityPos()).getHorizontal();
+      Vec3 goal = this.emergeAt != null ? this.emergeAt : (target != null ? this.predict(target, Math.max(0, this.burrowTicks)) : this.position());
+      Vec3 d = goal.subtract(this.position()).horizontal();
       double speed = 0.55 + 0.1 * this.phase();
       if (d.length() > speed) {
-         d = d.normalize().multiply(speed);
+         d = d.normalize().scale(speed);
       }
 
-      if (d.lengthSquared() > 1.0E-4) {
-         Vec3d g = this.groundAt(level, this.getEntityPos().add(d), 3);
+      if (d.lengthSqr() > 1.0E-4) {
+         Vec3 g = this.groundAt(level, this.position().add(d), 3);
          if (Math.abs(g.y - this.getY()) <= 2.0 && BossFx.safeGround(level, g, 1.0) && this.fitsAt(level, g)) {
-            this.setPosition(g.x, g.y, g.z);
+            this.setPos(g.x, g.y, g.z);
          }
       }
 
-      this.setVelocity(0.0, Math.min(0.0, this.getVelocity().y), 0.0);
-      if (this.age % 2 == 0) {
-         Vec3d at = this.getEntityPos();
-         level.spawnParticles(ParticleTypes.MYCELIUM, at.x, at.y + 0.2, at.z, 10, 0.8, 0.1, 0.8, 0.05);
+      this.setDeltaMovement(0.0, Math.min(0.0, this.getDeltaMovement().y), 0.0);
+      if (this.tickCount % 2 == 0) {
+         Vec3 at = this.position();
+         level.sendParticles(ParticleTypes.MYCELIUM, at.x, at.y + 0.2, at.z, 10, 0.8, 0.1, 0.8, 0.05);
          Vfx.debris(level, at, Vfx.Debris.ASH, this.pal().glow(), 4, 0.15);
       }
 
-      if (this.age % 4 == 0) {
-         BossFx.burst(level, this.getEntityPos().add(0.0, 0.2, 0.0), ParticleTypes.MYCELIUM, 10, 0.8, 0.05);
+      if (this.tickCount % 4 == 0) {
+         BossFx.burst(level, this.position().add(0.0, 0.2, 0.0), ParticleTypes.MYCELIUM, 10, 0.8, 0.05);
       }
 
-      if (this.age % 6 == 0) {
-         Vfx.shockwave(level, this.getEntityPos(), this.pal(), 1.6);
+      if (this.tickCount % 6 == 0) {
+         Vfx.shockwave(level, this.position(), this.pal(), 1.6);
       }
 
       if (this.burrowTicks <= 0) {
-         Vec3d at = this.emergeAt != null ? this.emergeAt : this.getEntityPos();
+         Vec3 at = this.emergeAt != null ? this.emergeAt : this.position();
          if (BossFx.safeGround(level, at, 3.0) && this.fitsAt(level, at)) {
-            this.requestTeleport(at.x, at.y, at.z);
+            this.teleportTo(at.x, at.y, at.z);
          }
 
          this.underground = false;
@@ -1662,13 +1662,13 @@ public class MycelordBoss extends MysticalBoss {
       return true;
    }
 
-   private void surface(ServerWorld level, boolean emerge) {
+   private void surface(ServerLevel level, boolean emerge) {
       if (this.underground) {
          this.underground = false;
          this.burrowTicks = 0;
          this.emergeAt = null;
          this.setInvisible(false);
-         Vec3d f = this.feet(level);
+         Vec3 f = this.feet(level);
          Vfx.explosion(level, f, this.pal(), 1.4);
          Vfx.debris(level, f, Vfx.Debris.ASH, this.pal().glow(), 12, 0.3);
          if (emerge) {
@@ -1678,8 +1678,8 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    @Override
-   public boolean damage(ServerWorld world, DamageSource source, float amount) {
-      return this.underground && !source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY) ? false : super.damage(world, source, amount);
+   public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
+      return this.underground && !source.is(DamageTypeTags.BYPASSES_INVULNERABILITY) ? false : super.hurtServer(world, source, amount);
    }
 
    private void begin() {
@@ -1705,72 +1705,72 @@ public class MycelordBoss extends MysticalBoss {
       });
    }
 
-   private void infest(ServerWorld level, LivingEntity e, int n) {
-      if (n != 0 && e instanceof ServerPlayerEntity p && p.isAlive() && !p.isCreative() && !p.isSpectator()) {
-         int[] s = this.spores.get(p.getUuid());
+   private void infest(ServerLevel level, LivingEntity e, int n) {
+      if (n != 0 && e instanceof ServerPlayer p && p.isAlive() && !p.isCreative() && !p.isSpectator()) {
+         int[] s = this.spores.get(p.getUUID());
          if (s == null) {
             if (n < 0) {
                return;
             }
 
-            s = new int[]{0, this.age};
-            this.spores.put(p.getUuid(), s);
+            s = new int[]{0, this.tickCount};
+            this.spores.put(p.getUUID(), s);
          }
 
-         s[0] = MathHelper.clamp(s[0] + n, 0, 5);
+         s[0] = Mth.clamp(s[0] + n, 0, 5);
          if (n > 0) {
-            s[1] = this.age;
+            s[1] = this.tickCount;
          }
 
          if (s[0] >= 5) {
-            this.spores.remove(p.getUuid());
+            this.spores.remove(p.getUUID());
             this.sporeburst(level, p);
          } else if (s[0] <= 0) {
-            this.spores.remove(p.getUuid());
+            this.spores.remove(p.getUUID());
          }
       }
    }
 
-   private void sporeburst(ServerWorld level, ServerPlayerEntity p) {
-      Vfx.nova(level, p.getEntityPos().add(0.0, 1.0, 0.0), this.pal(), 2.5);
-      p.damage(level, this.getDamageSources().indirectMagic(this, this), this.dmg(10.0F));
-      this.afflict(p, StatusEffects.SLOWNESS, 30, 3);
-      this.afflict(p, StatusEffects.POISON, 60, 1);
+   private void sporeburst(ServerLevel level, ServerPlayer p) {
+      Vfx.nova(level, p.position().add(0.0, 1.0, 0.0), this.pal(), 2.5);
+      p.hurtServer(level, this.damageSources().indirectMagic(this, this), this.dmg(10.0F));
+      this.afflict(p, MobEffects.SLOWNESS, 30, 3);
+      this.afflict(p, MobEffects.POISON, 60, 1);
       if (this.phase() >= 2 && this.sporelingsNear() < 8) {
          EntityType<RealmMob> type = RealmMobs.type("sporeling");
-         RealmMob m = type == null ? null : (RealmMob)type.create(level, SpawnReason.MOB_SUMMONED);
+         RealmMob m = type == null ? null : (RealmMob)type.create(level, EntitySpawnReason.MOB_SUMMONED);
          if (m != null) {
-            m.refreshPositionAndAngles(p.getX(), p.getY(), p.getZ(), this.getRandom().nextFloat() * 360.0F, 0.0F);
+            m.snapTo(p.getX(), p.getY(), p.getZ(), this.getRandom().nextFloat() * 360.0F, 0.0F);
             m.setTarget(p);
-            level.spawnEntity(m);
+            level.addFreshEntity(m);
             this.countTick = -1;
          }
       }
    }
 
-   private void addPatch(Vec3d at, double r, int life, boolean seeds) {
+   private void addPatch(Vec3 at, double r, int life, boolean seeds) {
       if (this.patches.size() >= 8) {
          this.patches.remove(0);
       }
 
-      this.patches.add(new MycelordBoss.Patch(at, r, this.age, this.age + life, seeds));
+      this.patches.add(new MycelordBoss.Patch(at, r, this.tickCount, this.tickCount + life, seeds));
    }
 
-   private void addMine(ServerWorld level, Vec3d at) {
+   private void addMine(ServerLevel level, Vec3 at) {
       if (this.mines.size() >= 10) {
          this.mines.remove(0);
       }
 
-      this.mines.add(new MycelordBoss.Mine(at, this.age));
+      this.mines.add(new MycelordBoss.Mine(at, this.tickCount));
       Vfx.glint(level, at.add(0.0, 0.4, 0.0), this.pal().glow(), 0.8);
    }
 
-   private void addStrip(Vec3d from, float yaw, double length, int life) {
+   private void addStrip(Vec3 from, float yaw, double length, int life) {
       if (this.strips.size() >= 8) {
          this.strips.remove(0);
       }
 
-      this.strips.add(new MycelordBoss.Strip(from, yaw, length, this.age, this.age + life));
+      this.strips.add(new MycelordBoss.Strip(from, yaw, length, this.tickCount, this.tickCount + life));
    }
 
    private int hazardLife(int base) {
@@ -1782,9 +1782,9 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    @Override
-   protected void mobTick(ServerWorld world) {
-      super.mobTick(world);
-      if (!this.isDead() && !this.inIntro()) {
+   protected void customServerAiStep(ServerLevel world) {
+      super.customServerAiStep(world);
+      if (!this.isDeadOrDying() && !this.inIntro()) {
          BossFx.current(this);
          if (this.isInvisible() && !this.underground) {
             this.setInvisible(false);
@@ -1808,8 +1808,8 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void tickHazards(ServerWorld level) {
-      int now = this.age;
+   private void tickHazards(ServerLevel level) {
+      int now = this.tickCount;
       this.tickPatches(level, now);
       this.tickMines(level, now);
       this.tickStrips(level, now);
@@ -1824,7 +1824,7 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void tickPatches(ServerWorld level, int now) {
+   private void tickPatches(ServerLevel level, int now) {
       if (!this.patches.isEmpty()) {
          Iterator<MycelordBoss.Patch> it = this.patches.iterator();
 
@@ -1840,7 +1840,7 @@ public class MycelordBoss extends MysticalBoss {
                if (age > 0 && age % 20 == 0) {
                   for (LivingEntity e : this.column(level, p.at(), p.r(), 2.0, 2.0)) {
                      this.magic(level, e, 3.0F);
-                     this.afflict(e, StatusEffects.POISON, 60, 0);
+                     this.afflict(e, MobEffects.POISON, 60, 0);
                      this.infest(level, e, 1);
                   }
                }
@@ -1850,8 +1850,8 @@ public class MycelordBoss extends MysticalBoss {
                }
 
                if (age % 10 == 5) {
-                  Vec3d a = p.at();
-                  level.spawnParticles(ParticleTypes.WARPED_SPORE, a.x, a.y + 0.3, a.z, 6, p.r() * 0.5, 0.2, p.r() * 0.5, 0.01);
+                  Vec3 a = p.at();
+                  level.sendParticles(ParticleTypes.WARPED_SPORE, a.x, a.y + 0.3, a.z, 6, p.r() * 0.5, 0.2, p.r() * 0.5, 0.01);
                   Vfx.smoke(level, a, this.pal().smoke(), 3, p.r() * 0.6, 0.6);
                }
             }
@@ -1859,7 +1859,7 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void tickMines(ServerWorld level, int now) {
+   private void tickMines(ServerLevel level, int now) {
       if (!this.mines.isEmpty()) {
          Iterator<MycelordBoss.Mine> it = this.mines.iterator();
 
@@ -1886,18 +1886,18 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void burstMine(ServerWorld level, Vec3d at) {
+   private void burstMine(ServerLevel level, Vec3 at) {
       for (LivingEntity e : this.column(level, at, 2.5, 1.5, 2.5)) {
          this.magic(level, e, 14.0F);
-         this.afflict(e, StatusEffects.POISON, 60, 0);
+         this.afflict(e, MobEffects.POISON, 60, 0);
          this.infest(level, e, 1);
       }
 
       Vfx.explosion(level, at, this.pal(), 1.6);
    }
 
-   private boolean playerNear(Vec3d at, double r) {
-      for (ServerPlayerEntity p : this.engaged()) {
+   private boolean playerNear(Vec3 at, double r) {
+      for (ServerPlayer p : this.engaged()) {
          if (sq(p.getX() - at.x) + sq(p.getZ() - at.z) <= r * r && Math.abs(p.getY() - at.y) < 2.0) {
             return true;
          }
@@ -1906,7 +1906,7 @@ public class MycelordBoss extends MysticalBoss {
       return false;
    }
 
-   private void tickStrips(ServerWorld level, int now) {
+   private void tickStrips(ServerLevel level, int now) {
       if (!this.strips.isEmpty()) {
          Iterator<MycelordBoss.Strip> it = this.strips.iterator();
 
@@ -1918,16 +1918,16 @@ public class MycelordBoss extends MysticalBoss {
                int age = now - s.born();
                if (age > 0 && age % 20 == 0) {
                   for (LivingEntity e : this.rect(level, s.from(), s.yaw(), s.length(), 1.3)) {
-                     this.afflict(e, StatusEffects.POISON, 40, 0);
+                     this.afflict(e, MobEffects.POISON, 40, 0);
                      this.infest(level, e, 1);
                   }
                }
 
                if (age % 10 == 0) {
-                  Vec3d d = dirOf(s.yaw());
+                  Vec3 d = dirOf(s.yaw());
 
                   for (int k = 0; k < 3; k++) {
-                     Vfx.smoke(level, s.from().add(d.multiply(s.length() * (k + 0.5) / 3.0)), this.pal().smoke(), 3, 1.0, 0.7);
+                     Vfx.smoke(level, s.from().add(d.scale(s.length() * (k + 0.5) / 3.0)), this.pal().smoke(), 3, 1.0, 0.7);
                   }
                }
             }
@@ -1935,8 +1935,8 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void tickFog(ServerWorld level, int now) {
-      Vec3d at = this.fogAt;
+   private void tickFog(ServerLevel level, int now) {
+      Vec3 at = this.fogAt;
       if (at != null) {
          if (now >= this.fogUntil) {
             this.fogAt = null;
@@ -1944,7 +1944,7 @@ public class MycelordBoss extends MysticalBoss {
             if ((this.fogUntil - now) % 20 == 0) {
                for (LivingEntity e : this.column(level, at, 14.0, 2.0, 6.0)) {
                   if (!inRing(e, this.fogRings, this.fogRingRadius)) {
-                     this.afflict(e, StatusEffects.POISON, 40, 0);
+                     this.afflict(e, MobEffects.POISON, 40, 0);
                   }
                }
             }
@@ -1952,7 +1952,7 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void tickWard(ServerWorld level) {
+   private void tickWard(ServerLevel level) {
       if (this.wardPulse > 0) {
          this.wardPulse--;
          if (this.shield() <= 0.0F) {
@@ -1964,7 +1964,7 @@ public class MycelordBoss extends MysticalBoss {
             this.wardPulse = 0;
          } else {
             if (this.wardPulse % 20 == 0) {
-               Vec3d f = this.feet(level);
+               Vec3 f = this.feet(level);
 
                for (LivingEntity e : this.column(level, f, 4.0, 1.5, 5.0)) {
                   this.magic(level, e, 4.0F);
@@ -1981,7 +1981,7 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void tickStorm(ServerWorld level, int now) {
+   private void tickStorm(ServerLevel level, int now) {
       if (this.phase() >= 3) {
          if (this.stormNext < 0) {
             this.stormNext = now + 60;
@@ -1990,12 +1990,12 @@ public class MycelordBoss extends MysticalBoss {
          LivingEntity target = this.getTarget();
          if (target != null && !this.underground && !this.currentAction().startsWith("phase_") && now >= this.stormNext) {
             this.stormNext = now + (this.enraged() ? 60 : 100);
-            List<ServerPlayerEntity> players = this.engaged();
+            List<ServerPlayer> players = this.engaged();
             LivingEntity p = players.isEmpty() ? target : (LivingEntity)players.get(this.getRandom().nextInt(players.size()));
             this.stormMote(level, this.groundAt(level, this.predict(p, 24.0), 24));
 
             for (int k = 0; k < 2; k++) {
-               this.stormMote(level, this.groundAt(level, BossFx.around(level, this, p.getEntityPos(), 2.0, 7.0), 4));
+               this.stormMote(level, this.groundAt(level, BossFx.around(level, this, p.position(), 2.0, 7.0), 4));
             }
 
             if (now >= this.vortexNext) {
@@ -2006,12 +2006,12 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void stormMote(ServerWorld level, Vec3d at) {
+   private void stormMote(ServerLevel level, Vec3 at) {
       Vfx.telegraphCircle(level, at, 2.2, 24, ROT);
 
       for (int k = 8; k <= 22; k += 2) {
          double h = (24 - k) * 0.9;
-         this.schedule(k, () -> Vfx.meteorTrail(level, at.add(0.0, h, 0.0), new Vec3d(0.0, -0.9, 0.0), ROT));
+         this.schedule(k, () -> Vfx.meteorTrail(level, at.add(0.0, h, 0.0), new Vec3(0.0, -0.9, 0.0), ROT));
       }
 
       this.schedule(24, () -> {
@@ -2024,15 +2024,15 @@ public class MycelordBoss extends MysticalBoss {
       });
    }
 
-   private void tickSpores(ServerWorld level, int now) {
+   private void tickSpores(ServerLevel level, int now) {
       if (!this.spores.isEmpty()) {
          Iterator<Entry<UUID, int[]>> it = this.spores.entrySet().iterator();
 
          while (it.hasNext()) {
             Entry<UUID, int[]> en = it.next();
-            PlayerEntity p = level.getPlayerByUuid(en.getKey());
+            Player p = level.getPlayerByUUID(en.getKey());
             int[] s = en.getValue();
-            if (p != null && p.isAlive() && !(p.squaredDistanceTo(this) > 4096.0)) {
+            if (p != null && p.isAlive() && !(p.distanceToSqr(this) > 4096.0)) {
                if (now - s[1] >= 80) {
                   s[0]--;
                }
@@ -2040,7 +2040,7 @@ public class MycelordBoss extends MysticalBoss {
                if (s[0] <= 0) {
                   it.remove();
                } else {
-                  Vfx.wisps(level, p.getEntityPos().add(0.0, 1.0, 0.0), P, s[0], 0.7, 22);
+                  Vfx.wisps(level, p.position().add(0.0, 1.0, 0.0), P, s[0], 0.7, 22);
                }
             } else {
                it.remove();
@@ -2049,8 +2049,8 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private void ambient(ServerWorld level, int now) {
-      Vec3d heart = this.heart();
+   private void ambient(ServerLevel level, int now) {
+      Vec3 heart = this.heart();
       switch (Math.min(3, this.phase())) {
          case 0:
             Vfx.wisps(level, heart, P, 2, 0.8, 24);
@@ -2087,15 +2087,15 @@ public class MycelordBoss extends MysticalBoss {
       this.releaseGrab();
    }
 
-   private void lastBloom(ServerWorld level) {
+   private void lastBloom(ServerLevel level) {
       this.pendingDesperation = false;
       this.surface(level, false);
       this.forceAction(level, "the_last_bloom");
    }
 
    @Override
-   protected void phaseBurst(ServerWorld level, int phase) {
-      Vec3d f = this.feet(level);
+   protected void phaseBurst(ServerLevel level, int phase) {
+      Vec3 f = this.feet(level);
       if (phase <= 1) {
          BossFx.slam(level, this, f, 7.0, 8.0F, 1.6);
          Vfx.nova(level, this.local(0.0, 3.1, 0.0), P, 9.0);
@@ -2105,7 +2105,7 @@ public class MycelordBoss extends MysticalBoss {
          int life = this.patchLife();
 
          for (int k = 0; k < 3; k++) {
-            Vec3d s = BossFx.around(level, this, this.getEntityPos(), 6.0, 14.0);
+            Vec3 s = BossFx.around(level, this, this.position(), 6.0, 14.0);
             Vfx.telegraphCircle(level, s, 3.0, 20, P);
             this.schedule(20, () -> this.addPatch(s, 3.0, life, true));
          }
@@ -2115,9 +2115,9 @@ public class MycelordBoss extends MysticalBoss {
          Vfx.nova(level, this.local(0.0, 3.1, 0.0), P, 10.0);
 
          for (int k = 0; k < 4; k++) {
-            float yaw = this.getYaw() + 45.0F + 90 * k;
-            Vec3d d = dirOf(yaw);
-            Vec3d from = f.add(d.multiply(1.5));
+            float yaw = this.getYRot() + 45.0F + 90 * k;
+            Vec3 d = dirOf(yaw);
+            Vec3 from = f.add(d.scale(1.5));
             Vfx.telegraphLine(level, from, d, 12.0, 1.6, 10, P);
             this.later(10, () -> {
                for (LivingEntity e : this.rect(level, from, yaw, 12.0, 1.1)) {
@@ -2125,7 +2125,7 @@ public class MycelordBoss extends MysticalBoss {
                }
 
                for (int s = 1; s <= 4; s++) {
-                  Vfx.pillar(level, this.groundAt(level, from.add(d.multiply(s * 3 - 1.5)), 4), P, 2.5, 0.5);
+                  Vfx.pillar(level, this.groundAt(level, from.add(d.scale(s * 3 - 1.5)), 4), P, 2.5, 0.5);
                }
             });
          }
@@ -2139,12 +2139,12 @@ public class MycelordBoss extends MysticalBoss {
          Vfx.nova(level, this.local(0.0, 3.0, 0.0), ROT, 12.0);
          Vfx.pillar(level, f, ROT, 26.0, 2.4);
          this.brood(level, 4, true);
-         this.stormNext = this.age + 60;
+         this.stormNext = this.tickCount + 60;
       }
    }
 
    @Override
-   protected void onPhaseChange(ServerWorld level, int phase) {
+   protected void onPhaseChange(ServerLevel level, int phase) {
       this.begin();
       this.surface(level, false);
       this.releaseGrab();
@@ -2161,7 +2161,7 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onStagger(ServerWorld level) {
+   protected void onStagger(ServerLevel level) {
       this.releaseGrab();
       this.setNoGravity(false);
       this.vaulting = false;
@@ -2169,20 +2169,20 @@ public class MycelordBoss extends MysticalBoss {
       Vfx.debris(level, this.local(0.0, 3.0, 0.0), Vfx.Debris.ASH, this.pal().smoke(), 24, 0.35);
       Vfx.smoke(level, this.local(0.0, 4.0, 0.0), this.pal().smoke(), 10, 2.0, 1.2);
 
-      for (ServerPlayerEntity p : this.engaged()) {
+      for (ServerPlayer p : this.engaged()) {
          this.infest(level, p, -1);
       }
    }
 
    @Override
-   protected void onEnrage(ServerWorld level) {
-      Vec3d f = this.feet(level);
+   protected void onEnrage(ServerLevel level) {
+      Vec3 f = this.feet(level);
       Vfx.vortex(level, f, 12.0, 14.0, ROT, 100);
       Vfx.auraRing(level, f, ROT, 5.0);
    }
 
    @Override
-   protected void desperation(ServerWorld level) {
+   protected void desperation(ServerLevel level) {
       if (!this.currentAction().startsWith("phase_") && !this.staggered()) {
          this.lastBloom(level);
       } else {
@@ -2191,15 +2191,15 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onLand(ServerWorld level) {
-      Vec3d f = this.feet(level);
+   protected void onLand(ServerLevel level) {
+      Vec3 f = this.feet(level);
       Vfx.heavyImpact(level, f, this.pal(), 0.8);
       Vfx.debris(level, f, Vfx.Debris.ASH, this.pal().glow(), 12, 0.3);
    }
 
    @Override
-   protected void onIntroTick(ServerWorld level, int left) {
-      Vec3d f = this.feet(level);
+   protected void onIntroTick(ServerLevel level, int left) {
+      Vec3 f = this.feet(level);
       double t = (this.introTicks() - left) / 20.0;
       if (left == this.introTicks() - 1) {
          Vfx.runeCircle(level, f, 3.0, P, 140, 0.03F);
@@ -2229,7 +2229,7 @@ public class MycelordBoss extends MysticalBoss {
 
       if (left == 54 || left == 46) {
          Vfx.groundCrack(level, this.local(0.0, 0.0, left == 54 ? 0.8 : -0.8), 2.5, P);
-         Vfx.shake(level, this.getEntityPos(), 24.0, 0.3, 6);
+         Vfx.shake(level, this.position(), 24.0, 0.3, 6);
       }
 
       if (left == 28) {
@@ -2237,15 +2237,15 @@ public class MycelordBoss extends MysticalBoss {
       }
 
       if (left == 8) {
-         Vfx.radialFlash(level, this.getEntityPos(), 40.0, 4253896, 0.4F);
+         Vfx.radialFlash(level, this.position(), 40.0, 4253896, 0.4F);
          Vfx.wisps(level, this.local(0.0, 4.0, 0.0), P, 12, 3.5, 60);
       }
    }
 
    @Override
-   protected void onDeathTick(ServerWorld level, int tick) {
-      Vec3d f = this.feet(level);
-      Vec3d heart = this.heart();
+   protected void onDeathTick(ServerLevel level, int tick) {
+      Vec3 f = this.feet(level);
+      Vec3 heart = this.heart();
       if (tick <= 12 && tick % 4 == 0) {
          Vfx.flare(level, heart, P.glow(), 1.5, 6);
          Vfx.sparks(level, heart, P.core(), 8, 0.25, 0.15);
@@ -2286,9 +2286,9 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    @Override
-   public void onDeath(DamageSource damageSource) {
-      super.onDeath(damageSource);
-      if (this.getEntityWorld() instanceof ServerWorld) {
+   public void die(DamageSource damageSource) {
+      super.die(damageSource);
+      if (this.level() instanceof ServerLevel) {
          this.clearFight();
          this.underground = false;
          this.vaulting = false;
@@ -2297,48 +2297,48 @@ public class MycelordBoss extends MysticalBoss {
       }
    }
 
-   private static Vec3d dirOf(float yaw) {
-      return Vec3d.fromPolar(0.0F, yaw);
+   private static Vec3 dirOf(float yaw) {
+      return Vec3.directionFromRotation(0.0F, yaw);
    }
 
-   private Vec3d fwd() {
-      return dirOf(this.getYaw());
+   private Vec3 fwd() {
+      return dirOf(this.getYRot());
    }
 
-   private Vec3d leftDir() {
-      return dirOf(this.getYaw() - 90.0F);
+   private Vec3 leftDir() {
+      return dirOf(this.getYRot() - 90.0F);
    }
 
-   private Vec3d local(double forward, double up, double left) {
-      return this.getEntityPos().add(this.fwd().multiply(forward)).add(this.leftDir().multiply(left)).add(0.0, up, 0.0);
+   private Vec3 local(double forward, double up, double left) {
+      return this.position().add(this.fwd().scale(forward)).add(this.leftDir().scale(left)).add(0.0, up, 0.0);
    }
 
-   private Vec3d maw() {
+   private Vec3 maw() {
       return this.local(1.4, 3.3, 0.0);
    }
 
-   private Vec3d heart() {
+   private Vec3 heart() {
       return this.local(0.55, 3.15, 0.0);
    }
 
-   private Vec3d sacs() {
+   private Vec3 sacs() {
       return this.local(-0.7, 4.0, 0.0);
    }
 
-   private static Vec3d mid(LivingEntity e) {
-      return e.getEntityPos().add(0.0, e.getHeight() * 0.5, 0.0);
+   private static Vec3 mid(LivingEntity e) {
+      return e.position().add(0.0, e.getBbHeight() * 0.5, 0.0);
    }
 
    private static double sq(double v) {
       return v * v;
    }
 
-   private Vec3d feet(ServerWorld level) {
-      return this.isOnGround() ? this.getEntityPos() : this.groundAt(level, this.getEntityPos(), 24);
+   private Vec3 feet(ServerLevel level) {
+      return this.onGround() ? this.position() : this.groundAt(level, this.position(), 24);
    }
 
-   private Vec3d groundAt(ServerWorld level, Vec3d p, int depth) {
-      Mutable m = BlockPos.ofFloored(p.x, p.y + 0.2, p.z).mutableCopy();
+   private Vec3 groundAt(ServerLevel level, Vec3 p, int depth) {
+      MutableBlockPos m = BlockPos.containing(p.x, p.y + 0.2, p.z).mutable();
 
       for (int i = 0; i < 4 && solid(level, m); i++) {
          m.move(0, 1, 0);
@@ -2353,28 +2353,28 @@ public class MycelordBoss extends MysticalBoss {
          BlockState s = level.getBlockState(m);
          VoxelShape shape = s.getCollisionShape(level, m);
          if (!shape.isEmpty()) {
-            return new Vec3d(p.x, m.getY() + shape.getMax(Axis.Y), p.z);
+            return new Vec3(p.x, m.getY() + shape.max(Axis.Y), p.z);
          }
 
          if (!s.getFluidState().isEmpty()) {
-            return new Vec3d(p.x, m.getY() + 1, p.z);
+            return new Vec3(p.x, m.getY() + 1, p.z);
          }
       }
 
       return p;
    }
 
-   private static boolean solid(ServerWorld level, BlockPos p) {
+   private static boolean solid(ServerLevel level, BlockPos p) {
       BlockState s = level.getBlockState(p);
       return !s.getCollisionShape(level, p).isEmpty() || !s.getFluidState().isEmpty();
    }
 
-   private boolean fitsAt(ServerWorld level, Vec3d at) {
-      return level.isSpaceEmpty(this, this.getBoundingBox().offset(at.x - this.getX(), at.y - this.getY(), at.z - this.getZ()).contract(0.05));
+   private boolean fitsAt(ServerLevel level, Vec3 at) {
+      return level.noCollision(this, this.getBoundingBox().move(at.x - this.getX(), at.y - this.getY(), at.z - this.getZ()).deflate(0.05));
    }
 
-   private static boolean spaced(Vec3d at, List<Vec3d> others, double min) {
-      for (Vec3d o : others) {
+   private static boolean spaced(Vec3 at, List<Vec3> others, double min) {
+      for (Vec3 o : others) {
          if (sq(o.x - at.x) + sq(o.z - at.z) < min * min) {
             return false;
          }
@@ -2385,40 +2385,40 @@ public class MycelordBoss extends MysticalBoss {
 
    private void aim(@Nullable LivingEntity t, int lead, float maxTurn) {
       if (t != null) {
-         Vec3d p = lead > 0 ? this.predict(t, lead) : t.getEntityPos();
+         Vec3 p = lead > 0 ? this.predict(t, lead) : t.position();
          double dx = p.x - this.getX();
          double dz = p.z - this.getZ();
          if (!(dx * dx + dz * dz < 1.0E-4)) {
-            float want = (float)(MathHelper.atan2(dz, dx) * 180.0F / (float)Math.PI) - 90.0F;
-            this.face(MathHelper.stepUnwrappedAngleTowards(this.getYaw(), want, maxTurn));
+            float want = (float)(Mth.atan2(dz, dx) * 180.0F / (float)Math.PI) - 90.0F;
+            this.face(Mth.approachDegrees(this.getYRot(), want, maxTurn));
          }
       }
    }
 
    private void face(float yaw) {
-      this.setYaw(yaw);
-      this.setBodyYaw(yaw);
-      this.setHeadYaw(yaw);
+      this.setYRot(yaw);
+      this.setYBodyRot(yaw);
+      this.setYHeadRot(yaw);
    }
 
-   private void setAnchor(ServerWorld level, double forward) {
-      this.anchorYaw = this.getYaw();
-      this.anchor = this.feet(level).add(dirOf(this.anchorYaw).multiply(forward));
+   private void setAnchor(ServerLevel level, double forward) {
+      this.anchorYaw = this.getYRot();
+      this.anchor = this.feet(level).add(dirOf(this.anchorYaw).scale(forward));
    }
 
-   private List<LivingEntity> inBox(ServerWorld level, Box box) {
-      return level.getEntitiesByClass(
+   private List<LivingEntity> inBox(ServerLevel level, AABB box) {
+      return level.getEntitiesOfClass(
          LivingEntity.class,
          box,
-         e -> e != this && e.isAlive() && !(e instanceof MysticalBoss) && !(e instanceof PlayerEntity p && (p.isCreative() || p.isSpectator()))
+         e -> e != this && e.isAlive() && !(e instanceof MysticalBoss) && !(e instanceof Player p && (p.isCreative() || p.isSpectator()))
       );
    }
 
-   private List<LivingEntity> column(ServerWorld level, Vec3d c, double r, double below, double above) {
+   private List<LivingEntity> column(ServerLevel level, Vec3 c, double r, double below, double above) {
       List<LivingEntity> out = new ArrayList<>();
       double rr = sq(r + 0.3);
 
-      for (LivingEntity e : this.inBox(level, new Box(c.x - r - 1.0, c.y - below, c.z - r - 1.0, c.x + r + 1.0, c.y + above, c.z + r + 1.0))) {
+      for (LivingEntity e : this.inBox(level, new AABB(c.x - r - 1.0, c.y - below, c.z - r - 1.0, c.x + r + 1.0, c.y + above, c.z + r + 1.0))) {
          if (sq(e.getX() - c.x) + sq(e.getZ() - c.z) <= rr) {
             out.add(e);
          }
@@ -2427,12 +2427,12 @@ public class MycelordBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> sector(ServerWorld level, Vec3d c, float yaw, float halfAngle, double range) {
-      Vec3d f = dirOf(yaw);
+   private List<LivingEntity> sector(ServerLevel level, Vec3 c, float yaw, float halfAngle, double range) {
+      Vec3 f = dirOf(yaw);
       double cos = Math.cos(Math.toRadians(halfAngle));
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : this.inBox(level, new Box(c.x - range - 1.0, c.y - 1.5, c.z - range - 1.0, c.x + range + 1.0, c.y + 4.5, c.z + range + 1.0))) {
+      for (LivingEntity e : this.inBox(level, new AABB(c.x - range - 1.0, c.y - 1.5, c.z - range - 1.0, c.x + range + 1.0, c.y + 4.5, c.z + range + 1.0))) {
          double dx = e.getX() - c.x;
          double dz = e.getZ() - c.z;
          double d = Math.sqrt(dx * dx + dz * dz);
@@ -2444,11 +2444,11 @@ public class MycelordBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> rect(ServerWorld level, Vec3d from, float yaw, double length, double halfWidth) {
-      Vec3d f = dirOf(yaw);
-      Vec3d to = from.add(f.multiply(length));
-      Box box = new Box(Math.min(from.x, to.x), from.y - 2.0, Math.min(from.z, to.z), Math.max(from.x, to.x), from.y + 4.0, Math.max(from.z, to.z))
-         .expand(halfWidth + 0.5, 0.0, halfWidth + 0.5);
+   private List<LivingEntity> rect(ServerLevel level, Vec3 from, float yaw, double length, double halfWidth) {
+      Vec3 f = dirOf(yaw);
+      Vec3 to = from.add(f.scale(length));
+      AABB box = new AABB(Math.min(from.x, to.x), from.y - 2.0, Math.min(from.z, to.z), Math.max(from.x, to.x), from.y + 4.0, Math.max(from.z, to.z))
+         .inflate(halfWidth + 0.5, 0.0, halfWidth + 0.5);
       List<LivingEntity> out = new ArrayList<>();
 
       for (LivingEntity e : this.inBox(level, box)) {
@@ -2464,32 +2464,32 @@ public class MycelordBoss extends MysticalBoss {
       return out;
    }
 
-   private boolean physical(ServerWorld level, LivingEntity e, float base) {
-      return e.damage(level, this.getDamageSources().mobAttack(this), this.dmg(base));
+   private boolean physical(ServerLevel level, LivingEntity e, float base) {
+      return e.hurtServer(level, this.damageSources().mobAttack(this), this.dmg(base));
    }
 
-   private boolean magic(ServerWorld level, LivingEntity e, float base) {
-      return e.damage(level, this.getDamageSources().indirectMagic(this, this), this.dmg(base));
+   private boolean magic(ServerLevel level, LivingEntity e, float base) {
+      return e.hurtServer(level, this.damageSources().indirectMagic(this, this), this.dmg(base));
    }
 
-   private void afflict(LivingEntity e, RegistryEntry<StatusEffect> effect, int ticks, int amplifier) {
-      e.addStatusEffect(new StatusEffectInstance(effect, ticks, amplifier), this);
+   private void afflict(LivingEntity e, Holder<MobEffect> effect, int ticks, int amplifier) {
+      e.addEffect(new MobEffectInstance(effect, ticks, amplifier), this);
    }
 
-   private void shove(LivingEntity e, Vec3d from, double h, double up) {
-      Vec3d away = new Vec3d(e.getX() - from.x, 0.0, e.getZ() - from.z);
-      away = away.lengthSquared() < 1.0E-4 ? this.fwd() : away.normalize();
-      e.addVelocity(away.x * h, up, away.z * h);
-      e.knockedBack = true;
+   private void shove(LivingEntity e, Vec3 from, double h, double up) {
+      Vec3 away = new Vec3(e.getX() - from.x, 0.0, e.getZ() - from.z);
+      away = away.lengthSqr() < 1.0E-4 ? this.fwd() : away.normalize();
+      e.push(away.x * h, up, away.z * h);
+      e.syncVelocity = true;
    }
 
-   private void guardBreak(ServerWorld level, LivingEntity e, int ticks) {
-      if (e instanceof PlayerEntity p) {
-         ItemStack stack = p.getBlockingItem();
+   private void guardBreak(ServerLevel level, LivingEntity e, int ticks) {
+      if (e instanceof Player p) {
+         ItemStack stack = p.getItemBlockingWith();
          if (stack != null) {
-            p.getItemCooldownManager().set(stack, ticks);
-            p.clearActiveItem();
-            Vec3d at = p.getEntityPos().add(0.0, p.getHeight() * 0.6, 0.0).add(p.getRotationVector().multiply(0.5));
+            p.getCooldowns().addCooldown(stack, ticks);
+            p.stopUsingItem();
+            Vec3 at = p.position().add(0.0, p.getBbHeight() * 0.6, 0.0).add(p.getLookAngle().scale(0.5));
             Vfx.shards(level, at, 16777215, 10, 0.35);
             Vfx.glint(level, at, 16777215, 1.2);
          }
@@ -2514,8 +2514,8 @@ public class MycelordBoss extends MysticalBoss {
             main.setAnimationSpeed(walk.equals(cur) ? this.gaitRate(1.68) : (run.equals(cur) ? this.gaitRate(3.88) : 1.0));
          }
 
-         boolean dying = this.isDead();
-         int want = dying ? Math.min(2, MathHelper.clamp(this.phase(), 0, 3)) : MathHelper.clamp(this.phase(), 0, 3);
+         boolean dying = this.isDeadOrDying();
+         int want = dying ? Math.min(2, Mth.clamp(this.phase(), 0, 3)) : Mth.clamp(this.phase(), 0, 3);
          if (want != this.lookShown) {
             test.controller().setTransitionTicks(this.lookShown < 0 ? 0 : (dying ? 30 : 28));
             this.lookShown = want;
@@ -2526,14 +2526,14 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    private double gaitRate(double feet) {
-      return MathHelper.clamp(this.gaitSpeed / feet, 0.75, 2.0);
+      return Mth.clamp(this.gaitSpeed / feet, 0.75, 2.0);
    }
 
    @Override
    public void tick() {
       super.tick();
-      if (this.getEntityWorld().isClient()) {
-         this.gaitSpeed = this.gaitSpeed + (20.0 * MathHelper.hypot(this.getX() - this.lastX, this.getZ() - this.lastZ) - this.gaitSpeed) * 0.4;
+      if (this.level().isClientSide()) {
+         this.gaitSpeed = this.gaitSpeed + (20.0 * Mth.length(this.getX() - this.xo, this.getZ() - this.zo) - this.gaitSpeed) * 0.4;
       }
    }
 
@@ -2555,19 +2555,19 @@ public class MycelordBoss extends MysticalBoss {
    }
 
    private static final class Mine {
-      final Vec3d at;
+      final Vec3 at;
       final int placed;
       int burstAt = -1;
 
-      Mine(Vec3d at, int placed) {
+      Mine(Vec3 at, int placed) {
          this.at = at;
          this.placed = placed;
       }
    }
 
-   private record Patch(Vec3d at, double r, int born, int until, boolean seeds) {
+   private record Patch(Vec3 at, double r, int born, int until, boolean seeds) {
    }
 
-   private record Strip(Vec3d from, float yaw, double length, int born, int until) {
+   private record Strip(Vec3 from, float yaw, double length, int born, int until) {
    }
 }

@@ -10,18 +10,19 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import net.minecraft.entity.EntityType;
-import net.minecraft.loot.LootTable;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.util.math.floatprovider.ConstantFloatProvider;
-import net.minecraft.util.math.floatprovider.FloatProvider;
-import net.minecraft.util.math.intprovider.ConstantIntProvider;
-import net.minecraft.util.math.intprovider.IntProvider;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.gen.feature.FeatureConfig;
-import net.minecraft.world.gen.stateprovider.BlockStateProvider;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.util.RandomSource;
+import net.minecraft.util.valueproviders.ConstantFloat;
+import net.minecraft.util.valueproviders.ConstantInt;
+import net.minecraft.util.valueproviders.FloatProvider;
+import net.minecraft.util.valueproviders.FloatProviders;
+import net.minecraft.util.valueproviders.IntProvider;
+import net.minecraft.util.valueproviders.IntProviders;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.level.levelgen.feature.stateproviders.BlockStateProvider;
+import net.minecraft.world.level.storage.loot.LootTable;
 
 public record BuildingConfiguration(
    BuildingKind kind,
@@ -29,24 +30,24 @@ public record BuildingConfiguration(
    IntProvider floors,
    FloatProvider decay,
    Map<Part, BlockStateProvider> materials,
-   Optional<RegistryKey<LootTable>> loot,
-   Optional<RegistryKey<LootTable>> treasure,
+   Optional<ResourceKey<LootTable>> loot,
+   Optional<ResourceKey<LootTable>> treasure,
    List<EntityType<?>> spawners,
    BuildingConfiguration.Anchor anchor,
    IntProvider elevation
-) implements FeatureConfig {
+) {
    public static final Codec<BuildingConfiguration> CODEC = RecordCodecBuilder.create(
       instance -> instance.group(
             named(BuildingKind.class).fieldOf("kind").forGetter(BuildingConfiguration::kind),
-            IntProvider.createValidatingCodec(1, 48).fieldOf("size").forGetter(BuildingConfiguration::size),
-            IntProvider.createValidatingCodec(1, 8).optionalFieldOf("floors", ConstantIntProvider.create(2)).forGetter(BuildingConfiguration::floors),
-            FloatProvider.createValidatedCodec(0.0F, 1.0F).optionalFieldOf("decay", ConstantFloatProvider.create(0.0F)).forGetter(BuildingConfiguration::decay),
-            Codec.unboundedMap(named(Part.class), BlockStateProvider.TYPE_CODEC).fieldOf("materials").forGetter(BuildingConfiguration::materials),
-            RegistryKey.createCodec(RegistryKeys.LOOT_TABLE).optionalFieldOf("loot").forGetter(BuildingConfiguration::loot),
-            RegistryKey.createCodec(RegistryKeys.LOOT_TABLE).optionalFieldOf("treasure").forGetter(BuildingConfiguration::treasure),
-            Registries.ENTITY_TYPE.getCodec().listOf().optionalFieldOf("spawners", List.of()).forGetter(BuildingConfiguration::spawners),
+            IntProviders.codec(1, 48).fieldOf("size").forGetter(BuildingConfiguration::size),
+            IntProviders.codec(1, 8).optionalFieldOf("floors", ConstantInt.of(2)).forGetter(BuildingConfiguration::floors),
+            FloatProviders.codec(0.0F, 1.0F).optionalFieldOf("decay", ConstantFloat.of(0.0F)).forGetter(BuildingConfiguration::decay),
+            Codec.unboundedMap(named(Part.class), BlockStateProvider.DIRECT_CODEC).fieldOf("materials").forGetter(BuildingConfiguration::materials),
+            ResourceKey.codec(Registries.LOOT_TABLE).optionalFieldOf("loot").forGetter(BuildingConfiguration::loot),
+            ResourceKey.codec(Registries.LOOT_TABLE).optionalFieldOf("treasure").forGetter(BuildingConfiguration::treasure),
+            BuiltInRegistries.ENTITY_TYPE.byNameCodec().listOf().optionalFieldOf("spawners", List.of()).forGetter(BuildingConfiguration::spawners),
             named(BuildingConfiguration.Anchor.class).optionalFieldOf("anchor", BuildingConfiguration.Anchor.SURFACE).forGetter(BuildingConfiguration::anchor),
-            IntProvider.createValidatingCodec(-64, 320).optionalFieldOf("elevation", ConstantIntProvider.create(100)).forGetter(BuildingConfiguration::elevation)
+            IntProviders.codec(-64, 320).optionalFieldOf("elevation", ConstantInt.of(100)).forGetter(BuildingConfiguration::elevation)
          )
          .apply(instance, BuildingConfiguration::new)
    );
@@ -61,9 +62,9 @@ public record BuildingConfiguration(
       }, value -> value.name().toLowerCase(Locale.ROOT));
    }
 
-   public BuildingParams sample(Random random) {
+   public BuildingParams sample(RandomSource random) {
       return new BuildingParams(
-         this.kind, this.size.get(random), this.floors.get(random), this.decay.get(random), random.nextLong()
+         this.kind, this.size.sample(random), this.floors.sample(random), this.decay.sample(random), random.nextLong()
       );
    }
 

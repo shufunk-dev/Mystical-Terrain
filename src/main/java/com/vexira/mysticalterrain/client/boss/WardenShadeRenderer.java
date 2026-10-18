@@ -4,15 +4,15 @@ import com.vexira.mysticalterrain.MysticalTerrain;
 import com.vexira.mysticalterrain.boss.entity.WardenShade;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.RenderLayers;
-import net.minecraft.client.render.entity.EntityRendererFactory.Context;
-import net.minecraft.client.render.entity.state.LivingEntityRenderState;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.ColorHelper;
+import net.minecraft.client.renderer.entity.EntityRendererProvider.Context;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.model.DefaultedEntityGeoModel;
-import software.bernie.geckolib.renderer.GeoEntityRenderer;
+import com.geckolib.model.DefaultedEntityGeoModel;
+import com.geckolib.renderer.GeoEntityRenderer;
 
 @Environment(EnvType.CLIENT)
 public class WardenShadeRenderer extends GeoEntityRenderer<WardenShade, LivingEntityRenderState> {
@@ -21,11 +21,11 @@ public class WardenShadeRenderer extends GeoEntityRenderer<WardenShade, LivingEn
       this.withScale(0.85F);
    }
 
-   public @Nullable RenderLayer getRenderType(LivingEntityRenderState state, Identifier texture) {
-      return RenderLayers.entityTranslucent(texture);
+   public @Nullable RenderType getRenderType(LivingEntityRenderState state, Identifier texture) {
+      return RenderTypes.entityTranslucent(texture);
    }
 
    public int getRenderColor(WardenShade animatable, @Nullable Void relatedObject, float partialTick) {
-      return ColorHelper.getArgb(140, 70, 60, 110);
+      return ARGB.color(140, 70, 60, 110);
    }
 }

@@ -2,29 +2,28 @@ package com.vexira.mysticalterrain.gear;
 
 import com.vexira.mysticalterrain.boss.vfx.Vfx;
 import java.util.function.Consumer;
-import net.minecraft.component.type.TooltipDisplayComponent;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Item.Settings;
-import net.minecraft.item.Item.TooltipContext;
-import net.minecraft.item.consume.UseAction;
-import net.minecraft.item.tooltip.TooltipType;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
-import software.bernie.geckolib.animatable.GeoItem;
-import software.bernie.geckolib.animatable.SingletonGeoAnimatable;
-import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
-import software.bernie.geckolib.animation.object.PlayState;
-import software.bernie.geckolib.util.GeckoLibUtil;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.SwingAnimation;
+import net.minecraft.world.item.component.TooltipDisplay;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
+import com.geckolib.animatable.GeoItem;
+import com.geckolib.animatable.SingletonGeoAnimatable;
+import com.geckolib.animatable.instance.AnimatableInstanceCache;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.util.GeckoLibUtil;
 
 public class MysticWeapon extends Item implements GeoItem {
    private static final int HOLD = 72000;
@@ -32,7 +31,7 @@ public class MysticWeapon extends Item implements GeoItem {
    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
    private Object renderProvider;
 
-   public MysticWeapon(Settings properties, WeaponKit kit) {
+   public MysticWeapon(Properties properties, WeaponKit kit) {
       super(properties);
       this.kit = kit;
       SingletonGeoAnimatable.registerSyncedAnimatable(this);
@@ -46,44 +45,44 @@ public class MysticWeapon extends Item implements GeoItem {
       return this.kit.id();
    }
 
-   private static boolean ready(World level, PlayerEntity player, String key) {
-      return level.isClient() ? ClientView.cooldown.applyAsInt(key) <= 0 : GearState.of(player).ready(key);
+   private static boolean ready(Level level, Player player, String key) {
+      return level.isClientSide() ? ClientView.cooldown.applyAsInt(key) <= 0 : GearState.of(player).ready(key);
    }
 
-   public ActionResult use(World world, PlayerEntity user, Hand hand) {
-      ItemStack stack = user.getStackInHand(hand);
-      if (user.shouldCancelInteraction() && this.kit.alternate() != null) {
+   public InteractionResult use(Level world, Player user, InteractionHand hand) {
+      ItemStack stack = user.getItemInHand(hand);
+      if (user.isSecondaryUseActive() && this.kit.alternate() != null) {
          return this.instant(world, user, hand, stack, GearUse.Slot.ALTERNATE);
       }
 
       if (this.kit.charge() != null && this.kit.active(GearUse.Slot.CHARGED) != null && ready(world, user, this.kit.key(GearUse.Slot.CHARGED))) {
-         user.setCurrentHand(hand);
-         if (world instanceof ServerWorld server) {
+         user.startUsingItem(hand);
+         if (world instanceof ServerLevel server) {
             long id = GeoItem.getOrAssignId(stack, server);
             GearState.of(user).beginCharge(this.kit.id(), id);
             this.triggerAnim(user, id, "main", "charge");
          }
 
-         return ActionResult.CONSUME;
+         return InteractionResult.CONSUME;
       } else {
          return this.instant(world, user, hand, stack, GearUse.Slot.PRIMARY);
       }
    }
 
-   private ActionResult instant(World level, PlayerEntity player, Hand hand, ItemStack stack, GearUse.Slot slot) {
+   private InteractionResult instant(Level level, Player player, InteractionHand hand, ItemStack stack, GearUse.Slot slot) {
       if (this.kit.active(slot) == null) {
-         return ActionResult.PASS;
+         return InteractionResult.PASS;
       } else if (!ready(level, player, this.kit.key(slot))) {
-         return ActionResult.FAIL;
-      } else if (level instanceof ServerWorld server && !this.fire(server, player, hand, stack, slot, 0)) {
-         return ActionResult.FAIL;
+         return InteractionResult.FAIL;
+      } else if (level instanceof ServerLevel server && !this.fire(server, player, hand, stack, slot, 0)) {
+         return InteractionResult.FAIL;
       } else {
-         player.swingHand(hand);
-         return ActionResult.SUCCESS;
+         player.swing(hand, SwingAnimation.DEFAULT, false);
+         return InteractionResult.SUCCESS;
       }
    }
 
-   private boolean fire(ServerWorld level, PlayerEntity player, Hand hand, ItemStack stack, GearUse.Slot slot, int charge) {
+   private boolean fire(ServerLevel level, Player player, InteractionHand hand, ItemStack stack, GearUse.Slot slot, int charge) {
       Active active = this.kit.active(slot);
       if (active == null) {
          return false;
@@ -107,22 +106,22 @@ public class MysticWeapon extends Item implements GeoItem {
       state.cooldown(this.kit.key(slot), active.cooldown());
       GearKit.sound(level, player, 1.3F, 0.95F + level.getRandom().nextFloat() * 0.1F, this.kit.sounds(slot));
       this.triggerAnim(player, GeoItem.getOrAssignId(stack, level), "main", slot == GearUse.Slot.ALTERNATE ? "alt" : "use");
-      stack.damage(1, player, hand);
+      stack.hurtAndBreak(1, player, hand);
       return true;
    }
 
-   public int getMaxUseTime(ItemStack stack, LivingEntity user) {
+   public int getUseDuration(ItemStack stack, LivingEntity user) {
       return this.kit.charge() != null ? 72000 : 0;
    }
 
-   public UseAction getUseAction(ItemStack stack) {
+   public ItemUseAnimation getUseAnimation(ItemStack stack) {
       Charge charge = this.kit.charge();
-      return charge != null ? charge.pose() : UseAction.NONE;
+      return charge != null ? charge.pose() : ItemUseAnimation.NONE;
    }
 
-   public void usageTick(World world, LivingEntity user, ItemStack stack, int remainingUseTicks) {
+   public void onUseTick(Level world, LivingEntity user, ItemStack stack, int remainingUseTicks) {
       Charge charge = this.kit.charge();
-      if (charge != null && world instanceof ServerWorld server && user instanceof PlayerEntity player) {
+      if (charge != null && world instanceof ServerLevel server && user instanceof Player player) {
          GearState state = GearState.of(player);
          int held = 72000 - remainingUseTicks;
          int reached = charge.level(held);
@@ -138,7 +137,7 @@ public class MysticWeapon extends Item implements GeoItem {
 
             GearKit.sound(server, player, max ? 1.1F : 0.7F, 0.8F + 0.15F * reached, "weapon." + this.kit.id() + ".charge", "weapon." + this.kit.id() + ".use");
          } else if (held % 4 == 0) {
-            Vec3d tip = GearKit.tip(player);
+            Vec3 tip = GearKit.tip(player);
             Vfx.sparks(server, tip, pal.glow(), 1 + reached, 0.08, 0.1);
             if (max && held % 12 == 0) {
                Vfx.flare(server, tip, pal.core(), 1.2, 5);
@@ -147,25 +146,25 @@ public class MysticWeapon extends Item implements GeoItem {
       }
    }
 
-   public boolean onStoppedUsing(ItemStack stack, World world, LivingEntity user, int remainingUseTicks) {
+   public boolean releaseUsing(ItemStack stack, Level world, LivingEntity user, int remainingUseTicks) {
       Charge charge = this.kit.charge();
-      if (charge != null && user instanceof PlayerEntity player) {
+      if (charge != null && user instanceof Player player) {
          int reached = charge.level(72000 - remainingUseTicks);
          GearUse.Slot slot = reached > 0 ? GearUse.Slot.CHARGED : GearUse.Slot.PRIMARY;
-         Hand hand = player.getActiveHand();
-         if (world instanceof ServerWorld server) {
+         InteractionHand hand = player.getUsedItemHand();
+         if (world instanceof ServerLevel server) {
             GearState state = GearState.of(player);
             this.stopTriggeredAnim(player, GeoItem.getOrAssignId(stack, server), "main", "charge");
             state.endCharge();
             if (this.kit.active(slot) != null && state.ready(this.kit.key(slot)) && this.fire(server, player, hand, stack, slot, reached)) {
-               player.swingHand(hand);
+               player.swing(hand, SwingAnimation.DEFAULT, false);
                return true;
             } else {
                return false;
             }
          } else {
             if (this.kit.active(slot) != null && ready(world, player, this.kit.key(slot))) {
-               player.swingHand(hand);
+               player.swing(hand, SwingAnimation.DEFAULT, false);
             }
 
             return false;
@@ -175,17 +174,17 @@ public class MysticWeapon extends Item implements GeoItem {
       }
    }
 
-   public void postHit(ItemStack stack, LivingEntity target, LivingEntity attacker) {
-      super.postHit(stack, target, attacker);
-      if (attacker.getEntityWorld() instanceof ServerWorld level) {
+   public void hurtEnemy(ItemStack stack, LivingEntity target, LivingEntity attacker) {
+      super.hurtEnemy(stack, target, attacker);
+      if (attacker.level() instanceof ServerLevel level) {
          this.kit.passive().hit(level, attacker, target, stack);
-         if (attacker instanceof PlayerEntity player && this.kit.usesResonance()) {
+         if (attacker instanceof Player player && this.kit.usesResonance()) {
             GearState.of(player).addResonance(this.kit.id(), this.kit.resonancePerHit());
          }
       }
    }
 
-   public void appendTooltip(ItemStack stack, TooltipContext context, TooltipDisplayComponent displayComponent, Consumer<Text> textConsumer, TooltipType type) {
+   public void appendHoverText(ItemStack stack, TooltipContext context, TooltipDisplay displayComponent, Consumer<Component> textConsumer, TooltipFlag type) {
       GearTooltips.weapon(this.kit, textConsumer);
    }
 

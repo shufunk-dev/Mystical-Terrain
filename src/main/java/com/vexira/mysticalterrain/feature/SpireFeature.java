@@ -1,47 +1,56 @@
 package com.vexira.mysticalterrain.feature;
 
-import com.mojang.serialization.Codec;
-import net.minecraft.block.BlockState;
-import net.minecraft.registry.tag.BlockTags;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.StructureWorldAccess;
-import net.minecraft.world.gen.feature.Feature;
-import net.minecraft.world.gen.feature.util.FeatureContext;
+import com.mojang.serialization.MapCodec;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.feature.Feature;
 
-public class SpireFeature extends Feature<SpireConfiguration> {
+public class SpireFeature implements Feature {
     private static final int MAX_REACH = 14;
+    public static final MapCodec<SpireFeature> CODEC = SpireConfiguration.CODEC.fieldOf("config")
+        .xmap(SpireFeature::new, SpireFeature::config);
 
-    public SpireFeature(Codec<SpireConfiguration> codec) {
-        super(codec);
+    private final SpireConfiguration config;
+
+    public SpireFeature(SpireConfiguration config) {
+        this.config = config;
+    }
+
+    public SpireConfiguration config() {
+        return this.config;
     }
 
     @Override
-    public boolean generate(FeatureContext<SpireConfiguration> context) {
-        StructureWorldAccess level = context.getWorld();
-        Random random = context.getRandom();
-        SpireConfiguration config = context.getConfig();
-        BlockPos origin = context.getOrigin();
-        boolean hanging = config.hanging();
-        BlockState anchor = level.getBlockState(origin.offset(hanging ? Direction.UP : Direction.DOWN));
+    public MapCodec<? extends Feature> codec() {
+        return CODEC;
+    }
 
-        if (!anchor.isAir() && anchor.isOpaque()) {
-            int radius = config.radius().get(random);
+    @Override
+    public boolean place(WorldGenLevel level, ChunkGenerator generator, RandomSource random, BlockPos origin) {
+        boolean hanging = this.config.hanging();
+        BlockState anchor = level.getBlockState(origin.relative(hanging ? Direction.UP : Direction.DOWN));
+
+        if (!anchor.isAir() && anchor.canOcclude()) {
+            int radius = this.config.radius().sample(random);
             int height = hanging
-                ? Math.min(config.height().get(random), origin.getY() - level.getBottomY() - 2)
-                : Math.min(config.height().get(random), level.getTopYInclusive() - 2 - origin.getY());
+                ? Math.min(this.config.height().sample(random), origin.getY() - level.getMinY() - 2)
+                : Math.min(this.config.height().sample(random), level.getMaxY() - 2 - origin.getY());
 
             if (height < 3) {
                 return false;
             }
 
             double maxLean = (double) Math.max(0, MAX_REACH - radius - 1) / height;
-            double leanX = MathHelper.clamp((random.nextDouble() - 0.5) * 0.5, -maxLean, maxLean);
-            double leanZ = MathHelper.clamp((random.nextDouble() - 0.5) * 0.5, -maxLean, maxLean);
+            double leanX = Mth.clamp((random.nextDouble() - 0.5) * 0.5, -maxLean, maxLean);
+            double leanZ = Mth.clamp((random.nextDouble() - 0.5) * 0.5, -maxLean, maxLean);
             int dir = hanging ? -1 : 1;
-            BlockPos.Mutable pos = new BlockPos.Mutable();
+            BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
             for (int i = -3; i < height; i++) {
                 double t = (double) Math.max(0, i) / height;
@@ -52,18 +61,18 @@ public class SpireFeature extends Feature<SpireConfiguration> {
 
                 int ox = (int) Math.round(leanX * Math.max(0, i));
                 int oz = (int) Math.round(leanZ * Math.max(0, i));
-                int reach = MathHelper.ceil(r);
+                int reach = Mth.ceil(r);
 
                 for (int dx = -reach; dx <= reach; dx++) {
                     for (int dz = -reach; dz <= reach; dz++) {
                         double d = Math.sqrt(dx * dx + dz * dz) + (random.nextFloat() - 0.5F) * 0.5;
                         if (!(d > Math.max(r, 0.5))) {
-                            pos.set(origin, ox + dx, dir * i, oz + dz);
+                            pos.setWithOffset(origin, ox + dx, dir * i, oz + dz);
                             BlockState existing = level.getBlockState(pos);
-                            boolean allowed = i < 0 ? !existing.isIn(BlockTags.FEATURES_CANNOT_REPLACE) : canReplace(existing);
+                            boolean allowed = i < 0 ? !existing.is(BlockTags.FEATURES_CANNOT_REPLACE) : canReplace(existing);
                             if (allowed) {
-                                BlockState state = d > r - 1.2 ? config.shell().get(random, pos) : config.core().get(random, pos);
-                                this.setBlockState(level, pos, state);
+                                BlockState state = d > r - 1.2 ? this.config.shell().getState(level, random, pos) : this.config.core().getState(level, random, pos);
+                                this.setBlock(level, pos, state);
                             }
                         }
                     }
@@ -77,6 +86,6 @@ public class SpireFeature extends Feature<SpireConfiguration> {
     }
 
     private static boolean canReplace(BlockState state) {
-        return state.isAir() || state.isLiquid() || state.isIn(BlockTags.REPLACEABLE_BY_TREES) || state.isIn(BlockTags.REPLACEABLE);
+        return state.isAir() || state.liquid() || state.is(BlockTags.REPLACEABLE_BY_TREES) || state.is(BlockTags.REPLACEABLE);
     }
 }

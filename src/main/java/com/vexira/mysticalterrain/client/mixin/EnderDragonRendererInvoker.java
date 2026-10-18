@@ -1,19 +1,19 @@
 package com.vexira.mysticalterrain.client.mixin;
 
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.command.OrderedRenderCommandQueue;
-import net.minecraft.client.render.entity.EnderDragonEntityRenderer;
-import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.entity.EnderDragonRenderer;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
 @Environment(EnvType.CLIENT)
-@Mixin(EnderDragonEntityRenderer.class)
+@Mixin(EnderDragonRenderer.class)
 public interface EnderDragonRendererInvoker {
-   @Invoker("renderDeathAnimation")
-   static void mysticalterrain$submitRays(MatrixStack poseStack, float progress, OrderedRenderCommandQueue collector, RenderLayer type) {
+   @Invoker("submitRays")
+   static void mysticalterrain$submitRays(PoseStack poseStack, float progress, SubmitNodeCollector collector, RenderType type) {
       throw new AssertionError();
    }
 }

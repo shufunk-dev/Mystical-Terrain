@@ -1,8 +1,8 @@
 package com.vexira.mysticalterrain.gear;
 
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.consume.UseAction;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemUseAnimation;
 import org.jspecify.annotations.Nullable;
 
 public final class Charge {
@@ -10,7 +10,7 @@ public final class Charge {
    private final int ticksPerLevel;
    private float perLevel = 0.4F;
    private @Nullable Active active;
-   private UseAction pose = UseAction.TRIDENT;
+   private ItemUseAnimation pose = ItemUseAnimation.TRIDENT;
    private Charge.@Nullable Reached reached;
 
    private Charge(int levels, int ticksPerLevel) {
@@ -36,7 +36,7 @@ public final class Charge {
       return this;
    }
 
-   public Charge pose(UseAction pose) {
+   public Charge pose(ItemUseAnimation pose) {
       this.pose = pose;
       return this;
    }
@@ -62,7 +62,7 @@ public final class Charge {
       return this.active;
    }
 
-   public UseAction pose() {
+   public ItemUseAnimation pose() {
       return this.pose;
    }
 
@@ -80,6 +80,6 @@ public final class Charge {
 
    @FunctionalInterface
    public interface Reached {
-      void reached(ServerWorld var1, PlayerEntity var2, WeaponKit var3, int var4, boolean var5);
+      void reached(ServerLevel var1, Player var2, WeaponKit var3, int var4, boolean var5);
    }
 }

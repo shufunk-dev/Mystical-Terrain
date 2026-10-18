@@ -27,39 +27,39 @@ import java.util.function.IntConsumer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.ServerStopped;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.ShapeContext;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.boss.WitherEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.fluid.FluidState;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.consume.UseAction;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.tag.DamageTypeTags;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.BlockPos.MutableBlockPos;
+import net.minecraft.core.Direction.Axis;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult.Type;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.BlockPos.Mutable;
-import net.minecraft.util.math.Direction.Axis;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.RaycastContext.FluidHandling;
-import net.minecraft.world.RaycastContext.ShapeType;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.ClipContext.Block;
+import net.minecraft.world.level.ClipContext.Fluid;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult.Type;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jspecify.annotations.Nullable;
 
 public final class HrimthaneArsenal extends Arsenal {
@@ -67,8 +67,8 @@ public final class HrimthaneArsenal extends Arsenal {
    private static final int CORE = FROST.core();
    private static final int GLOW = FROST.glow();
    private static final Vfx.Debris SNOW = Vfx.Debris.SNOW;
-   private static final Vec3d UP = new Vec3d(0.0, 1.0, 0.0);
-   private static final Vec3d DOWN = new Vec3d(0.0, -1.0, 0.0);
+   private static final Vec3 UP = new Vec3(0.0, 1.0, 0.0);
+   private static final Vec3 DOWN = new Vec3(0.0, -1.0, 0.0);
    private static final int MAX_RIME = 5;
    private static final int RIME_LIFE = 120;
    private static final String PIERCE = "hrimthane.pierce";
@@ -98,19 +98,19 @@ public final class HrimthaneArsenal extends Arsenal {
          .axe()
          .primary(Active.of(160, HrimthaneArsenal::glacierCrush).empowered(60, 1.3F))
          .alternate(Active.of(200, HrimthaneArsenal::tailReaper).empowered(40, 1.25F))
-         .charge(Charge.of(3, 10).pose(UseAction.TRIDENT).perLevel(0.35F).onLevel(HrimthaneArsenal::crushLevel))
+         .charge(Charge.of(3, 10).pose(ItemUseAnimation.TRIDENT).perLevel(0.35F).onLevel(HrimthaneArsenal::crushLevel))
          .passive(HrimthaneArsenal::rimebite)
          .resonancePerHit(12.0F);
       this.weapon("glacial_lance", 9.0F, -2.8F)
          .primary(Active.of(100, HrimthaneArsenal::hoarfrostLance).empowered(40))
          .alternate(Active.of(240, HrimthaneArsenal::frostBurrow).empowered(50))
-         .charge(Charge.of(3, 8).pose(UseAction.TRIDENT).perLevel(0.4F).onLevel(HrimthaneArsenal::lanceLevel))
+         .charge(Charge.of(3, 8).pose(ItemUseAnimation.TRIDENT).perLevel(0.4F).onLevel(HrimthaneArsenal::lanceLevel))
          .passive(HrimthaneArsenal::impalingFrost)
          .resonancePerHit(10.0F);
       this.weapon("icicle_repeater", 3.0F, -2.4F)
          .primary(Active.of(80, HrimthaneArsenal::icicleBarrage).empowered(30, 1.0F))
          .alternate(Active.of(280, HrimthaneArsenal::frozenPrison).empowered(50))
-         .charge(Charge.of(5, 8).pose(UseAction.BOW).cast(Active.of(320, HrimthaneArsenal::wintersCrown).empowered(60)).onLevel(HrimthaneArsenal::crownLevel))
+         .charge(Charge.of(5, 8).pose(ItemUseAnimation.BOW).cast(Active.of(320, HrimthaneArsenal::wintersCrown).empowered(60)).onLevel(HrimthaneArsenal::crownLevel))
          .passive(HrimthaneArsenal::quickReload)
          .resonancePerHit(8.0F);
    }
@@ -119,19 +119,19 @@ public final class HrimthaneArsenal extends Arsenal {
    protected void armor(ArmorKit set) {
       set.twoPiece(HrimthaneArsenal::rimeCarapace);
       set.fourPiece(HrimthaneArsenal::permafrost);
-      set.allowDamage((level, p, source, amount, pieces) -> pieces < 2 || !source.isIn(DamageTypeTags.IS_FREEZING));
+      set.allowDamage((level, p, source, amount, pieces) -> pieces < 2 || !source.is(DamageTypeTags.IS_FREEZING));
       set.onHurt(HrimthaneArsenal::wyrmscaleHurt);
       set.active(600, HrimthaneArsenal::absoluteZero);
    }
 
    static boolean glacierCrush(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       int c = u.charge();
       float pw = u.power();
       double r = 3.5 + 0.5 * c;
-      Vec3d at = ground(level, p.getEntityPos().add(GearKit.flatLook(p).multiply(2.2)));
-      Vfx.slashArc(level, p.getEntityPos().add(0.0, 1.4, 0.0), p.getYaw(), 20.0F, 90.0F, 3.0, FROST, 150.0F);
+      Vec3 at = ground(level, p.position().add(GearKit.flatLook(p).scale(2.2)));
+      Vfx.slashArc(level, p.position().add(0.0, 1.4, 0.0), p.getYRot(), 20.0F, 90.0F, 3.0, FROST, 150.0F);
       List<LivingEntity> hits = foes(level, p, at, r);
       Set<LivingEntity> primed = primed(level, hits);
 
@@ -171,8 +171,8 @@ public final class HrimthaneArsenal extends Arsenal {
                if (flatDist(ex, at) >= r) {
                   deal(level, p, ex, 12.0F * pw, false);
                   rime(level, p, ex, 1);
-                  ex.addVelocity(0.0, 0.6, 0.0);
-                  ex.knockedBack = true;
+                  ex.push(0.0, 0.6, 0.0);
+                  ex.syncVelocity = true;
                }
             }
 
@@ -186,60 +186,60 @@ public final class HrimthaneArsenal extends Arsenal {
       return true;
    }
 
-   static void crushLevel(ServerWorld level, PlayerEntity p, WeaponKit w, int lvl, boolean max) {
-      Vec3d tip = GearKit.tip(p);
-      Vfx.ring(level, p.getEntityPos().add(0.0, 0.05, 0.0), GLOW, 3.2 - 0.6 * lvl, 8);
+   static void crushLevel(ServerLevel level, Player p, WeaponKit w, int lvl, boolean max) {
+      Vec3 tip = GearKit.tip(p);
+      Vfx.ring(level, p.position().add(0.0, 0.05, 0.0), GLOW, 3.2 - 0.6 * lvl, 8);
       Vfx.flare(level, tip, max ? CORE : GLOW, 0.9 + 0.4 * lvl, 6);
       Vfx.shards(level, tip, CORE, 2 + 2 * lvl, 0.2);
-      Vfx.debris(level, p.getEntityPos().add(0.0, 2.4, 0.0), SNOW, CORE, 3 + 2 * lvl, 0.08);
+      Vfx.debris(level, p.position().add(0.0, 2.4, 0.0), SNOW, CORE, 3 + 2 * lvl, 0.08);
       if (max) {
-         Vfx.runeCircle(level, ground(level, p.getEntityPos()), 1.6, FROST, 30, 0.05F, Vfx.Rune.GLYPH);
+         Vfx.runeCircle(level, ground(level, p.position()), 1.6, FROST, 30, 0.05F, Vfx.Rune.GLYPH);
          Vfx.gather(level, tip, FROST, 1.4, 10);
          Vfx.glint(level, tip, CORE, 1.2);
       }
    }
 
    static boolean tailReaper(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       float pw = u.power();
-      float yaw = p.getYaw();
-      Vec3d origin = p.getEntityPos().add(0.0, 1.0, 0.0);
+      float yaw = p.getYRot();
+      Vec3 origin = p.position().add(0.0, 1.0, 0.0);
       Vfx.slashArc(level, origin, yaw, 0.0F, 0.0F, 4.5, FROST, 340.0F);
       Vfx.slashArc(level, origin.add(0.0, -0.3, 0.0), yaw + 180.0F, 0.0F, 12.0F, 3.2, FROST, -340.0F);
-      Vfx.ring(level, p.getEntityPos().add(0.0, 0.05, 0.0), GLOW, 4.5, 10);
+      Vfx.ring(level, p.position().add(0.0, 0.05, 0.0), GLOW, 4.5, 10);
       Vfx.debris(level, origin, SNOW, CORE, 16, 0.5);
-      Vec3d f = GearKit.flatLook(p);
+      Vec3 f = GearKit.flatLook(p);
 
       for (int k = 0; k < 4; k++) {
-         Vec3d dir = f.rotateY(k * (float) (Math.PI / 2));
-         Vfx.streaks(level, origin.add(dir.multiply(2.5)), dir.rotateY((float) (-Math.PI / 2)), FROST, 4);
+         Vec3 dir = f.yRot(k * (float) (Math.PI / 2));
+         Vfx.streaks(level, origin.add(dir.scale(2.5)), dir.yRot((float) (-Math.PI / 2)), FROST, 4);
       }
 
       int n = reap(level, p, u, 4.5, pw);
       if (n > 0) {
-         p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 60, n >= 3 ? 1 : 0, false, false, true));
-         Vfx.shieldBubble(level, p.getEntityPos().add(0.0, 1.0, 0.0), 1.3, FROST, 20);
-         Vfx.auraRing(level, p.getEntityPos(), FROST, 1.2);
+         p.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 60, n >= 3 ? 1 : 0, false, false, true));
+         Vfx.shieldBubble(level, p.position().add(0.0, 1.0, 0.0), 1.3, FROST, 20);
+         Vfx.auraRing(level, p.position(), FROST, 1.2);
       }
 
       if (u.empowered()) {
          later(level, p, 6, () -> {
-            for (LivingEntity e : foes(level, p, p.getEntityPos(), 7.0)) {
-               Vec3d to = p.getEntityPos().subtract(e.getEntityPos()).getHorizontal();
-               if (to.lengthSquared() > 1.0E-4) {
+            for (LivingEntity e : foes(level, p, p.position(), 7.0)) {
+               Vec3 to = p.position().subtract(e.position()).horizontal();
+               if (to.lengthSqr() > 1.0E-4) {
                   to = to.normalize();
-                  e.addVelocity(to.x * 0.7, 0.15, to.z * 0.7);
-                  e.knockedBack = true;
+                  e.push(to.x * 0.7, 0.15, to.z * 0.7);
+                  e.syncVelocity = true;
                }
             }
 
-            Vfx.vortex(level, p.getEntityPos(), 3.0, 2.5, FROST, 10);
+            Vfx.vortex(level, p.position(), 3.0, 2.5, FROST, 10);
          });
          later(level, p, 10, () -> {
-            Vec3d o = p.getEntityPos().add(0.0, 1.0, 0.0);
-            Vfx.slashArc(level, o, p.getYaw(), 0.0F, 8.0F, 5.5, FROST, -360.0F);
-            Vfx.ring(level, p.getEntityPos().add(0.0, 0.05, 0.0), GLOW, 5.5, 10);
+            Vec3 o = p.position().add(0.0, 1.0, 0.0);
+            Vfx.slashArc(level, o, p.getYRot(), 0.0F, 8.0F, 5.5, FROST, -360.0F);
+            Vfx.ring(level, p.position().add(0.0, 0.05, 0.0), GLOW, 5.5, 10);
             Vfx.debris(level, o, SNOW, CORE, 14, 0.55);
             reap(level, p, u, 5.5, pw);
             GearKit.kick(level, p, 0.3);
@@ -249,9 +249,9 @@ public final class HrimthaneArsenal extends Arsenal {
       return true;
    }
 
-   private static int reap(ServerWorld level, PlayerEntity p, GearUse u, double reach, float pw) {
+   private static int reap(ServerLevel level, Player p, GearUse u, double reach, float pw) {
       double y = p.getY();
-      List<LivingEntity> hits = foes(level, p, p.getEntityPos().add(0.0, 1.0, 0.0), reach)
+      List<LivingEntity> hits = foes(level, p, p.position().add(0.0, 1.0, 0.0), reach)
          .stream()
          .filter(ex -> ex.getBoundingBox().minY - y < 2.5 && y - ex.getBoundingBox().maxY < 2.5)
          .toList();
@@ -264,7 +264,7 @@ public final class HrimthaneArsenal extends Arsenal {
 
          deal(level, p, e, 14.0F * pw, true);
          rime(level, p, e, 1);
-         GearKit.knockAway(e, p.getEntityPos(), 0.9, 0.25);
+         GearKit.knockAway(e, p.position(), 0.9, 0.25);
          GearKit.hitSpark(level, e, FROST);
          Vfx.shards(level, center(e), CORE, 6, 0.4);
          u.resonate(2.0F);
@@ -273,8 +273,8 @@ public final class HrimthaneArsenal extends Arsenal {
       return hits.size();
    }
 
-   static void rimebite(ServerWorld level, LivingEntity a, LivingEntity t, ItemStack s) {
-      PlayerEntity p = a instanceof PlayerEntity pl ? pl : null;
+   static void rimebite(ServerLevel level, LivingEntity a, LivingEntity t, ItemStack s) {
+      Player p = a instanceof Player pl ? pl : null;
       boolean broke = p != null && shatter(level, p, t, 1.0F);
       rime(level, p, t, 1, 5);
       GearKit.hitSpark(level, t, FROST);
@@ -285,30 +285,30 @@ public final class HrimthaneArsenal extends Arsenal {
    }
 
    static boolean hoarfrostLance(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       int c = u.charge();
       float pw = u.power();
       double range = 18 + 6 * c;
       double width = 0.9 + 0.3 * c;
-      Vec3d eye = GearKit.eye(p);
-      Vec3d look = p.getRotationVector();
-      Vec3d end = clipTo(level, p, eye, look, range);
+      Vec3 eye = GearKit.eye(p);
+      Vec3 look = p.getLookAngle();
+      Vec3 end = clipTo(level, p, eye, look, range);
       double len = end.distanceTo(eye);
-      Vec3d tip = GearKit.tip(p);
+      Vec3 tip = GearKit.tip(p);
       Vfx.beam(level, tip, end, FROST, 0.45 + 0.1 * c, 6);
       Vfx.streaks(level, tip, look, FROST, 10);
       GearKit.muzzle(level, p, FROST, 1.2);
       int dots = Math.min(18, (int)(len / 2.0));
 
       for (int i = 1; i <= dots; i++) {
-         Vfx.shards(level, eye.add(look.multiply(2.0 * i)), CORE, 1, 0.12);
+         Vfx.shards(level, eye.add(look.scale(2.0 * i)), CORE, 1, 0.12);
       }
 
       Vfx.explosion(level, end, FROST, 1.2 + 0.3 * c);
       Vfx.glint(level, end, CORE, 1.2);
       List<LivingEntity> hits = new ArrayList<>(GearKit.alongLine(level, p, eye, look, len, width));
-      hits.sort(Comparator.comparingDouble(ex -> ex.squaredDistanceTo(eye)));
+      hits.sort(Comparator.comparingDouble(ex -> ex.distanceToSqr(eye)));
       Set<LivingEntity> primed = primed(level, hits);
 
       for (LivingEntity e : hits) {
@@ -320,23 +320,23 @@ public final class HrimthaneArsenal extends Arsenal {
          rime(level, p, e, 1 + c);
          Vfx.impact(level, center(e), FROST, 0.5);
          u.resonate(3.0F);
-         if (e.isAlive() && !e.isOnGround()) {
-            Vec3d v = e.getVelocity();
-            e.setVelocity(v.x * 0.3, -1.2, v.z * 0.3);
-            e.knockedBack = true;
-            e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 40, 2), p);
+         if (e.isAlive() && !e.onGround()) {
+            Vec3 v = e.getDeltaMovement();
+            e.setDeltaMovement(v.x * 0.3, -1.2, v.z * 0.3);
+            e.syncVelocity = true;
+            e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 40, 2), p);
             Vfx.streaks(level, center(e), DOWN, FROST, 6);
          }
       }
 
       if (u.empowered() && !hits.isEmpty()) {
          LivingEntity first = hits.get(0);
-         Vec3d from = center(first);
+         Vec3 from = center(first);
          Set<LivingEntity> done = new HashSet<>(hits);
 
          for (int side = -1; side <= 1; side += 2) {
-            Vec3d dir = Vec3d.fromPolar(p.getPitch(), p.getYaw() + side * 15);
-            Vec3d to = clipTo(level, p, from, dir, 12.0);
+            Vec3 dir = Vec3.directionFromRotation(p.getXRot(), p.getYRot() + side * 15);
+            Vec3 to = clipTo(level, p, from, dir, 12.0);
 
             for (LivingEntity e : GearKit.alongLine(level, p, from, dir, to.distanceTo(from), 0.9)) {
                if (done.add(e)) {
@@ -358,9 +358,9 @@ public final class HrimthaneArsenal extends Arsenal {
       return true;
    }
 
-   private static void rimeSpikes(ServerWorld level, PlayerEntity p, double len, float pw) {
-      Vec3d feet = p.getEntityPos();
-      Vec3d flat = GearKit.flatLook(p);
+   private static void rimeSpikes(ServerLevel level, Player p, double len, float pw) {
+      Vec3 feet = p.position();
+      Vec3 flat = GearKit.flatLook(p);
       double reach = Math.min(len, 24.0);
       Vfx.telegraphLine(level, ground(level, feet), flat, reach, 1.4, 5, FROST);
       Set<LivingEntity> struck = new HashSet<>();
@@ -370,7 +370,7 @@ public final class HrimthaneArsenal extends Arsenal {
          double dist = d;
          int idx = i++;
          later(level, p, 5 + idx / 3, () -> {
-            Vec3d g = ground(level, feet.add(flat.multiply(dist)));
+            Vec3 g = ground(level, feet.add(flat.scale(dist)));
             Vfx.pillar(level, g, FROST, 2.2, 0.4);
             if (idx % 2 == 1) {
                Vfx.groundCrack(level, g, 1.2, FROST);
@@ -379,8 +379,8 @@ public final class HrimthaneArsenal extends Arsenal {
             for (LivingEntity e : foes(level, p, g, 1.5)) {
                if (struck.add(e)) {
                   deal(level, p, e, 8.0F * pw, false);
-                  e.addVelocity(0.0, 0.7, 0.0);
-                  e.knockedBack = true;
+                  e.push(0.0, 0.7, 0.0);
+                  e.syncVelocity = true;
                   rime(level, p, e, 1);
                }
             }
@@ -388,10 +388,10 @@ public final class HrimthaneArsenal extends Arsenal {
       }
    }
 
-   static void lanceLevel(ServerWorld level, PlayerEntity p, WeaponKit w, int lvl, boolean max) {
-      Vec3d tip = GearKit.tip(p);
-      Vfx.telegraphLine(level, ground(level, p.getEntityPos()), GearKit.flatLook(p), 18 + 6 * lvl, 0.9, 8, FROST);
-      Vfx.streaks(level, tip, p.getRotationVector(), FROST, 3 + 2 * lvl);
+   static void lanceLevel(ServerLevel level, Player p, WeaponKit w, int lvl, boolean max) {
+      Vec3 tip = GearKit.tip(p);
+      Vfx.telegraphLine(level, ground(level, p.position()), GearKit.flatLook(p), 18 + 6 * lvl, 0.9, 8, FROST);
+      Vfx.streaks(level, tip, p.getLookAngle(), FROST, 3 + 2 * lvl);
       Vfx.flare(level, tip, max ? CORE : GLOW, 0.8 + 0.35 * lvl, 6);
       if (max) {
          Vfx.glint(level, tip, CORE, 1.4);
@@ -400,19 +400,19 @@ public final class HrimthaneArsenal extends Arsenal {
    }
 
    static boolean frostBurrow(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      Vec3d start = p.getEntityPos();
-      Vec3d g = floor(level, start, 0.6, 3);
+      ServerLevel level = u.level();
+      Player p = u.player();
+      Vec3 start = p.position();
+      Vec3 g = floor(level, start, 0.6, 3);
       if (g != null && !(start.y - g.y > 3.0)) {
          float pw = u.power();
          boolean emp = u.empowered();
-         Vec3d dir = GearKit.flatLook(p);
+         Vec3 dir = GearKit.flatLook(p);
          Vfx.heavyImpact(level, g, FROST, 0.6);
          Vfx.groundCrack(level, g, 1.8, FROST);
          Vfx.debris(level, start.add(0.0, 0.5, 0.0), SNOW, CORE, 16, 0.5);
          Vfx.telegraphLine(level, g, dir, 15.0, 1.4, 10, FROST);
-         p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 14, 4, true, false));
+         p.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 14, 4, true, false));
          Set<LivingEntity> spiked = new HashSet<>();
          later(level, p, 1, () -> burrow(level, p, u, dir, pw, emp, 1, start, spiked));
          return true;
@@ -421,13 +421,13 @@ public final class HrimthaneArsenal extends Arsenal {
       }
    }
 
-   private static void burrow(ServerWorld level, PlayerEntity p, GearUse u, Vec3d dir, float pw, boolean emp, int k, Vec3d last, Set<LivingEntity> spiked) {
-      Vec3d feet = p.getEntityPos();
-      boolean blocked = k > 1 && p.horizontalCollision || k > 3 && feet.subtract(last).horizontalLength() < 0.2;
+   private static void burrow(ServerLevel level, Player p, GearUse u, Vec3 dir, float pw, boolean emp, int k, Vec3 last, Set<LivingEntity> spiked) {
+      Vec3 feet = p.position();
+      boolean blocked = k > 1 && p.horizontalCollision || k > 3 && feet.subtract(last).horizontalDistance() < 0.2;
       if (k <= 10 && !blocked && foes(level, p, feet.add(0.0, 0.9, 0.0), 1.6).isEmpty()) {
-         Vec3d v = p.getVelocity();
-         p.setVelocity(dir.x * 1.5, Math.min(0.0, v.y), dir.z * 1.5);
-         p.knockedBack = true;
+         Vec3 v = p.getDeltaMovement();
+         p.setDeltaMovement(dir.x * 1.5, Math.min(0.0, v.y), dir.z * 1.5);
+         p.syncVelocity = true;
          Vfx.smoke(level, feet.add(0.0, 0.3, 0.0), FROST.smoke(), 3, 0.4, 1.2);
          Vfx.trail(level, feet.add(0.0, 0.4, 0.0), FROST, 0.5);
          if (k % 3 == 1) {
@@ -437,14 +437,14 @@ public final class HrimthaneArsenal extends Arsenal {
 
          if (emp && k % 2 == 0) {
             later(level, p, 4, () -> {
-               Vec3d at = ground(level, feet);
+               Vec3 at = ground(level, feet);
                Vfx.pillar(level, at, FROST, 1.8, 0.3);
 
                for (LivingEntity e : foes(level, p, at, 1.5)) {
                   if (spiked.add(e)) {
                      deal(level, p, e, 8.0F * pw, false);
-                     e.addVelocity(0.0, 0.6, 0.0);
-                     e.knockedBack = true;
+                     e.push(0.0, 0.6, 0.0);
+                     e.syncVelocity = true;
                      rime(level, p, e, 1);
                   }
                }
@@ -457,9 +457,9 @@ public final class HrimthaneArsenal extends Arsenal {
       }
    }
 
-   private static void erupt(ServerWorld level, PlayerEntity p, GearUse u, float pw, boolean emp) {
-      Vec3d at = p.getEntityPos();
-      Vec3d g = ground(level, at);
+   private static void erupt(ServerLevel level, Player p, GearUse u, float pw, boolean emp) {
+      Vec3 at = p.position();
+      Vec3 g = ground(level, at);
       double r = emp ? 5.0 : 3.5;
       List<LivingEntity> hits = foes(level, p, g, r);
       Set<LivingEntity> primed = primed(level, hits);
@@ -471,16 +471,16 @@ public final class HrimthaneArsenal extends Arsenal {
 
          deal(level, p, e, 18.0F * pw, true);
          rime(level, p, e, 2);
-         e.addVelocity(0.0, 0.9, 0.0);
-         e.knockedBack = true;
+         e.push(0.0, 0.9, 0.0);
+         e.syncVelocity = true;
          u.resonate(4.0F);
       }
 
-      Vec3d v = p.getVelocity();
-      p.setVelocity(v.x * 0.3, 0.85, v.z * 0.3);
-      p.knockedBack = true;
-      p.onLanding();
-      p.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOW_FALLING, 30, 0, true, false));
+      Vec3 v = p.getDeltaMovement();
+      p.setDeltaMovement(v.x * 0.3, 0.85, v.z * 0.3);
+      p.syncVelocity = true;
+      p.resetFallDistance();
+      p.addEffect(new MobEffectInstance(MobEffects.SLOW_FALLING, 30, 0, true, false));
       Vfx.pillar(level, g, FROST, 6.0, 1.2);
       Vfx.heavyImpact(level, g, FROST, 1.2);
       Vfx.nova(level, at.add(0.0, 0.5, 0.0), FROST, r);
@@ -491,17 +491,17 @@ public final class HrimthaneArsenal extends Arsenal {
       sfx(level, at, "weapon.glacial_lance.erupt", 1.6F, 1.0F);
    }
 
-   static void impalingFrost(ServerWorld level, LivingEntity a, LivingEntity t, ItemStack s) {
-      PlayerEntity p = a instanceof PlayerEntity pl ? pl : null;
+   static void impalingFrost(ServerLevel level, LivingEntity a, LivingEntity t, ItemStack s) {
+      Player p = a instanceof Player pl ? pl : null;
       int before = stacks(level, t);
       rime(level, p, t, 1, 5);
       GearKit.hitSpark(level, t, FROST);
       if (p != null && before >= 3 && GearState.of(p).ready("hrimthane.pierce")) {
          GearState.of(p).cooldown("hrimthane.pierce", 10);
-         Vec3d c = center(t);
-         Vec3d dir = GearKit.flatLook(p);
-         double reach = 4.0F + t.getWidth() / 2.0F;
-         Vec3d end = c.add(dir.multiply(reach));
+         Vec3 c = center(t);
+         Vec3 dir = GearKit.flatLook(p);
+         double reach = 4.0F + t.getBbWidth() / 2.0F;
+         Vec3 end = c.add(dir.scale(reach));
 
          for (LivingEntity e : GearKit.alongLine(level, p, c, dir, reach, 0.8)) {
             if (e != t) {
@@ -518,8 +518,8 @@ public final class HrimthaneArsenal extends Arsenal {
    }
 
    static boolean icicleBarrage(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       float pw = u.power();
       int rounds = u.empowered() ? 5 : 3;
       int pierce = u.empowered() ? 1 : 0;
@@ -533,16 +533,16 @@ public final class HrimthaneArsenal extends Arsenal {
       return true;
    }
 
-   private static void volley(ServerWorld level, PlayerEntity p, float pw, int pierce, int round) {
+   private static void volley(ServerLevel level, Player p, float pw, int pierce, int round) {
       Set<LivingEntity> rimed = new HashSet<>();
       boolean[] sounded = new boolean[]{false};
-      Random rnd = level.getRandom();
-      Vec3d tip = GearKit.tip(p);
+      RandomSource rnd = level.getRandom();
+      Vec3 tip = GearKit.tip(p);
 
       for (int side = -1; side <= 1; side += 2) {
-         float yaw = p.getYaw() + side * 3 + (rnd.nextFloat() - 0.5F) * 2.0F;
-         float pitch = p.getPitch() + (rnd.nextFloat() - 0.5F) * 1.2F;
-         HrimthaneArsenal.Shard s = shard(level, p, tip, Vec3d.fromPolar(pitch, yaw).multiply(2.4), 14, 0.6);
+         float yaw = p.getYRot() + side * 3 + (rnd.nextFloat() - 0.5F) * 2.0F;
+         float pitch = p.getXRot() + (rnd.nextFloat() - 0.5F) * 1.2F;
+         HrimthaneArsenal.Shard s = shard(level, p, tip, Vec3.directionFromRotation(pitch, yaw).scale(2.4), 14, 0.6);
          s.pierce = pierce;
          s.onHit = (sh, e, at) -> {
             deal(level, p, e, 5.0F * pw, false);
@@ -567,18 +567,18 @@ public final class HrimthaneArsenal extends Arsenal {
       }
 
       GearKit.muzzle(level, p, FROST, 0.8);
-      Vfx.streaks(level, tip, p.getRotationVector(), FROST, 4);
+      Vfx.streaks(level, tip, p.getLookAngle(), FROST, 4);
       if (round > 0) {
-         sfx(level, p.getEntityPos(), "bolt.ice.launch", 0.6F, 1.35F);
+         sfx(level, p.position(), "bolt.ice.launch", 0.6F, 1.35F);
       }
    }
 
    static boolean frozenPrison(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       float pw = u.power();
       boolean emp = u.empowered();
-      HrimthaneArsenal.Shard s = shard(level, p, GearKit.tip(p), p.getRotationVector().multiply(1.0), 28, 1.0);
+      HrimthaneArsenal.Shard s = shard(level, p, GearKit.tip(p), p.getLookAngle().scale(1.0), 28, 1.0);
       s.comet = true;
       s.target = GearKit.lookTarget(level, p, 28.0);
       s.homing = s.target != null ? 0.08 : 0.0;
@@ -594,7 +594,7 @@ public final class HrimthaneArsenal extends Arsenal {
       return true;
    }
 
-   private static void prison(ServerWorld level, PlayerEntity p, @Nullable LivingEntity struck, Vec3d at, float pw, boolean emp) {
+   private static void prison(ServerLevel level, Player p, @Nullable LivingEntity struck, Vec3 at, float pw, boolean emp) {
       if (struck != null) {
          freeze(level, p, struck);
       }
@@ -608,7 +608,7 @@ public final class HrimthaneArsenal extends Arsenal {
          GearState.of(p).addResonance("icicle_repeater", 4.0F);
       }
 
-      Vec3d g = ground(level, at);
+      Vec3 g = ground(level, at);
       Vfx.nova(level, at, FROST, 3.5);
       Vfx.shards(level, at, CORE, 20, 0.7);
       Vfx.groundCrack(level, g, 3.5, FROST);
@@ -619,7 +619,7 @@ public final class HrimthaneArsenal extends Arsenal {
          repeat(level, p, 20, 20, 4, i -> {
             for (LivingEntity ex : foes(level, p, g, 3.5)) {
                rime(level, p, ex, 1);
-               ex.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 30, 2), p);
+               ex.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 2), p);
             }
 
             Vfx.ring(level, g.add(0.0, 0.05, 0.0), GLOW, 3.5, 12);
@@ -629,14 +629,14 @@ public final class HrimthaneArsenal extends Arsenal {
    }
 
    static boolean wintersCrown(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       LivingEntity main = GearKit.lookTarget(level, p, 40.0);
       if (main == null) {
          main = nearAim(level, p, 32.0, 0.8);
       }
 
-      Vec3d centre = main != null ? main.getEntityPos() : GearKit.lookPoint(level, p, 40.0);
+      Vec3 centre = main != null ? main.position() : GearKit.lookPoint(level, p, 40.0);
       List<LivingEntity> pool = new ArrayList<>(GearKit.enemies(level, p, centre, 10.0));
       if (main != null && !pool.contains(main)) {
          pool.add(main);
@@ -646,7 +646,7 @@ public final class HrimthaneArsenal extends Arsenal {
          return false;
       }
 
-      pool.sort(Comparator.comparingDouble(e -> e.getEntityPos().squaredDistanceTo(centre)));
+      pool.sort(Comparator.comparingDouble(e -> e.position().distanceToSqr(centre)));
       if (main != null) {
          pool.remove(main);
          pool.add(0, main);
@@ -655,7 +655,7 @@ public final class HrimthaneArsenal extends Arsenal {
       float pw = u.power();
       boolean emp = u.empowered();
       int n = u.charge() + (emp ? 2 : 0);
-      Vec3d crown = crownCentre(p);
+      Vec3 crown = crownCentre(p);
       Vfx.flare(level, crown, CORE, 2.5, 8);
       Vfx.ring(level, crown, GLOW, 2.0, 10);
       Vfx.streaks(level, crown, UP, FROST, 8);
@@ -672,11 +672,11 @@ public final class HrimthaneArsenal extends Arsenal {
       return true;
    }
 
-   private static void spear(ServerWorld level, PlayerEntity p, int slot, LivingEntity target, List<LivingEntity> pool, float pw, boolean emp) {
-      Vec3d from = crownSlot(level, p, slot);
-      Vec3d out = from.subtract(crownCentre(p)).getHorizontal();
-      out = out.lengthSquared() > 1.0E-4 ? out.normalize() : GearKit.flatLook(p);
-      HrimthaneArsenal.Shard s = shard(level, p, from, out.multiply(0.2).add(0.0, 0.9, 0.0), 40, 0.8);
+   private static void spear(ServerLevel level, Player p, int slot, LivingEntity target, List<LivingEntity> pool, float pw, boolean emp) {
+      Vec3 from = crownSlot(level, p, slot);
+      Vec3 out = from.subtract(crownCentre(p)).horizontal();
+      out = out.lengthSqr() > 1.0E-4 ? out.normalize() : GearKit.flatLook(p);
+      HrimthaneArsenal.Shard s = shard(level, p, from, out.scale(0.2).add(0.0, 0.9, 0.0), 40, 0.8);
       s.comet = true;
       s.target = target;
       s.pool = pool;
@@ -696,7 +696,7 @@ public final class HrimthaneArsenal extends Arsenal {
       sfx(level, from, "bolt.ice.launch", 0.7F, 1.1F + 0.05F * slot);
    }
 
-   private static void spearHit(ServerWorld level, PlayerEntity p, @Nullable LivingEntity main, Vec3d at, float pw, boolean emp) {
+   private static void spearHit(ServerLevel level, Player p, @Nullable LivingEntity main, Vec3 at, float pw, boolean emp) {
       if (main != null) {
          if (brittle(level, main)) {
             shatter(level, p, main, pw);
@@ -717,30 +717,30 @@ public final class HrimthaneArsenal extends Arsenal {
       Vfx.glint(level, at, CORE, 1.0);
       sfx(level, at, "bolt.ice.impact", 1.0F, 1.1F);
       if (emp) {
-         Vec3d g = ground(level, at);
+         Vec3 g = ground(level, at);
          Vfx.pillar(level, g, FROST, 2.5, 0.35);
 
          for (LivingEntity e : foes(level, p, g, 1.5)) {
-            e.addVelocity(0.0, 0.6, 0.0);
-            e.knockedBack = true;
+            e.push(0.0, 0.6, 0.0);
+            e.syncVelocity = true;
             deal(level, p, e, 6.0F * pw, false);
          }
       }
    }
 
-   static void crownLevel(ServerWorld level, PlayerEntity p, WeaponKit w, int lvl, boolean max) {
-      Vec3d pos = crownSlot(level, p, lvl - 1);
+   static void crownLevel(ServerLevel level, Player p, WeaponKit w, int lvl, boolean max) {
+      Vec3 pos = crownSlot(level, p, lvl - 1);
       Vfx.flare(level, pos, CORE, 1.0, 6);
       Vfx.shards(level, pos, CORE, 4, 0.15);
-      Vfx.ring(level, p.getEntityPos().add(0.0, 0.05, 0.0), GLOW, 0.8 + 0.4 * lvl, 8);
+      Vfx.ring(level, p.position().add(0.0, 0.05, 0.0), GLOW, 0.8 + 0.4 * lvl, 8);
       if (max) {
-         Vfx.runeCircle(level, ground(level, p.getEntityPos()), 2.2, FROST, 40, 0.06F, Vfx.Rune.GLYPH);
+         Vfx.runeCircle(level, ground(level, p.position()), 2.2, FROST, 40, 0.06F, Vfx.Rune.GLYPH);
          Vfx.glint(level, crownCentre(p), CORE, 1.2);
       }
    }
 
-   static void quickReload(ServerWorld level, LivingEntity a, LivingEntity t, ItemStack s) {
-      PlayerEntity p = a instanceof PlayerEntity pl ? pl : null;
+   static void quickReload(ServerLevel level, LivingEntity a, LivingEntity t, ItemStack s) {
+      Player p = a instanceof Player pl ? pl : null;
       rime(level, p, t, 1, 5);
       GearKit.hitSpark(level, t, FROST);
       if (p != null) {
@@ -754,22 +754,22 @@ public final class HrimthaneArsenal extends Arsenal {
       }
    }
 
-   private static @Nullable LivingEntity nearAim(ServerWorld level, PlayerEntity p, double range, double minDot) {
-      Vec3d eye = GearKit.eye(p);
-      Vec3d look = p.getRotationVector();
+   private static @Nullable LivingEntity nearAim(ServerLevel level, Player p, double range, double minDot) {
+      Vec3 eye = GearKit.eye(p);
+      Vec3 look = p.getLookAngle();
       LivingEntity best = null;
       double bestDot = minDot;
 
-      for (LivingEntity e : GearKit.enemies(level, p, eye.add(look.multiply(range / 2.0)), range * 0.75)) {
-         Box box = e.getBoundingBox();
-         Vec3d ray = eye.add(look.multiply(MathHelper.clamp(box.getCenter().subtract(eye).dotProduct(look), 0.0, range)));
-         Vec3d to = new Vec3d(
-               MathHelper.clamp(ray.x, box.minX, box.maxX), MathHelper.clamp(ray.y, box.minY, box.maxY), MathHelper.clamp(ray.z, box.minZ, box.maxZ)
+      for (LivingEntity e : GearKit.enemies(level, p, eye.add(look.scale(range / 2.0)), range * 0.75)) {
+         AABB box = e.getBoundingBox();
+         Vec3 ray = eye.add(look.scale(Mth.clamp(box.getCenter().subtract(eye).dot(look), 0.0, range)));
+         Vec3 to = new Vec3(
+               Mth.clamp(ray.x, box.minX, box.maxX), Mth.clamp(ray.y, box.minY, box.maxY), Mth.clamp(ray.z, box.minZ, box.maxZ)
             )
             .subtract(eye);
          double d = to.length();
-         double dot = d < 0.001 ? 1.0 : to.dotProduct(look) / d;
-         if (d <= range && dot > bestDot && p.canSee(e)) {
+         double dot = d < 0.001 ? 1.0 : to.dot(look) / d;
+         if (d <= range && dot > bestDot && p.hasLineOfSight(e)) {
             best = e;
             bestDot = dot;
          }
@@ -778,55 +778,55 @@ public final class HrimthaneArsenal extends Arsenal {
       return best;
    }
 
-   private static Vec3d crownCentre(PlayerEntity p) {
-      return p.getEntityPos().add(0.0, p.getHeight() + 0.9, 0.0);
+   private static Vec3 crownCentre(Player p) {
+      return p.position().add(0.0, p.getBbHeight() + 0.9, 0.0);
    }
 
-   private static Vec3d crownSlot(ServerWorld level, PlayerEntity p, int k) {
-      double deg = level.getTime() / 2L * 12.0 + (k < 5 ? k * 72 : (k - 5) * 72 + 36);
+   private static Vec3 crownSlot(ServerLevel level, Player p, int k) {
+      double deg = level.getGameTime() / 2L * 12.0 + (k < 5 ? k * 72 : (k - 5) * 72 + 36);
       double a = Math.toRadians(deg);
       return crownCentre(p).add(Math.cos(a) * 0.9, 0.0, Math.sin(a) * 0.9);
    }
 
-   private static void rimeCarapace(ServerWorld level, PlayerEntity p, int pieces) {
-      p.setFrozenTicks(0);
-      if (p.isOnGround()) {
+   private static void rimeCarapace(ServerLevel level, Player p, int pieces) {
+      p.setTicksFrozen(0);
+      if (p.onGround()) {
          frostWalk(level, p);
       }
 
-      if (level.getTime() % 20L == 0L && GearState.of(p).ready("hrimthane.carapace") && !p.hasStatusEffect(StatusEffects.ABSORPTION)) {
-         p.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 2400, 0, true, false, true));
-         CARAPACE.add(p.getUuid());
-         Vfx.shieldBubble(level, p.getEntityPos().add(0.0, 1.0, 0.0), 1.2, FROST, 16);
+      if (level.getGameTime() % 20L == 0L && GearState.of(p).ready("hrimthane.carapace") && !p.hasEffect(MobEffects.ABSORPTION)) {
+         p.addEffect(new MobEffectInstance(MobEffects.ABSORPTION, 2400, 0, true, false, true));
+         CARAPACE.add(p.getUUID());
+         Vfx.shieldBubble(level, p.position().add(0.0, 1.0, 0.0), 1.2, FROST, 16);
          Vfx.shards(level, chest(p), CORE, 6, 0.3);
-         sfx(level, p.getEntityPos(), "weapon.rimebreaker_axe.freeze", 0.5F, 1.4F);
+         sfx(level, p.position(), "weapon.rimebreaker_axe.freeze", 0.5F, 1.4F);
       }
    }
 
-   private static void frostWalk(ServerWorld level, PlayerEntity p) {
-      BlockPos c = p.getBlockPos().down();
-      BlockState ice = Blocks.FROSTED_ICE.getDefaultState();
+   private static void frostWalk(ServerLevel level, Player p) {
+      BlockPos c = p.blockPosition().below();
+      BlockState ice = Blocks.FROSTED_ICE.defaultBlockState();
 
-      for (BlockPos q : BlockPos.iterate(c.add(-2, 0, -2), c.add(2, 0, 2))) {
-         if (!(q.getSquaredDistance(c) > 6.5)) {
+      for (BlockPos q : BlockPos.betweenClosed(c.offset(-2, 0, -2), c.offset(2, 0, 2))) {
+         if (!(q.distSqr(c) > 6.5)) {
             BlockState s = level.getBlockState(q);
-            if (s.isOf(Blocks.WATER) && s.getFluidState().isStill() && level.getBlockState(q.up()).isAir() && level.canPlace(ice, q, ShapeContext.absent())) {
-               level.setBlockState(q.toImmutable(), ice);
+            if (s.is(Blocks.WATER) && s.getFluidState().isSource() && level.getBlockState(q.above()).isAir() && level.isUnobstructed(ice, q, CollisionContext.empty())) {
+               level.setBlockAndUpdate(q.immutable(), ice);
             }
          }
       }
    }
 
-   private static void permafrost(ServerWorld level, PlayerEntity p, int pieces) {
-      long t = level.getTime();
+   private static void permafrost(ServerLevel level, Player p, int pieces) {
+      long t = level.getGameTime();
       if (t % 10L == 0L) {
-         Vfx.debris(level, p.getEntityPos().add(0.0, 2.2, 0.0), SNOW, CORE, 2, 0.05);
+         Vfx.debris(level, p.position().add(0.0, 2.2, 0.0), SNOW, CORE, 2, 0.05);
       }
 
       if (t % 40L == 0L) {
          boolean any = false;
 
-         for (LivingEntity e : foes(level, p, p.getEntityPos(), 5.0)) {
+         for (LivingEntity e : foes(level, p, p.position(), 5.0)) {
             int before = stacks(level, e);
             if (rime(level, p, e, 1, 3) > before) {
                any = true;
@@ -834,58 +834,58 @@ public final class HrimthaneArsenal extends Arsenal {
          }
 
          if (any) {
-            Vfx.ring(level, p.getEntityPos().add(0.0, 0.05, 0.0), GLOW, 5.0, 16);
+            Vfx.ring(level, p.position().add(0.0, 0.05, 0.0), GLOW, 5.0, 16);
          }
       }
    }
 
-   private static void wyrmscaleHurt(ServerWorld level, PlayerEntity p, @Nullable LivingEntity attacker, DamageSource source, float taken, int pieces) {
-      if (CARAPACE.contains(p.getUuid()) && p.getAbsorptionAmount() <= 0.0F) {
-         CARAPACE.remove(p.getUuid());
+   private static void wyrmscaleHurt(ServerLevel level, Player p, @Nullable LivingEntity attacker, DamageSource source, float taken, int pieces) {
+      if (CARAPACE.contains(p.getUUID()) && p.getAbsorptionAmount() <= 0.0F) {
+         CARAPACE.remove(p.getUUID());
          GearState.of(p).cooldown("hrimthane.carapace", 240);
-         Vec3d chest = chest(p);
+         Vec3 chest = chest(p);
 
-         for (LivingEntity e : foes(level, p, p.getEntityPos(), 3.0)) {
+         for (LivingEntity e : foes(level, p, p.position(), 3.0)) {
             deal(level, p, e, 4.0F, false);
             rime(level, p, e, 1);
-            GearKit.knockAway(e, p.getEntityPos(), 0.6, 0.2);
+            GearKit.knockAway(e, p.position(), 0.6, 0.2);
          }
 
          Vfx.shards(level, chest, CORE, 18, 0.7);
          Vfx.debris(level, chest, SNOW, CORE, 12, 0.4);
          Vfx.flare(level, chest, GLOW, 1.8, 6);
-         sfx(level, p.getEntityPos(), "weapon.rimebreaker_axe.shatter", 0.8F, 1.3F);
+         sfx(level, p.position(), "weapon.rimebreaker_axe.shatter", 0.8F, 1.3F);
       }
 
       if (pieces >= 4 && attacker != null && attacker.isAlive()) {
          GearState state = GearState.of(p);
-         boolean melee = source.getSource() == attacker;
-         if (state.ready("hrimthane.retort") && (melee || !(attacker.squaredDistanceTo(p) > 144.0))) {
+         boolean melee = source.getDirectEntity() == attacker;
+         if (state.ready("hrimthane.retort") && (melee || !(attacker.distanceToSqr(p) > 144.0))) {
             state.cooldown("hrimthane.retort", 10);
             if (melee) {
                rime(level, p, attacker, 2, 5);
-               attacker.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 60, 1), p);
+               attacker.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 60, 1), p);
             } else {
                rime(level, p, attacker, 1, 5);
             }
 
-            Vec3d chest = chest(p);
-            Vec3d to = center(attacker).subtract(chest);
-            Vfx.streaks(level, chest, to.lengthSquared() > 1.0E-4 ? to.normalize() : GearKit.flatLook(p), FROST, 6);
+            Vec3 chest = chest(p);
+            Vec3 to = center(attacker).subtract(chest);
+            Vfx.streaks(level, chest, to.lengthSqr() > 1.0E-4 ? to.normalize() : GearKit.flatLook(p), FROST, 6);
             GearKit.proc(level, attacker, FROST);
             Vfx.shards(level, center(attacker), CORE, 6, 0.35);
-            sfx(level, attacker.getEntityPos(), "weapon.glacial_lance.proc", 0.7F, 1.2F);
+            sfx(level, attacker.position(), "weapon.glacial_lance.proc", 0.7F, 1.2F);
          }
       }
    }
 
    static boolean absoluteZero(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      Vec3d feet = ground(level, p.getEntityPos());
-      Vec3d chest = feet.add(0.0, 1.2, 0.0);
-      p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 16, 2, true, false));
-      p.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 16, 6, true, false));
+      ServerLevel level = u.level();
+      Player p = u.player();
+      Vec3 feet = ground(level, p.position());
+      Vec3 chest = feet.add(0.0, 1.2, 0.0);
+      p.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 16, 2, true, false));
+      p.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 16, 6, true, false));
       Vfx.telegraphCircle(level, feet, 8.0, 16, FROST);
       Vfx.runeCircle(level, feet, 8.0, FROST, 36, 0.08F, Vfx.Rune.GLYPH);
       Vfx.chargeUp(level, chest, FROST, 16);
@@ -919,9 +919,9 @@ public final class HrimthaneArsenal extends Arsenal {
                rime(level, p, ex, 1);
             }
 
-            if (p.getEntityPos().squaredDistanceTo(feet) <= 49.0) {
-               p.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 30, 1, true, false));
-               p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 30, 0, true, false));
+            if (p.position().distanceToSqr(feet) <= 49.0) {
+               p.addEffect(new MobEffectInstance(MobEffects.SPEED, 30, 1, true, false));
+               p.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 30, 0, true, false));
             }
 
             Vfx.ring(level, feet.add(0.0, 0.05, 0.0), GLOW, 7.0, 20);
@@ -931,20 +931,20 @@ public final class HrimthaneArsenal extends Arsenal {
       return true;
    }
 
-   private static void wings(ServerWorld level, PlayerEntity p, double reach, float arc) {
-      Vec3d shoulders = p.getEntityPos().add(0.0, 1.5, 0.0);
-      float back = p.getYaw() + 180.0F;
+   private static void wings(ServerLevel level, Player p, double reach, float arc) {
+      Vec3 shoulders = p.position().add(0.0, 1.5, 0.0);
+      float back = p.getYRot() + 180.0F;
       Vfx.slashArc(level, shoulders, back + 60.0F, -10.0F, 60.0F, reach, FROST, arc);
       Vfx.slashArc(level, shoulders, back - 60.0F, -10.0F, -60.0F, reach, FROST, arc);
    }
 
-   private static int rime(ServerWorld level, @Nullable PlayerEntity src, LivingEntity t, int amount) {
+   private static int rime(ServerLevel level, @Nullable Player src, LivingEntity t, int amount) {
       return rime(level, src, t, amount, 5);
    }
 
-   static int rime(ServerWorld level, @Nullable PlayerEntity src, LivingEntity t, int amount, int cap) {
+   static int rime(ServerLevel level, @Nullable Player src, LivingEntity t, int amount, int cap) {
       if (t != src && t.isAlive() && !t.isSpectator() && amount > 0) {
-         long now = level.getTime();
+         long now = level.getGameTime();
          HrimthaneArsenal.Rime r = entry(level, t, true);
          if (r.frozenUntil > now) {
             return 0;
@@ -973,15 +973,15 @@ public final class HrimthaneArsenal extends Arsenal {
          }
 
          if (after >= 3) {
-            t.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 40, after >= 4 ? 1 : 0), src);
+            t.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 40, after >= 4 ? 1 : 0), src);
          }
 
          if (t.canFreeze()) {
-            t.setFrozenTicks(Math.max(t.getFrozenTicks(), 28 * after));
+            t.setTicksFrozen(Math.max(t.getTicksFrozen(), 28 * after));
          }
 
-         Vec3d c = center(t);
-         Vfx.ring(level, t.getEntityPos().add(0.0, 0.05, 0.0), GLOW, 0.5 + 0.15 * after + t.getWidth() * 0.5, 10);
+         Vec3 c = center(t);
+         Vfx.ring(level, t.position().add(0.0, 0.05, 0.0), GLOW, 0.5 + 0.15 * after + t.getBbWidth() * 0.5, 10);
          Vfx.shards(level, c, CORE, after + 1, 0.2);
          if (after >= 3) {
             Vfx.debris(level, c, SNOW, CORE, 2 + after, 0.12);
@@ -993,23 +993,23 @@ public final class HrimthaneArsenal extends Arsenal {
       }
    }
 
-   static void freeze(ServerWorld level, @Nullable PlayerEntity src, LivingEntity t) {
+   static void freeze(ServerLevel level, @Nullable Player src, LivingEntity t) {
       if (t != src && t.isAlive() && !t.isSpectator()) {
          if (isWyrm(t)) {
             rime(level, src, t, 3, 3);
          } else {
             HrimthaneArsenal.Rime r = entry(level, t, true);
-            if (r.frozenUntil <= level.getTime()) {
+            if (r.frozenUntil <= level.getGameTime()) {
                freezeSolid(level, t, r);
             }
          }
       }
    }
 
-   private static void freezeSolid(ServerWorld level, LivingEntity t, HrimthaneArsenal.Rime r) {
-      long now = level.getTime();
+   private static void freezeSolid(ServerLevel level, LivingEntity t, HrimthaneArsenal.Rime r) {
+      long now = level.getGameTime();
       boolean boss = isBoss(t);
-      boolean player = t instanceof PlayerEntity;
+      boolean player = t instanceof Player;
       int d = !boss && !player ? (!t.canFreeze() ? 25 : 50) : 20;
       r.stacks = 0;
       r.expires = now;
@@ -1017,61 +1017,61 @@ public final class HrimthaneArsenal extends Arsenal {
       r.brittleUntil = now + d + 20L;
       r.thawUntil = now + d + (boss ? 240 : 120);
       if (boss) {
-         t.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, d, 2));
+         t.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, d, 2));
       } else if (player) {
-         t.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, d, 3));
+         t.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, d, 3));
       } else {
-         t.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, d, 5));
-         t.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, d, 1));
-         Vec3d v = t.getVelocity();
-         t.setVelocity(0.0, Math.min(0.0, v.y), 0.0);
-         t.knockedBack = true;
+         t.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, d, 5));
+         t.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, d, 1));
+         Vec3 v = t.getDeltaMovement();
+         t.setDeltaMovement(0.0, Math.min(0.0, v.y), 0.0);
+         t.syncVelocity = true;
       }
 
       if (t.canFreeze()) {
-         t.setFrozenTicks(t.getMinFreezeDamageTicks() + 2 * d);
+         t.setTicksFrozen(t.getTicksRequiredToFreeze() + 2 * d);
       }
 
-      Vec3d c = center(t);
-      double radius = Math.max(0.8, 0.5 * Math.max(t.getWidth(), t.getHeight() * 0.6) + 0.35);
+      Vec3 c = center(t);
+      double radius = Math.max(0.8, 0.5 * Math.max(t.getBbWidth(), t.getBbHeight() * 0.6) + 0.35);
       Vfx.shieldBubble(level, c, radius, FROST, d);
       Vfx.shards(level, c, CORE, 14, 0.5);
       Vfx.debris(level, c, SNOW, CORE, 12, 0.3);
       Vfx.glint(level, top(t), CORE, 1.0);
-      Vfx.ring(level, t.getEntityPos().add(0.0, 0.05, 0.0), GLOW, 1.5 + t.getWidth() * 0.5, 14);
+      Vfx.ring(level, t.position().add(0.0, 0.05, 0.0), GLOW, 1.5 + t.getBbWidth() * 0.5, 14);
       sfx(level, c, "weapon.rimebreaker_axe.freeze", 1.1F, 1.0F);
    }
 
-   static boolean brittle(ServerWorld level, LivingEntity t) {
+   static boolean brittle(ServerLevel level, LivingEntity t) {
       HrimthaneArsenal.Rime r = entry(level, t, false);
-      return r != null && r.brittleUntil > level.getTime();
+      return r != null && r.brittleUntil > level.getGameTime();
    }
 
-   static int stacks(ServerWorld level, LivingEntity t) {
+   static int stacks(ServerLevel level, LivingEntity t) {
       HrimthaneArsenal.Rime r = entry(level, t, false);
       return r == null ? 0 : r.stacks;
    }
 
-   static boolean shatter(ServerWorld level, PlayerEntity p, LivingEntity t, float power) {
-      long now = level.getTime();
+   static boolean shatter(ServerLevel level, Player p, LivingEntity t, float power) {
+      long now = level.getGameTime();
       HrimthaneArsenal.Rime r = entry(level, t, false);
       if (r != null && r.brittleUntil > now && t.isAlive()) {
          r.brittleUntil = 0L;
          r.frozenUntil = Math.min(r.frozenUntil, now);
-         StatusEffectInstance slow = t.getStatusEffect(StatusEffects.SLOWNESS);
+         MobEffectInstance slow = t.getEffect(MobEffects.SLOWNESS);
          if (slow != null && slow.getAmplifier() >= 2) {
-            t.removeStatusEffect(StatusEffects.SLOWNESS);
+            t.removeEffect(MobEffects.SLOWNESS);
          }
 
          if (t.canFreeze()) {
-            t.setFrozenTicks(0);
+            t.setTicksFrozen(0);
          }
 
-         Vec3d c = center(t);
-         Vec3d feet = t.getEntityPos();
+         Vec3 c = center(t);
+         Vec3 feet = t.position();
          deal(level, p, t, 12.0F * power, false);
 
-         for (LivingEntity e : foes(level, p, feet, 2.5 + t.getWidth() / 2.0F)) {
+         for (LivingEntity e : foes(level, p, feet, 2.5 + t.getBbWidth() / 2.0F)) {
             if (e != t) {
                deal(level, p, e, 6.0F * power, false);
                rime(level, p, e, 1);
@@ -1082,7 +1082,7 @@ public final class HrimthaneArsenal extends Arsenal {
          Vfx.shards(level, c, CORE, 24, 0.9);
          Vfx.debris(level, c, SNOW, CORE, 16, 0.5);
          Vfx.glint(level, c, CORE, 1.4);
-         Vfx.ring(level, feet.add(0.0, 0.05, 0.0), GLOW, 2.5 + t.getWidth() * 0.5, 12);
+         Vfx.ring(level, feet.add(0.0, 0.05, 0.0), GLOW, 2.5 + t.getBbWidth() * 0.5, 12);
          sfx(level, c, "weapon.rimebreaker_axe.shatter", 1.3F, 1.0F);
          return true;
       } else {
@@ -1090,7 +1090,7 @@ public final class HrimthaneArsenal extends Arsenal {
       }
    }
 
-   private static Set<LivingEntity> primed(ServerWorld level, List<LivingEntity> hits) {
+   private static Set<LivingEntity> primed(ServerLevel level, List<LivingEntity> hits) {
       Set<LivingEntity> out = new HashSet<>();
 
       for (LivingEntity e : hits) {
@@ -1102,8 +1102,8 @@ public final class HrimthaneArsenal extends Arsenal {
       return out;
    }
 
-   private static HrimthaneArsenal.@Nullable Rime entry(ServerWorld level, LivingEntity t, boolean create) {
-      long now = level.getTime();
+   private static HrimthaneArsenal.@Nullable Rime entry(ServerLevel level, LivingEntity t, boolean create) {
+      long now = level.getGameTime();
       HrimthaneArsenal.Rime r = RIME.get(t);
       if (r != null && r.expires <= now) {
          r.stacks = 0;
@@ -1123,14 +1123,14 @@ public final class HrimthaneArsenal extends Arsenal {
    }
 
    private static boolean isWyrm(LivingEntity e) {
-      return Registries.ENTITY_TYPE.getId(e.getType()).getPath().equals("hrimthane");
+      return BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).getPath().equals("hrimthane");
    }
 
    private static boolean isBoss(LivingEntity e) {
-      return e instanceof MysticalBoss b ? b.isBoss() : e instanceof EnderDragonEntity || e instanceof WitherEntity;
+      return e instanceof MysticalBoss b ? b.isBoss() : e instanceof EnderDragon || e instanceof WitherBoss;
    }
 
-   private static void later(ServerWorld level, PlayerEntity p, int ticks, Runnable r) {
+   private static void later(ServerLevel level, Player p, int ticks, Runnable r) {
       PENDING.add(new HrimthaneArsenal.Task(clock + Math.max(1, ticks), () -> {
          if (alive(p, level)) {
             r.run();
@@ -1138,18 +1138,18 @@ public final class HrimthaneArsenal extends Arsenal {
       }));
    }
 
-   private static void repeat(ServerWorld level, PlayerEntity p, int first, int every, int times, IntConsumer step) {
+   private static void repeat(ServerLevel level, Player p, int first, int every, int times, IntConsumer step) {
       for (int i = 0; i < times; i++) {
          int n = i;
          later(level, p, first + every * i, () -> step.accept(n));
       }
    }
 
-   private static boolean alive(PlayerEntity p, ServerWorld level) {
-      return p.isAlive() && !p.isRemoved() && p.getEntityWorld() == level;
+   private static boolean alive(Player p, ServerLevel level) {
+      return p.isAlive() && !p.isRemoved() && p.level() == level;
    }
 
-   private static HrimthaneArsenal.Shard shard(ServerWorld level, PlayerEntity owner, Vec3d from, Vec3d vel, int life, double radius) {
+   private static HrimthaneArsenal.Shard shard(ServerLevel level, Player owner, Vec3 from, Vec3 vel, int life, double radius) {
       HrimthaneArsenal.Shard s = new HrimthaneArsenal.Shard(level, owner, from, vel, life, radius);
       NEW_SHARDS.add(s);
       return s;
@@ -1221,26 +1221,26 @@ public final class HrimthaneArsenal extends Arsenal {
 
          if (s.target != null) {
             s.speed = Math.min(s.maxSpeed, s.speed + s.accel);
-            Vec3d to = s.target.getBoundingBox().getCenter().subtract(s.pos);
-            if (to.lengthSquared() > 1.0E-4) {
-               s.vel = s.vel.lerp(to.normalize().multiply(s.speed), s.homing);
+            Vec3 to = s.target.getBoundingBox().getCenter().subtract(s.pos);
+            if (to.lengthSqr() > 1.0E-4) {
+               s.vel = s.vel.lerp(to.normalize().scale(s.speed), s.homing);
             }
          }
       }
 
-      Vec3d next = s.pos.add(s.vel);
-      BlockHitResult block = s.level.raycast(new RaycastContext(s.pos, next, ShapeType.COLLIDER, FluidHandling.NONE, s.owner));
+      Vec3 next = s.pos.add(s.vel);
+      BlockHitResult block = s.level.clip(new ClipContext(s.pos, next, Block.COLLIDER, Fluid.NONE, s.owner));
       boolean wall = block.getType() != Type.MISS;
-      Vec3d end = wall ? block.getPos() : next;
+      Vec3 end = wall ? block.getLocation() : next;
       double seg = end.distanceTo(s.pos);
-      Vec3d from = s.pos;
+      Vec3 from = s.pos;
       List<LivingEntity> near = new ArrayList<>();
-      List<Vec3d> points = new ArrayList<>();
+      List<Vec3> points = new ArrayList<>();
 
-      for (LivingEntity e : GearKit.enemies(s.level, s.owner, from.add(end).multiply(0.5), s.radius + seg / 2.0 + 6.0)) {
+      for (LivingEntity e : GearKit.enemies(s.level, s.owner, from.add(end).scale(0.5), s.radius + seg / 2.0 + 6.0)) {
          if (!s.hit.contains(e)) {
-            Box box = e.getBoundingBox().expand(s.radius);
-            Vec3d at = box.contains(from) ? from : (Vec3d)box.raycast(from, end).orElse(null);
+            AABB box = e.getBoundingBox().inflate(s.radius);
+            Vec3 at = box.contains(from) ? from : (Vec3)box.clip(from, end).orElse(null);
             if (at != null) {
                near.add(e);
                points.add(at);
@@ -1255,7 +1255,7 @@ public final class HrimthaneArsenal extends Arsenal {
             order.add(i);
          }
 
-         order.sort(Comparator.comparingDouble(ix -> points.get(ix).squaredDistanceTo(from)));
+         order.sort(Comparator.comparingDouble(ix -> points.get(ix).distanceToSqr(from)));
 
          for (int i : order) {
             LivingEntity e = near.get(i);
@@ -1302,19 +1302,19 @@ public final class HrimthaneArsenal extends Arsenal {
    }
 
    private static void crownHover(MinecraftServer server) {
-      for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-         if (p.isAlive() && p.isUsingItem() && p.getActiveItem().getItem() instanceof MysticWeapon w && "icicle_repeater".equals(w.gearId())) {
-            int n = Math.min(5, p.getItemUseTime() / 8);
+      for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+         if (p.isAlive() && p.isUsingItem() && p.getUseItem().getItem() instanceof MysticWeapon w && "icicle_repeater".equals(w.gearId())) {
+            int n = Math.min(5, p.getTicksUsingItem() / 8);
 
             for (int k = 0; k < n; k++) {
-               hang(p.getEntityWorld(), p, k);
+               hang(p.level(), p, k);
             }
          }
       }
    }
 
-   private static void hang(ServerWorld level, PlayerEntity p, int k) {
-      Vec3d pos = crownSlot(level, p, k);
+   private static void hang(ServerLevel level, Player p, int k) {
+      Vec3 pos = crownSlot(level, p, k);
       Vfx.glint(level, pos, CORE, 0.35);
       Vfx.beam(level, pos.add(0.0, 0.45, 0.0), pos.add(0.0, -0.45, 0.0), FROST, 0.12);
    }
@@ -1326,8 +1326,8 @@ public final class HrimthaneArsenal extends Arsenal {
          Entry<LivingEntity, HrimthaneArsenal.Rime> en = it.next();
          LivingEntity e = en.getKey();
          HrimthaneArsenal.Rime r = en.getValue();
-         if (e != null && e.isAlive() && !e.isRemoved() && e.getEntityWorld() instanceof ServerWorld level) {
-            long var9 = level.getTime();
+         if (e != null && e.isAlive() && !e.isRemoved() && e.level() instanceof ServerLevel level) {
+            long var9 = level.getGameTime();
             int stacks = r.expires > var9 ? r.stacks : 0;
             if (r.brittleUntil > var9) {
                Vfx.glint(level, top(e), CORE, 0.7);
@@ -1352,9 +1352,9 @@ public final class HrimthaneArsenal extends Arsenal {
       clock = 0L;
    }
 
-   private static void deal(ServerWorld level, PlayerEntity p, LivingEntity e, float damage, boolean melee) {
+   private static void deal(ServerLevel level, Player p, LivingEntity e, float damage, boolean melee) {
       if (e.isAlive() && !(damage <= 0.0F)) {
-         e.timeUntilRegen = 0;
+         e.setInvulnerableTime(0);
          if (melee) {
             GearKit.strike(level, p, e, damage);
          } else {
@@ -1363,58 +1363,58 @@ public final class HrimthaneArsenal extends Arsenal {
       }
    }
 
-   private static List<LivingEntity> foes(ServerWorld level, PlayerEntity p, Vec3d at, double r) {
+   private static List<LivingEntity> foes(ServerLevel level, Player p, Vec3 at, double r) {
       return GearKit.enemies(level, p, at, r + 5.0).stream().filter(e -> boxDist(e.getBoundingBox(), at) <= r).toList();
    }
 
-   private static double boxDist(Box b, Vec3d at) {
+   private static double boxDist(AABB b, Vec3 at) {
       double dx = Math.max(Math.max(b.minX - at.x, 0.0), at.x - b.maxX);
       double dy = Math.max(Math.max(b.minY - at.y, 0.0), at.y - b.maxY);
       double dz = Math.max(Math.max(b.minZ - at.z, 0.0), at.z - b.maxZ);
       return Math.sqrt(dx * dx + dy * dy + dz * dz);
    }
 
-   private static double flatDist(LivingEntity e, Vec3d at) {
+   private static double flatDist(LivingEntity e, Vec3 at) {
       double dx = e.getX() - at.x;
       double dz = e.getZ() - at.z;
-      return Math.max(0.0, Math.sqrt(dx * dx + dz * dz) - e.getWidth() / 2.0F);
+      return Math.max(0.0, Math.sqrt(dx * dx + dz * dz) - e.getBbWidth() / 2.0F);
    }
 
-   private static Vec3d center(LivingEntity e) {
+   private static Vec3 center(LivingEntity e) {
       return e.getBoundingBox().getCenter();
    }
 
-   private static Vec3d top(LivingEntity e) {
-      return e.getEntityPos().add(0.0, e.getHeight() + 0.3, 0.0);
+   private static Vec3 top(LivingEntity e) {
+      return e.position().add(0.0, e.getBbHeight() + 0.3, 0.0);
    }
 
-   private static Vec3d chest(PlayerEntity p) {
-      return p.getEntityPos().add(0.0, 1.2, 0.0);
+   private static Vec3 chest(Player p) {
+      return p.position().add(0.0, 1.2, 0.0);
    }
 
-   private static Vec3d clipTo(ServerWorld level, PlayerEntity p, Vec3d from, Vec3d dir, double range) {
-      return level.raycast(new RaycastContext(from, from.add(dir.multiply(range)), ShapeType.COLLIDER, FluidHandling.NONE, p)).getPos();
+   private static Vec3 clipTo(ServerLevel level, Player p, Vec3 from, Vec3 dir, double range) {
+      return level.clip(new ClipContext(from, from.add(dir.scale(range)), Block.COLLIDER, Fluid.NONE, p)).getLocation();
    }
 
-   private static Vec3d ground(ServerWorld level, Vec3d at) {
-      Vec3d g = floor(level, at, 1.5, 8);
+   private static Vec3 ground(ServerLevel level, Vec3 at) {
+      Vec3 g = floor(level, at, 1.5, 8);
       return g != null ? g : at;
    }
 
-   private static @Nullable Vec3d floor(ServerWorld level, Vec3d at, double up, int depth) {
-      Mutable q = BlockPos.ofFloored(at.x, at.y + up, at.z).mutableCopy();
+   private static @Nullable Vec3 floor(ServerLevel level, Vec3 at, double up, int depth) {
+      MutableBlockPos q = BlockPos.containing(at.x, at.y + up, at.z).mutable();
       int steps = depth + (int)Math.ceil(up) + 1;
 
       for (int i = 0; i < steps; i++) {
          BlockState s = level.getBlockState(q);
          VoxelShape shape = s.getCollisionShape(level, q);
          if (!shape.isEmpty()) {
-            return new Vec3d(at.x, q.getY() + shape.getMax(Axis.Y), at.z);
+            return new Vec3(at.x, q.getY() + shape.max(Axis.Y), at.z);
          }
 
          FluidState f = s.getFluidState();
          if (!f.isEmpty()) {
-            return new Vec3d(at.x, q.getY() + f.getHeight(level, q), at.z);
+            return new Vec3(at.x, q.getY() + f.getHeight(level, q), at.z);
          }
 
          q.move(0, -1, 0);
@@ -1423,12 +1423,12 @@ public final class HrimthaneArsenal extends Arsenal {
       return null;
    }
 
-   private static void spikeRing(ServerWorld level, Vec3d center, double radius, int count, double height, double width, boolean shards) {
+   private static void spikeRing(ServerLevel level, Vec3 center, double radius, int count, double height, double width, boolean shards) {
       double phase = level.getRandom().nextDouble() * Math.PI * 2.0;
 
       for (int i = 0; i < count; i++) {
          double a = phase + i * Math.PI * 2.0 / count;
-         Vec3d rim = ground(level, center.add(Math.cos(a) * radius, 0.0, Math.sin(a) * radius));
+         Vec3 rim = ground(level, center.add(Math.cos(a) * radius, 0.0, Math.sin(a) * radius));
          Vfx.pillar(level, rim, FROST, height, width);
          if (shards) {
             Vfx.shards(level, rim.add(0.0, 0.5, 0.0), CORE, 3, 0.35);
@@ -1436,16 +1436,16 @@ public final class HrimthaneArsenal extends Arsenal {
       }
    }
 
-   private static void sfx(ServerWorld level, Vec3d at, String key, float volume, float pitch) {
+   private static void sfx(ServerLevel level, Vec3 at, String key, float volume, float pitch) {
       SoundEvent e = BossSounds.event(key);
       if (e != null) {
-         level.playSound(null, at.x, at.y, at.z, e, SoundCategory.PLAYERS, volume, pitch * (0.95F + level.getRandom().nextFloat() * 0.1F));
+         level.playSound(null, at.x, at.y, at.z, e, SoundSource.PLAYERS, volume, pitch * (0.95F + level.getRandom().nextFloat() * 0.1F));
       }
    }
 
    @FunctionalInterface
    private interface OnShard {
-      void at(HrimthaneArsenal.Shard var1, @Nullable LivingEntity var2, Vec3d var3);
+      void at(HrimthaneArsenal.Shard var1, @Nullable LivingEntity var2, Vec3 var3);
    }
 
    private static final class Rime {
@@ -1457,10 +1457,10 @@ public final class HrimthaneArsenal extends Arsenal {
    }
 
    private static final class Shard {
-      final ServerWorld level;
-      final PlayerEntity owner;
-      Vec3d pos;
-      Vec3d vel;
+      final ServerLevel level;
+      final Player owner;
+      Vec3 pos;
+      Vec3 vel;
       int age;
       int life;
       double radius;
@@ -1479,7 +1479,7 @@ public final class HrimthaneArsenal extends Arsenal {
       HrimthaneArsenal.@Nullable OnShard onEnd;
       @Nullable Consumer<HrimthaneArsenal.Shard> fx;
 
-      Shard(ServerWorld level, PlayerEntity owner, Vec3d pos, Vec3d vel, int life, double radius) {
+      Shard(ServerLevel level, Player owner, Vec3 pos, Vec3 vel, int life, double radius) {
          this.level = level;
          this.owner = owner;
          this.pos = pos;

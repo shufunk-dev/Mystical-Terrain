@@ -4,18 +4,18 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.item.consume.UseAction;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.BlockPos.Mutable;
+import net.minecraft.core.BlockPos.MutableBlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 public final class BossContext {
@@ -23,7 +23,7 @@ public final class BossContext {
    public double dist = Double.MAX_VALUE;
    public double hDist = Double.MAX_VALUE;
    public double heightDiff;
-   public Vec3d targetVelocity = Vec3d.ZERO;
+   public Vec3 targetVelocity = Vec3.ZERO;
    public boolean targetBlocking;
    public boolean targetAiming;
    public boolean targetFlying;
@@ -40,14 +40,14 @@ public final class BossContext {
    public boolean targetBehind;
    public boolean incomingProjectile;
    public int projectileId = -1;
-   public @Nullable Vec3d projectilePos;
-   public @Nullable Vec3d projectileVelocity;
+   public @Nullable Vec3 projectilePos;
+   public @Nullable Vec3 projectileVelocity;
    public boolean targetSwingStarted;
    public int unreachableTicks;
    private final ArrayDeque<BossContext.Hurt> hurts = new ArrayDeque<>();
    private int lastHurtTick = -100000;
    private @Nullable UUID lastTarget;
-   private @Nullable Vec3d lastPos;
+   private @Nullable Vec3 lastPos;
    private boolean lastSwinging;
    private int lastSwingTime;
    private boolean pathBad;
@@ -71,8 +71,8 @@ public final class BossContext {
       this.clearTarget();
    }
 
-   public void update(MobEntity boss, ServerWorld level, @Nullable LivingEntity target, List<ServerPlayerEntity> engaged, double preferred, boolean hovering) {
-      int now = boss.age;
+   public void update(Mob boss, ServerLevel level, @Nullable LivingEntity target, List<ServerPlayer> engaged, double preferred, boolean hovering) {
+      int now = boss.tickCount;
 
       while (!this.hurts.isEmpty() && now - this.hurts.peekFirst().tick() > 100) {
          this.hurts.pollFirst();
@@ -88,9 +88,9 @@ public final class BossContext {
       this.ticksSinceHurt = now - this.lastHurtTick;
       this.engagedPlayers = engaged.size();
       int around = 0;
-      double reach = 4.5 + boss.getWidth() * 0.5;
+      double reach = 4.5 + boss.getBbWidth() * 0.5;
 
-      for (ServerPlayerEntity p : engaged) {
+      for (ServerPlayer p : engaged) {
          double dx = p.getX() - boss.getX();
          double dz = p.getZ() - boss.getZ();
          if (dx * dx + dz * dz <= reach * reach && Math.abs(p.getY() - boss.getY()) < 4.0) {
@@ -104,55 +104,55 @@ public final class BossContext {
       if (target == null) {
          this.clearTarget();
       } else {
-         if (this.lastTarget == null || !this.lastTarget.equals(target.getUuid()) || this.lastPos == null) {
-            this.lastTarget = target.getUuid();
-            this.lastPos = target.getEntityPos();
-            this.targetVelocity = Vec3d.ZERO;
-            this.lastSwinging = target.handSwinging;
-            this.lastSwingTime = target.handSwingTicks;
+         if (this.lastTarget == null || !this.lastTarget.equals(target.getUUID()) || this.lastPos == null) {
+            this.lastTarget = target.getUUID();
+            this.lastPos = target.position();
+            this.targetVelocity = Vec3.ZERO;
+            this.lastSwinging = target.isSwinging();
+            this.lastSwingTime = target.getCurrentSwing() != null ? target.getCurrentSwing().durationTicks() : 0;
             this.kitingTicks = 0;
             this.unreachableTicks = 0;
             this.pathBad = false;
             this.ticksSinceHitTarget = 100000;
          }
 
-         Vec3d pos = target.getEntityPos();
-         Vec3d moved = pos.subtract(this.lastPos);
-         if (moved.lengthSquared() > 4.0) {
-            moved = Vec3d.ZERO;
+         Vec3 pos = target.position();
+         Vec3 moved = pos.subtract(this.lastPos);
+         if (moved.lengthSqr() > 4.0) {
+            moved = Vec3.ZERO;
          }
 
-         this.targetVelocity = this.targetVelocity.multiply(0.5).add(moved.multiply(0.5));
+         this.targetVelocity = this.targetVelocity.scale(0.5).add(moved.scale(0.5));
          this.lastPos = pos;
-         this.dist = Math.sqrt(boss.squaredDistanceTo(target));
+         this.dist = Math.sqrt(boss.distanceToSqr(target));
          double dx = target.getX() - boss.getX();
          double dz = target.getZ() - boss.getZ();
          this.hDist = Math.sqrt(dx * dx + dz * dz);
          this.heightDiff = target.getY() - boss.getY();
          this.targetBlocking = target.isBlocking();
-         UseAction use = target.isUsingItem() ? target.getActiveItem().getUseAction() : UseAction.NONE;
-         this.targetAiming = use == UseAction.BOW || use == UseAction.CROSSBOW || use == UseAction.TRIDENT || use == UseAction.SPEAR;
-         this.targetHealing = use == UseAction.EAT || use == UseAction.DRINK;
-         this.targetFlying = target.isGliding();
-         this.targetAirborne = !target.isOnGround() && !target.isTouchingWater() && heightAboveGround(level, target) > 2.5;
+         ItemUseAnimation use = target.isUsingItem() ? target.getUseItem().getUseAnimation() : ItemUseAnimation.NONE;
+         this.targetAiming = use == ItemUseAnimation.BOW || use == ItemUseAnimation.CROSSBOW || use == ItemUseAnimation.TRIDENT || use == ItemUseAnimation.SPEAR;
+         this.targetHealing = use == ItemUseAnimation.EAT || use == ItemUseAnimation.DRINK;
+         this.targetFlying = target.isFallFlying();
+         this.targetAirborne = !target.onGround() && !target.isInWater() && heightAboveGround(level, target) > 2.5;
          this.kitingTicks = this.dist > Math.max(10.0, 2.5 * preferred) ? this.kitingTicks + 1 : 0;
-         if (target.getAttacker() == boss) {
-            this.ticksSinceHitTarget = target.age - target.getLastAttackedTime();
+         if (target.getLastHurtByMob() == boss) {
+            this.ticksSinceHitTarget = target.tickCount - target.getLastHurtByMobTimestamp();
          } else if (this.ticksSinceHitTarget < 100000) {
             this.ticksSinceHitTarget++;
          }
 
          this.targetHealth = target.getHealth() / Math.max(1.0F, target.getMaxHealth());
          if (this.hDist > 0.01) {
-            Vec3d facing = Vec3d.fromPolar(0.0F, boss.getYaw());
+            Vec3 facing = Vec3.directionFromRotation(0.0F, boss.getYRot());
             double cos = (facing.x * dx + facing.z * dz) / this.hDist;
-            this.targetBehind = Math.toDegrees(Math.acos(MathHelper.clamp(cos, -1.0, 1.0))) > 110.0;
+            this.targetBehind = Math.toDegrees(Math.acos(Mth.clamp(cos, -1.0, 1.0))) > 110.0;
          } else {
             this.targetBehind = false;
          }
 
-         boolean swinging = target.handSwinging;
-         int swingTime = target.handSwingTicks;
+         boolean swinging = target.isSwinging();
+         int swingTime = target.getCurrentSwing() != null ? target.getCurrentSwing().durationTicks() : 0;
          this.targetSwingStarted = swinging && (!this.lastSwinging || swingTime < this.lastSwingTime);
          this.lastSwinging = swinging;
          this.lastSwingTime = swingTime;
@@ -173,7 +173,7 @@ public final class BossContext {
       this.dist = Double.MAX_VALUE;
       this.hDist = Double.MAX_VALUE;
       this.heightDiff = 0.0;
-      this.targetVelocity = Vec3d.ZERO;
+      this.targetVelocity = Vec3.ZERO;
       this.targetBlocking = false;
       this.targetAiming = false;
       this.targetFlying = false;
@@ -187,19 +187,19 @@ public final class BossContext {
       this.unreachableTicks = 0;
    }
 
-   private void scanProjectiles(MobEntity boss, ServerWorld level) {
+   private void scanProjectiles(Mob boss, ServerLevel level) {
       this.incomingProjectile = false;
       this.projectilePos = null;
       this.projectileVelocity = null;
-      Box body = boss.getBoundingBox().expand(0.8);
+      AABB body = boss.getBoundingBox().inflate(0.8);
 
-      for (ProjectileEntity p : level.getEntitiesByClass(
-         ProjectileEntity.class, boss.getBoundingBox().expand(8.0), e -> e.isAlive() && e.getOwner() instanceof PlayerEntity
+      for (Projectile p : level.getEntitiesOfClass(
+         Projectile.class, boss.getBoundingBox().inflate(8.0), e -> e.isAlive() && e.getOwner() instanceof Player
       )) {
-         Vec3d v = p.getVelocity();
-         if (!(v.lengthSquared() < 0.04)) {
-            Vec3d from = p.getEntityPos();
-            if (!body.contains(from) && body.raycast(from, from.add(v.multiply(20.0))).isPresent()) {
+         Vec3 v = p.getDeltaMovement();
+         if (!(v.lengthSqr() < 0.04)) {
+            Vec3 from = p.position();
+            if (!body.contains(from) && body.clip(from, from.add(v.scale(20.0))).isPresent()) {
                this.incomingProjectile = true;
                this.projectileId = p.getId();
                this.projectilePos = from;
@@ -210,8 +210,8 @@ public final class BossContext {
       }
    }
 
-   public static double heightAboveGround(ServerWorld level, LivingEntity e) {
-      Mutable p = e.getBlockPos().mutableCopy();
+   public static double heightAboveGround(ServerLevel level, LivingEntity e) {
+      MutableBlockPos p = e.blockPosition().mutable();
 
       for (int i = 0; i < 8; i++) {
          BlockState s = level.getBlockState(p);

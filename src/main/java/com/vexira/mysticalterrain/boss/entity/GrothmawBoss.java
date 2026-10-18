@@ -13,41 +13,41 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.BlocksAttacksComponent;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.attribute.DefaultAttributeContainer.Builder;
-import net.minecraft.entity.boss.BossBar.Color;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.consume.UseAction;
-import net.minecraft.particle.BlockStateParticleEffect;
-import net.minecraft.particle.ParticleEffect;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.storage.ReadView;
-import net.minecraft.storage.WriteView;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
-import net.minecraft.world.WorldView;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.particles.BlockParticleOption;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
+import net.minecraft.world.BossEvent.BossBarColor;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier.Builder;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.item.component.BlocksAttacks;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
 
 public class GrothmawBoss extends MysticalBoss {
    private static final BossSounds SOUNDS = BossSounds.of("grothmaw");
@@ -72,13 +72,13 @@ public class GrothmawBoss extends MysticalBoss {
    public static final boolean FIRE_IMMUNE = false;
    private final List<GrothmawBoss.Egg> eggs = new ArrayList<>();
    private final Set<Integer> trampled = new HashSet<>();
-   private final List<Vec3d> hollows = new ArrayList<>();
-   private final List<Vec3d> lines = new ArrayList<>();
+   private final List<Vec3> hollows = new ArrayList<>();
+   private final List<Vec3> lines = new ArrayList<>();
    private GrothmawBoss.@Nullable Arc arc;
-   private @Nullable Vec3d spot;
-   private Vec3d lineFrom = Vec3d.ZERO;
-   private Vec3d lineDir = new Vec3d(0.0, 0.0, 1.0);
-   private Vec3d lastPos = Vec3d.ZERO;
+   private @Nullable Vec3 spot;
+   private Vec3 lineFrom = Vec3.ZERO;
+   private Vec3 lineDir = new Vec3(0.0, 0.0, 1.0);
+   private Vec3 lastPos = Vec3.ZERO;
    private float chargeYaw;
    private float breakerYaw;
    private int charges;
@@ -97,8 +97,8 @@ public class GrothmawBoss extends MysticalBoss {
       return MysticalBoss.bossAttributes(1000.0, 20.0, 0.28, 12.0);
    }
 
-   public GrothmawBoss(EntityType<? extends HostileEntity> type, World level) {
-      super(type, level, "grothmaw", Color.GREEN);
+   public GrothmawBoss(EntityType<? extends Monster> type, Level level) {
+      super(type, level, "grothmaw", BossBarColor.GREEN);
    }
 
    @Override
@@ -171,64 +171,64 @@ public class GrothmawBoss extends MysticalBoss {
       return 140;
    }
 
-   public float getPathfindingFavor(BlockPos pos, WorldView world) {
+   public float getWalkTargetValue(BlockPos pos, LevelReader world) {
       return 0.0F;
    }
 
-   private Vec3d fwd() {
-      return Vec3d.fromPolar(0.0F, this.getYaw());
+   private Vec3 fwd() {
+      return Vec3.directionFromRotation(0.0F, this.getYRot());
    }
 
-   private Vec3d left() {
-      return Vec3d.fromPolar(0.0F, this.getYaw() - 90.0F);
+   private Vec3 left() {
+      return Vec3.directionFromRotation(0.0F, this.getYRot() - 90.0F);
    }
 
-   private Vec3d at(double f, double l, double u) {
-      Vec3d a = this.fwd();
-      Vec3d b = this.left();
-      return this.getEntityPos().add(a.x * f + b.x * l, u, a.z * f + b.z * l);
+   private Vec3 at(double f, double l, double u) {
+      Vec3 a = this.fwd();
+      Vec3 b = this.left();
+      return this.position().add(a.x * f + b.x * l, u, a.z * f + b.z * l);
    }
 
-   private Vec3d snout(double d, double h) {
+   private Vec3 snout(double d, double h) {
       return this.at(d, 0.0, h);
    }
 
-   private Vec3d heart() {
+   private Vec3 heart() {
       return this.at(1.7, 0.0, 3.2);
    }
 
-   private static Vec3d mid(LivingEntity e) {
-      return e.getEntityPos().add(0.0, e.getHeight() * 0.5, 0.0);
+   private static Vec3 mid(LivingEntity e) {
+      return e.position().add(0.0, e.getBbHeight() * 0.5, 0.0);
    }
 
-   private Vec3d groundAt(ServerWorld level, Vec3d p) {
-      Vec3d g = BossFx.ground(level, p.x, p.y - 3.5, p.z);
+   private Vec3 groundAt(ServerLevel level, Vec3 p) {
+      Vec3 g = BossFx.ground(level, p.x, p.y - 3.5, p.z);
       return g != null ? g : p;
    }
 
-   private Vec3d near(ServerWorld level, Vec3d c, double min, double max) {
+   private Vec3 near(ServerLevel level, Vec3 c, double min, double max) {
       double a = this.random.nextDouble() * Math.PI * 2.0;
       double r = min + this.random.nextDouble() * (max - min);
       return this.groundAt(level, c.add(Math.cos(a) * r, 0.0, Math.sin(a) * r));
    }
 
-   private static ParticleEffect dust(ServerWorld level, Vec3d at) {
-      BlockState s = level.getBlockState(BlockPos.ofFloored(at.x, at.y - 0.5, at.z));
-      return (ParticleEffect)(s.isAir() ? ParticleTypes.CLOUD : new BlockStateParticleEffect(ParticleTypes.BLOCK, s));
+   private static ParticleOptions dust(ServerLevel level, Vec3 at) {
+      BlockState s = level.getBlockState(BlockPos.containing(at.x, at.y - 0.5, at.z));
+      return (ParticleOptions)(s.isAir() ? ParticleTypes.CLOUD : new BlockParticleOption(ParticleTypes.BLOCK, s));
    }
 
    private void setFacing(float yaw) {
-      this.setYaw(yaw);
-      this.setBodyYaw(yaw);
-      this.setHeadYaw(yaw);
+      this.setYRot(yaw);
+      this.setYBodyRot(yaw);
+      this.setYHeadRot(yaw);
    }
 
-   private void aimAt(Vec3d p, float maxTurn) {
+   private void aimAt(Vec3 p, float maxTurn) {
       double dx = p.x - this.getX();
       double dz = p.z - this.getZ();
       if (!(dx * dx + dz * dz < 0.25)) {
-         float want = (float)(MathHelper.atan2(dz, dx) * 180.0F / (float)Math.PI) - 90.0F;
-         this.setFacing(MathHelper.stepUnwrappedAngleTowards(this.getYaw(), want, maxTurn));
+         float want = (float)(Mth.atan2(dz, dx) * 180.0F / (float)Math.PI) - 90.0F;
+         this.setFacing(Mth.approachDegrees(this.getYRot(), want, maxTurn));
       }
    }
 
@@ -253,50 +253,50 @@ public class GrothmawBoss extends MysticalBoss {
       return t == n;
    }
 
-   private Vec3d landing(ServerWorld level, Vec3d want, double max, @Nullable LivingEntity target) {
+   private Vec3 landing(ServerLevel level, Vec3 want, double max, @Nullable LivingEntity target) {
       double dx = want.x - this.getX();
       double dz = want.z - this.getZ();
       double d = Math.sqrt(dx * dx + dz * dz);
       if (d > max) {
-         want = new Vec3d(this.getX() + dx / d * max, want.y, this.getZ() + dz / d * max);
+         want = new Vec3(this.getX() + dx / d * max, want.y, this.getZ() + dz / d * max);
       }
 
-      Vec3d g = BossFx.ground(level, want.x, want.y - 3.5, want.z);
+      Vec3 g = BossFx.ground(level, want.x, want.y - 3.5, want.z);
       if (g != null && BossFx.safeGround(level, g, 3.0)) {
          for (int dy = 0; dy <= 2; dy++) {
-            if (level.isSpaceEmpty(this, this.getBoundingBox().offset(g.x - this.getX(), g.y + dy - this.getY(), g.z - this.getZ()))) {
+            if (level.noCollision(this, this.getBoundingBox().move(g.x - this.getX(), g.y + dy - this.getY(), g.z - this.getZ()))) {
                return g;
             }
          }
       }
 
       if (target != null) {
-         Vec3d t = target.getEntityPos();
-         Vec3d tg = BossFx.ground(level, t.x, t.y, t.z);
+         Vec3 t = target.position();
+         Vec3 tg = BossFx.ground(level, t.x, t.y, t.z);
          return tg != null ? tg : t;
       } else {
-         return this.getEntityPos();
+         return this.position();
       }
    }
 
-   private List<LivingEntity> targets(ServerWorld level, Box box) {
-      return level.getEntitiesByClass(
+   private List<LivingEntity> targets(ServerLevel level, AABB box) {
+      return level.getEntitiesOfClass(
          LivingEntity.class,
          box,
-         e -> e != this && e.isAlive() && !(e instanceof MysticalBoss) && !(e instanceof PlayerEntity p && (p.isCreative() || p.isSpectator()))
+         e -> e != this && e.isAlive() && !(e instanceof MysticalBoss) && !(e instanceof Player p && (p.isCreative() || p.isSpectator()))
       );
    }
 
-   private List<LivingEntity> cone(ServerWorld level, Vec3d o, float yaw, float halfAngle, double range) {
+   private List<LivingEntity> cone(ServerLevel level, Vec3 o, float yaw, float halfAngle, double range) {
       List<LivingEntity> out = new ArrayList<>();
-      Vec3d dir = Vec3d.fromPolar(0.0F, yaw);
+      Vec3 dir = Vec3.directionFromRotation(0.0F, yaw);
 
-      for (LivingEntity e : this.targets(level, new Box(o.x - range - 1.0, o.y - 2.0, o.z - range - 1.0, o.x + range + 1.0, o.y + 5.0, o.z + range + 1.0))) {
+      for (LivingEntity e : this.targets(level, new AABB(o.x - range - 1.0, o.y - 2.0, o.z - range - 1.0, o.x + range + 1.0, o.y + 5.0, o.z + range + 1.0))) {
          double dx = e.getX() - o.x;
          double dz = e.getZ() - o.z;
          double d = Math.sqrt(dx * dx + dz * dz);
-         if (!(d > range + e.getWidth() * 0.5)
-            && (!(d > 1.0) || !(Math.toDegrees(Math.acos(MathHelper.clamp((dx * dir.x + dz * dir.z) / d, -1.0, 1.0))) > halfAngle))) {
+         if (!(d > range + e.getBbWidth() * 0.5)
+            && (!(d > 1.0) || !(Math.toDegrees(Math.acos(Mth.clamp((dx * dir.x + dz * dir.z) / d, -1.0, 1.0))) > halfAngle))) {
             out.add(e);
          }
       }
@@ -304,13 +304,13 @@ public class GrothmawBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> inCircle(ServerWorld level, Vec3d c, double r) {
+   private List<LivingEntity> inCircle(ServerLevel level, Vec3 c, double r) {
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : this.targets(level, new Box(c.x - r - 1.0, c.y - 2.0, c.z - r - 1.0, c.x + r + 1.0, c.y + 4.0, c.z + r + 1.0))) {
+      for (LivingEntity e : this.targets(level, new AABB(c.x - r - 1.0, c.y - 2.0, c.z - r - 1.0, c.x + r + 1.0, c.y + 4.0, c.z + r + 1.0))) {
          double dx = e.getX() - c.x;
          double dz = e.getZ() - c.z;
-         double rr = r + e.getWidth() * 0.5;
+         double rr = r + e.getBbWidth() * 0.5;
          if (dx * dx + dz * dz <= rr * rr) {
             out.add(e);
          }
@@ -319,20 +319,20 @@ public class GrothmawBoss extends MysticalBoss {
       return out;
    }
 
-   private static void shove(LivingEntity e, Vec3d from, double push, double up) {
+   private static void shove(LivingEntity e, Vec3 from, double push, double up) {
       if (!(push <= 0.0) || !(up <= 0.0)) {
-         Vec3d away = new Vec3d(e.getX() - from.x, 0.0, e.getZ() - from.z);
-         away = away.lengthSquared() < 1.0E-4 ? Vec3d.ZERO : away.normalize();
-         e.addVelocity(away.x * push, up, away.z * push);
-         e.knockedBack = true;
+         Vec3 away = new Vec3(e.getX() - from.x, 0.0, e.getZ() - from.z);
+         away = away.lengthSqr() < 1.0E-4 ? Vec3.ZERO : away.normalize();
+         e.push(away.x * push, up, away.z * push);
+         e.syncVelocity = true;
       }
    }
 
    private List<LivingEntity> hurtAll(
-      ServerWorld level, List<LivingEntity> victims, Vec3d from, float base, double push, double up, @Nullable StatusEffectInstance effect, float guard
+      ServerLevel level, List<LivingEntity> victims, Vec3 from, float base, double push, double up, @Nullable MobEffectInstance effect, float guard
    ) {
       List<LivingEntity> hit = new ArrayList<>();
-      DamageSource source = this.getDamageSources().mobAttack(this);
+      DamageSource source = this.damageSources().mobAttack(this);
       float amount = this.dmg(base);
 
       for (LivingEntity e : victims) {
@@ -340,11 +340,11 @@ public class GrothmawBoss extends MysticalBoss {
             this.breakGuard(level, e, guard);
          }
 
-         if (e.damage(level, source, amount)) {
+         if (e.hurtServer(level, source, amount)) {
             hit.add(e);
             shove(e, from, push, up);
             if (effect != null) {
-               e.addStatusEffect(new StatusEffectInstance(effect), this);
+               e.addEffect(new MobEffectInstance(effect), this);
             }
          }
       }
@@ -353,24 +353,24 @@ public class GrothmawBoss extends MysticalBoss {
    }
 
    private List<LivingEntity> coneHit(
-      ServerWorld level, Vec3d o, float yaw, float halfAngle, double range, float base, double push, double up, @Nullable StatusEffectInstance effect
+      ServerLevel level, Vec3 o, float yaw, float halfAngle, double range, float base, double push, double up, @Nullable MobEffectInstance effect
    ) {
       return this.hurtAll(level, this.cone(level, o, yaw, halfAngle, range), o, base, push, up, effect, 0.0F);
    }
 
-   private List<LivingEntity> circleHit(ServerWorld level, Vec3d c, double r, float base, double push, double up, @Nullable StatusEffectInstance effect) {
+   private List<LivingEntity> circleHit(ServerLevel level, Vec3 c, double r, float base, double push, double up, @Nullable MobEffectInstance effect) {
       return this.hurtAll(level, this.inCircle(level, c, r), c, base, push, up, effect, 0.0F);
    }
 
-   private List<LivingEntity> lineHit(ServerWorld level, Vec3d from, Vec3d dir, double length, double width, float base, double up) {
+   private List<LivingEntity> lineHit(ServerLevel level, Vec3 from, Vec3 dir, double length, double width, float base, double up) {
       return this.hurtAll(level, this.strip(level, from, dir, length, width), from, base, 0.0, up, null, 0.0F);
    }
 
-   private List<LivingEntity> strip(ServerWorld level, Vec3d from, Vec3d dir, double length, double width) {
-      Vec3d d = new Vec3d(dir.x, 0.0, dir.z).normalize();
-      Vec3d end = from.add(d.multiply(length));
+   private List<LivingEntity> strip(ServerLevel level, Vec3 from, Vec3 dir, double length, double width) {
+      Vec3 d = new Vec3(dir.x, 0.0, dir.z).normalize();
+      Vec3 end = from.add(d.scale(length));
       double half = width * 0.5 + 0.4;
-      Box box = new Box(
+      AABB box = new AABB(
          Math.min(from.x, end.x) - half,
          from.y - 3.0,
          Math.min(from.z, end.z) - half,
@@ -392,13 +392,13 @@ public class GrothmawBoss extends MysticalBoss {
       return in;
    }
 
-   private void breakGuard(ServerWorld level, LivingEntity e, float seconds) {
-      ItemStack stack = e.getBlockingItem();
+   private void breakGuard(ServerLevel level, LivingEntity e, float seconds) {
+      ItemStack stack = e.getItemBlockingWith();
       if (stack != null) {
-         BlocksAttacksComponent blocks = (BlocksAttacksComponent)stack.get(DataComponentTypes.BLOCKS_ATTACKS);
+         BlocksAttacks blocks = (BlocksAttacks)stack.get(DataComponents.BLOCKS_ATTACKS);
          if (blocks != null) {
-            blocks.applyShieldCooldown(level, e, seconds, stack);
-            Vfx.shards(level, e.getEyePos(), 16777215, 10, 0.4);
+            blocks.disable(level, e, seconds, stack);
+            Vfx.shards(level, e.getEyePosition(), 16777215, 10, 0.4);
          }
       }
    }
@@ -411,12 +411,12 @@ public class GrothmawBoss extends MysticalBoss {
          } else {
             double s = Math.min(1.0, (double)(t - a.start()) / (a.len() - 1));
             this.setNoGravity(true);
-            Vec3d v = a.point(s).subtract(this.getEntityPos());
-            if (v.lengthSquared() > 9.0) {
-               v = v.normalize().multiply(3.0);
+            Vec3 v = a.point(s).subtract(this.position());
+            if (v.lengthSqr() > 9.0) {
+               v = v.normalize().scale(3.0);
             }
 
-            this.setVelocity(v);
+            this.setDeltaMovement(v);
          }
       }
    }
@@ -426,16 +426,16 @@ public class GrothmawBoss extends MysticalBoss {
       this.arc = null;
       this.setNoGravity(false);
       if (a != null) {
-         Vec3d d = a.to().subtract(this.getEntityPos());
-         if (d.lengthSquared() < 2.25 && this.getEntityWorld().isSpaceEmpty(this, this.getBoundingBox().offset(d))) {
-            this.setPosition(a.to().x, a.to().y, a.to().z);
+         Vec3 d = a.to().subtract(this.position());
+         if (d.lengthSqr() < 2.25 && this.level().noCollision(this, this.getBoundingBox().move(d))) {
+            this.setPos(a.to().x, a.to().y, a.to().z);
          }
 
-         this.setVelocity(0.0, Math.min(0.0, this.getVelocity().y), 0.0);
-         if (!this.getEntityWorld().isSpaceEmpty(this, this.getBoundingBox())) {
+         this.setDeltaMovement(0.0, Math.min(0.0, this.getDeltaMovement().y), 0.0);
+         if (!this.level().noCollision(this, this.getBoundingBox())) {
             for (int dy = 1; dy <= 4; dy++) {
-               if (this.getEntityWorld().isSpaceEmpty(this, this.getBoundingBox().offset(0.0, dy, 0.0))) {
-                  this.setPosition(this.getX(), this.getY() + dy, this.getZ());
+               if (this.level().noCollision(this, this.getBoundingBox().move(0.0, dy, 0.0))) {
+                  this.setPos(this.getX(), this.getY() + dy, this.getZ());
                   break;
                }
             }
@@ -459,10 +459,10 @@ public class GrothmawBoss extends MysticalBoss {
             .utility((b, t, ctx) -> ctx.dist < 5.0 ? 1.3F : 1.0F)
             .tick((b, level, target, t) -> {
                if (this.aim(target, t, 2, 5.0)) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw(), 40.0F, 8.4, 8, PAL);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot(), 40.0F, 8.4, 8, PAL);
                }
             })
-            .hit((b, level, target, i) -> this.jaws(level, this.coneHit(level, this.getEntityPos(), this.getYaw(), 40.0F, 7.0, 18.0F, 1.0, 0.3, null), 0.8))
+            .hit((b, level, target, i) -> this.jaws(level, this.coneHit(level, this.position(), this.getYRot(), 40.0F, 7.0, 18.0F, 1.0, 0.3, null), 0.8))
       );
       out.add(
          BossAction.of("feint_snap", 1.6, 0.95)
@@ -478,14 +478,14 @@ public class GrothmawBoss extends MysticalBoss {
             .utility((b, t, ctx) -> ctx.ticksSinceHurt < 40 ? 1.5F : 1.0F)
             .tick((b, level, target, t) -> {
                if (this.aim(target, t, 7, 7.0)) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw(), 45.0F, 9.8, 12, PAL);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot(), 45.0F, 9.8, 12, PAL);
                }
 
                if (t >= 6 && t <= 14 && (t - 6) % 4 == 0) {
                   Vfx.flare(level, this.snout(4.4, 6.3), PAL.glow(), 1.2, 5);
                }
             })
-            .hit((b, level, target, i) -> this.jaws(level, this.coneHit(level, this.getEntityPos(), this.getYaw(), 45.0F, 8.0, 22.0F, 1.2, 0.35, null), 0.9))
+            .hit((b, level, target, i) -> this.jaws(level, this.coneHit(level, this.position(), this.getYRot(), 45.0F, 8.0, 22.0F, 1.2, 0.35, null), 0.9))
       );
       out.add(
          BossAction.of("crushing_jaws", 1.5, 0.55, 1.05)
@@ -499,20 +499,20 @@ public class GrothmawBoss extends MysticalBoss {
             .telegraph(0.05, 1.05)
             .tick((b, level, target, t) -> {
                if (this.aim(target, t, 1, 6.0)) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw(), 45.0F, 8.2, 10, PAL);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot(), 45.0F, 8.2, 10, PAL);
                }
 
                if (t == 12) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw(), 30.0F, 7.5, 9, PAL);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot(), 30.0F, 7.5, 9, PAL);
                }
             })
             .hit((b, level, target, i) -> {
                if (i == 0) {
-                  this.coneHit(level, this.getEntityPos(), this.getYaw(), 45.0F, 7.0, 16.0F, 0.0, 0.0, new StatusEffectInstance(StatusEffects.SLOWNESS, 20, 1));
+                  this.coneHit(level, this.position(), this.getYRot(), 45.0F, 7.0, 16.0F, 0.0, 0.0, new MobEffectInstance(MobEffects.SLOWNESS, 20, 1));
                   Vfx.impact(level, this.snout(6.0, 2.0), PAL, 0.7);
                } else {
-                  this.coneHit(level, this.getEntityPos(), this.getYaw(), 30.0F, 7.5, 20.0F, 0.4, 0.9, new StatusEffectInstance(StatusEffects.WITHER, 40, 0));
-                  Vfx.slashArc(level, this.snout(4.0, 3.0), this.getYaw(), -20.0F, -90.0F, 3.5, PAL, 140.0F);
+                  this.coneHit(level, this.position(), this.getYRot(), 30.0F, 7.5, 20.0F, 0.4, 0.9, new MobEffectInstance(MobEffects.WITHER, 40, 0));
+                  Vfx.slashArc(level, this.snout(4.0, 3.0), this.getYRot(), -20.0F, -90.0F, 3.5, PAL, 140.0F);
                   Vfx.debris(level, this.snout(5.0, 3.0), Vfx.Debris.BONE, PAL.core(), 8, 0.3);
                }
             })
@@ -535,7 +535,7 @@ public class GrothmawBoss extends MysticalBoss {
                Vfx.telegraphCircle(level, this.spot, 3.2, 17, PAL);
             })
             .hit((b, level, target, i) -> {
-               Vec3d p = this.spot != null ? this.spot : this.groundAt(level, this.at(7.0, 0.0, 0.0));
+               Vec3 p = this.spot != null ? this.spot : this.groundAt(level, this.at(7.0, 0.0, 0.0));
                this.hurtAll(level, this.inCircle(level, p, 3.2), p, 30.0F, 1.4, 0.6, null, 5.0F);
                Vfx.heavyImpact(level, p, PAL, 1.2);
                Vfx.groundCrack(level, p, 3.5, PAL);
@@ -558,8 +558,8 @@ public class GrothmawBoss extends MysticalBoss {
             .tick((b, level, target, t) -> {
                this.aim(target, t, 8, 4.0);
                if (t == 20) {
-                  BossFx.knockback(level, this, this.getEntityPos(), 4.0, 1.0);
-                  Vfx.shockwave(level, this.getEntityPos(), PAL, 4.0);
+                  BossFx.knockback(level, this, this.position(), 4.0, 1.0);
+                  Vfx.shockwave(level, this.position(), PAL, 4.0);
                }
             })
             .hit((b, level, target, i) -> this.skyBite(level))
@@ -575,27 +575,27 @@ public class GrothmawBoss extends MysticalBoss {
             .utility((b, t, ctx) -> ctx.targetBehind ? 1.5F : 1.0F)
             .tick((b, level, target, t) -> {
                if (t == 2) {
-                  Vfx.telegraphCircle(level, this.groundAt(level, this.getEntityPos()), 8.5, 16, PAL);
+                  Vfx.telegraphCircle(level, this.groundAt(level, this.position()), 8.5, 16, PAL);
                }
 
                if (t >= 8 && t <= 20 && t % 2 == 0) {
-                  Vec3d club = this.getEntityPos().add(Vec3d.fromPolar(0.0F, this.getYaw() + REAVER_CLUB[(t - 8) / 2]).multiply(7.0)).add(0.0, 2.0, 0.0);
+                  Vec3 club = this.position().add(Vec3.directionFromRotation(0.0F, this.getYRot() + REAVER_CLUB[(t - 8) / 2]).scale(7.0)).add(0.0, 2.0, 0.0);
                   Vfx.trail(level, club, PAL, 1.2);
-                  level.spawnParticles(dust(level, club.add(0.0, -2.0, 0.0)), club.x, club.y - 1.8, club.z, 3, 0.4, 0.1, 0.4, 0.05);
+                  level.sendParticles(dust(level, club.add(0.0, -2.0, 0.0)), club.x, club.y - 1.8, club.z, 3, 0.4, 0.1, 0.4, 0.05);
                }
 
                if (t == 22 && this.phase() >= 2) {
-                  BossFx.wave(level, this, this.groundAt(level, this.getEntityPos()), 9.0, 10, 14.0F, ParticleTypes.FLAME, 1.0, true);
+                  BossFx.wave(level, this, this.groundAt(level, this.position()), 9.0, 10, 14.0F, ParticleTypes.FLAME, 1.0, true);
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d c = this.getEntityPos();
+               Vec3 c = this.position();
 
                for (LivingEntity e : this.circleHit(level, c, 8.5, 28.0F, 2.2, 0.5, null)) {
                   Vfx.heavyImpact(level, mid(e), PAL, 0.6);
                }
 
-               Vfx.slashArc(level, c.add(0.0, 1.4, 0.0), this.getYaw(), 0.0F, 0.0F, 8.5, PAL, -330.0F);
+               Vfx.slashArc(level, c.add(0.0, 1.4, 0.0), this.getYRot(), 0.0F, 0.0F, 8.5, PAL, -330.0F);
                if (this.phase() >= 2) {
                   Vfx.groundCrack(level, c, 9.0, PAL);
                }
@@ -612,12 +612,12 @@ public class GrothmawBoss extends MysticalBoss {
             .telegraph(0.05, 0.4)
             .tick((b, level, target, t) -> {
                if (t == 1) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw() + 180.0F, 75.0F, 9.0, 7, PAL);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot() + 180.0F, 75.0F, 9.0, 7, PAL);
                }
             })
             .hit((b, level, target, i) -> {
-               this.coneHit(level, this.getEntityPos(), this.getYaw() + 180.0F, 75.0F, 9.0, 24.0F, 2.0, 0.4, null);
-               Vfx.slashArc(level, this.getEntityPos().add(0.0, 1.2, 0.0), this.getYaw() + 180.0F, 0.0F, 0.0F, 8.5, PAL, 160.0F);
+               this.coneHit(level, this.position(), this.getYRot() + 180.0F, 75.0F, 9.0, 24.0F, 2.0, 0.4, null);
+               Vfx.slashArc(level, this.position().add(0.0, 1.2, 0.0), this.getYRot() + 180.0F, 0.0F, 0.0F, 8.5, PAL, 160.0F);
             })
       );
       out.add(
@@ -637,9 +637,9 @@ public class GrothmawBoss extends MysticalBoss {
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d f = this.spot != null ? this.spot : this.groundAt(level, this.at(2.5, 1.2, 0.0));
+               Vec3 f = this.spot != null ? this.spot : this.groundAt(level, this.at(2.5, 1.2, 0.0));
                BossFx.slam(level, this, f, 3.8, 20.0F, 1.0);
-               BossFx.effect(level, this, f, 3.8, new StatusEffectInstance(StatusEffects.SLOWNESS, 40, 1));
+               BossFx.effect(level, this, f, 3.8, new MobEffectInstance(MobEffects.SLOWNESS, 40, 1));
                Vfx.heavyImpact(level, f, PAL, 0.9);
                Vfx.groundCrack(level, f, 3.5, PAL);
             })
@@ -653,10 +653,10 @@ public class GrothmawBoss extends MysticalBoss {
             .superArmor()
             .telegraph(0.0, 1.5)
             .utility((b, t, ctx) -> this.engaged().size() >= 2 ? 1.3F : 1.0F)
-            .start((b, level, target, i) -> Vfx.telegraphCircle(level, this.groundAt(level, this.getEntityPos()), 4.5, 16, PAL))
+            .start((b, level, target, i) -> Vfx.telegraphCircle(level, this.groundAt(level, this.position()), 4.5, 16, PAL))
             .tick((b, level, target, t) -> {
                if (t == 18) {
-                  Vfx.telegraphCircle(level, this.groundAt(level, this.getEntityPos()), 5.0, 12, PAL);
+                  Vfx.telegraphCircle(level, this.groundAt(level, this.position()), 5.0, 12, PAL);
                }
             })
             .hit((b, level, target, i) -> this.tectonic(level, i))
@@ -677,7 +677,7 @@ public class GrothmawBoss extends MysticalBoss {
                   int n = this.phase() >= 2 ? 3 : 1;
 
                   for (int k = 0; k < n; k++) {
-                     Vec3d dir = Vec3d.fromPolar(0.0F, this.getYaw() + (k == 0 ? 0 : (k == 1 ? 22 : -22)));
+                     Vec3 dir = Vec3.directionFromRotation(0.0F, this.getYRot() + (k == 0 ? 0 : (k == 1 ? 22 : -22)));
                      this.lines.add(dir);
                      Vfx.telegraphLine(level, this.lineFrom, dir, 20.0, 2.6, 14, PAL);
                   }
@@ -705,7 +705,7 @@ public class GrothmawBoss extends MysticalBoss {
             })
             .tick((b, level, target, t) -> {
                if (t == 1) {
-                  Vfx.telegraphLine(level, this.groundAt(level, this.getEntityPos()), this.fwd(), 25.0, 3.6, 15, PAL);
+                  Vfx.telegraphLine(level, this.groundAt(level, this.position()), this.fwd(), 25.0, 3.6, 15, PAL);
                }
 
                if (t == 4 || t == 9) {
@@ -733,19 +733,19 @@ public class GrothmawBoss extends MysticalBoss {
             .start((b, level, target, i) -> {
                this.charges++;
                this.trampled.clear();
-               this.chargeYaw = this.getYaw();
+               this.chargeYaw = this.getYRot();
             })
             .tick((b, level, target, t) -> {
                if (t == 2) {
-                  Vec3d d = target != null ? this.predict(target, 10.0).subtract(this.getEntityPos()) : this.fwd();
-                  Vec3d dir = new Vec3d(d.x, 0.0, d.z);
-                  dir = dir.lengthSquared() < 1.0E-4 ? this.fwd() : dir.normalize();
-                  this.chargeYaw = (float)(MathHelper.atan2(dir.z, dir.x) * 180.0F / (float)Math.PI) - 90.0F;
-                  Vfx.telegraphLine(level, this.groundAt(level, this.getEntityPos()), dir, 22.5, 3.6, 10, PAL);
+                  Vec3 d = target != null ? this.predict(target, 10.0).subtract(this.position()) : this.fwd();
+                  Vec3 dir = new Vec3(d.x, 0.0, d.z);
+                  dir = dir.lengthSqr() < 1.0E-4 ? this.fwd() : dir.normalize();
+                  this.chargeYaw = (float)(Mth.atan2(dir.z, dir.x) * 180.0F / (float)Math.PI) - 90.0F;
+                  Vfx.telegraphLine(level, this.groundAt(level, this.position()), dir, 22.5, 3.6, 10, PAL);
                }
 
                if (t >= 2 && t <= 10) {
-                  this.setFacing(MathHelper.stepUnwrappedAngleTowards(this.getYaw(), this.chargeYaw, 25.0F));
+                  this.setFacing(Mth.approachDegrees(this.getYRot(), this.chargeYaw, 25.0F));
                } else if (t == 11) {
                   this.setFacing(this.chargeYaw);
                }
@@ -768,15 +768,15 @@ public class GrothmawBoss extends MysticalBoss {
             .utility((b, t, ctx) -> ctx.dist >= 4.0 && ctx.dist <= 9.0 ? 1.3F : 1.0F)
             .tick((b, level, target, t) -> {
                if (this.aim(target, t, 1, 8.0)) {
-                  this.lineFrom = this.groundAt(level, this.getEntityPos());
+                  this.lineFrom = this.groundAt(level, this.position());
                   this.lineDir = this.fwd();
                   Vfx.telegraphLine(level, this.lineFrom, this.lineDir, 9.0, 3.4, 10, PAL);
                }
 
                if (t >= 5 && t <= 11) {
-                  Vfx.streaks(level, this.getEntityPos().add(0.0, 2.0, 0.0), this.fwd(), PAL, 4);
+                  Vfx.streaks(level, this.position().add(0.0, 2.0, 0.0), this.fwd(), PAL, 4);
                   if (t % 2 == 1) {
-                     level.spawnParticles(dust(level, this.getEntityPos()), this.getX(), this.getY() + 0.2, this.getZ(), 8, 1.0, 0.1, 1.0, 0.1);
+                     level.sendParticles(dust(level, this.position()), this.getX(), this.getY() + 0.2, this.getZ(), 8, 1.0, 0.1, 1.0, 0.1);
                   }
                }
             })
@@ -801,28 +801,28 @@ public class GrothmawBoss extends MysticalBoss {
                }
 
                if (t == 4) {
-                  Vfx.chargeUp(level, this.getEntityPos().add(0.0, 1.0, 0.0), PAL, 8);
+                  Vfx.chargeUp(level, this.position().add(0.0, 1.0, 0.0), PAL, 8);
                }
 
                if (t == 12) {
-                  Vec3d l = this.landing(level, target != null ? this.predict(target, 24.0) : this.at(12.0, 0.0, 0.0), 22.0, target);
+                  Vec3 l = this.landing(level, target != null ? this.predict(target, 24.0) : this.at(12.0, 0.0, 0.0), 22.0, target);
                   this.aimAt(l, 60.0F);
                   this.spot = l;
-                  this.arc = new GrothmawBoss.Arc(this.getEntityPos(), l, 12, 24, 6.0);
+                  this.arc = new GrothmawBoss.Arc(this.position(), l, 12, 24, 6.0);
                   Vfx.telegraphCircle(level, l, 7.0, 24, PAL);
-                  Vfx.shockwave(level, this.getEntityPos(), PAL, 4.0);
-                  level.spawnParticles(dust(level, this.getEntityPos()), this.getX(), this.getY() + 0.2, this.getZ(), 30, 1.5, 0.2, 1.5, 0.2);
+                  Vfx.shockwave(level, this.position(), PAL, 4.0);
+                  level.sendParticles(dust(level, this.position()), this.getX(), this.getY() + 0.2, this.getZ(), 30, 1.5, 0.2, 1.5, 0.2);
                }
 
                if (t > 12) {
                   this.tickArc(t);
                   if (t < 36 && t % 2 == 0) {
-                     Vfx.trail(level, this.getEntityPos().add(0.0, 2.5, 0.0), PAL, 1.6);
+                     Vfx.trail(level, this.position().add(0.0, 2.5, 0.0), PAL, 1.6);
                   }
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d l = this.spot != null ? this.spot : this.getEntityPos();
+               Vec3 l = this.spot != null ? this.spot : this.position();
                BossFx.slam(level, this, l, 7.0, 38.0F, 1.8);
                Vfx.heavyImpact(level, l, PAL, 1.6);
                Vfx.groundCrack(level, l, 6.0, PAL);
@@ -842,9 +842,9 @@ public class GrothmawBoss extends MysticalBoss {
             .combo("boulder_hurl", 0.4F)
             .combo("stampede", 0.35F)
             .utility((b, t, ctx) -> ctx.surroundCount >= 2 ? 3.0F : (ctx.targetBehind && ctx.dist < 4.0 ? 1.5F : 0.5F))
-            .start((b, level, target, i) -> Vfx.telegraphCircle(level, this.groundAt(level, this.getEntityPos()), 3.5, 9, PAL))
+            .start((b, level, target, i) -> Vfx.telegraphCircle(level, this.groundAt(level, this.position()), 3.5, 9, PAL))
             .hit((b, level, target, i) -> {
-               BossFx.slam(level, this, this.getEntityPos(), 3.5, 10.0F, 1.4);
+               BossFx.slam(level, this, this.position(), 3.5, 10.0F, 1.4);
                this.vault(level);
             })
       );
@@ -858,10 +858,10 @@ public class GrothmawBoss extends MysticalBoss {
             .utility((b, t, ctx) -> (ctx.targetUnreachable ? 3.0F : 1.0F) * (ctx.targetFlying ? 1.5F : 1.0F))
             .tick((b, level, target, t) -> {
                if (t == 7) {
-                  Vec3d dig = this.snout(5.0, 0.2);
+                  Vec3 dig = this.snout(5.0, 0.2);
                   Vfx.impact(level, dig, PAL, 0.9);
                   Vfx.shards(level, dig, PAL.smoke(), 14, 0.5);
-                  level.spawnParticles(dust(level, dig), dig.x, dig.y + 0.2, dig.z, 16, 0.6, 0.2, 0.6, 0.15);
+                  level.sendParticles(dust(level, dig), dig.x, dig.y + 0.2, dig.z, 16, 0.6, 0.2, 0.6, 0.15);
                }
 
                if (t >= 8 && t <= 20 && (t - 8) % 3 == 0) {
@@ -895,7 +895,7 @@ public class GrothmawBoss extends MysticalBoss {
             .utility((b, t, ctx) -> (this.engaged().size() >= 2 ? 1.5F : 1.0F) * (ctx.targetBlocking ? 1.5F : 1.0F))
             .tick((b, level, target, t) -> {
                if (this.aim(target, t, 2, 10.0)) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw(), 70.0F, 16.0, 18, PAL);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot(), 70.0F, 16.0, 18, PAL);
                }
 
                if (t >= 4 && t <= 18 && (t - 4) % 3 == 0) {
@@ -916,11 +916,11 @@ public class GrothmawBoss extends MysticalBoss {
             .utility((b, t, ctx) -> this.shield() > 0.0F ? 0.0F : 1.0F)
             .tick((b, level, target, t) -> {
                if (t == 10) {
-                  Vfx.telegraphCircle(level, this.groundAt(level, this.getEntityPos()), 5.5, 22, PAL);
+                  Vfx.telegraphCircle(level, this.groundAt(level, this.position()), 5.5, 22, PAL);
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d c = this.getEntityPos();
+               Vec3 c = this.position();
                if (i == 0) {
                   this.shield(this.getMaxHealth() * (this.phase() >= 2 ? 0.1F : 0.12F), 200);
                   Vfx.shieldBubble(level, c.add(0.0, 2.2, 0.0), 3.4, PAL, 200);
@@ -940,7 +940,7 @@ public class GrothmawBoss extends MysticalBoss {
             .weight(7)
             .anyTarget()
             .tags("summon")
-            .utility((b, t, ctx) -> this.minions(this.getEntityWorld()) >= 4 ? 0.0F : 1.0F)
+            .utility((b, t, ctx) -> this.minions(this.level()) >= 4 ? 0.0F : 1.0F)
             .tick((b, level, target, t) -> {
                if (t == 18 || t == 21) {
                   Vfx.flare(level, this.snout(5.0, 5.9), PAL.glow(), 1.0, 5);
@@ -961,9 +961,9 @@ public class GrothmawBoss extends MysticalBoss {
             .start((b, level, target, i) -> {
                this.buff(50, 1.5F, 1.0F);
                Vfx.explosion(level, this.snout(3.0, 2.5), PAL, 3.0);
-               Vfx.shake(level, this.getEntityPos(), 24.0, 1.0, 12);
-               Vec3d back = this.fwd().multiply(-0.4);
-               this.setVelocity(back.x, this.getVelocity().y, back.z);
+               Vfx.shake(level, this.position(), 24.0, 1.0, 12);
+               Vec3 back = this.fwd().scale(-0.4);
+               this.setDeltaMovement(back.x, this.getDeltaMovement().y, back.z);
             })
             .tick((b, level, target, t) -> {
                if (t >= 12 && t <= 40 && (t - 12) % 8 == 0) {
@@ -971,10 +971,10 @@ public class GrothmawBoss extends MysticalBoss {
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d p = this.at(3.0, 0.0, 0.0);
+               Vec3 p = this.at(3.0, 0.0, 0.0);
                BossFx.knockback(level, this, p, 3.0, 1.0);
                Vfx.debris(level, p.add(0.0, 2.5, 0.0), Vfx.Debris.BONE, 15260864, 12, 0.5);
-               level.spawnParticles(dust(level, p), p.x, p.y + 0.3, p.z, 20, 1.2, 0.3, 1.2, 0.15);
+               level.sendParticles(dust(level, p), p.x, p.y + 0.3, p.z, 20, 1.2, 0.3, 1.2, 0.15);
             })
       );
       out.add(
@@ -991,7 +991,7 @@ public class GrothmawBoss extends MysticalBoss {
             .utility((b, t, ctx) -> ctx.surroundCount >= 2 ? 1.5F : 1.0F)
             .start((b, level, target, i) -> {
                Vfx.chargeUp(level, this.heart(), PAL, 18);
-               Vfx.runeCircle(level, this.groundAt(level, this.getEntityPos()), 6.0, PAL, 40, 0.05F, Vfx.Rune.GLYPH);
+               Vfx.runeCircle(level, this.groundAt(level, this.position()), 6.0, PAL, 40, 0.05F, Vfx.Rune.GLYPH);
             })
             .tick((b, level, target, t) -> {
                if (t < 18 && target != null) {
@@ -999,23 +999,23 @@ public class GrothmawBoss extends MysticalBoss {
                }
 
                if (t == 18) {
-                  Vec3d l = this.landing(level, target != null ? this.predict(target, 22.0) : this.at(8.0, 0.0, 0.0), 14.0, target);
+                  Vec3 l = this.landing(level, target != null ? this.predict(target, 22.0) : this.at(8.0, 0.0, 0.0), 14.0, target);
                   this.aimAt(l, 60.0F);
                   this.spot = l;
-                  this.arc = new GrothmawBoss.Arc(this.getEntityPos(), l, 18, 22, 9.0);
+                  this.arc = new GrothmawBoss.Arc(this.position(), l, 18, 22, 9.0);
                   Vfx.telegraphCircle(level, l, 7.0, 22, PAL);
-                  Vfx.heavyImpact(level, this.getEntityPos(), PAL, 1.0);
+                  Vfx.heavyImpact(level, this.position(), PAL, 1.0);
                }
 
                if (t > 18) {
                   this.tickArc(t);
                   if (t < 40) {
                      if (t % 2 == 0) {
-                        Vfx.trail(level, this.getEntityPos().add(0.0, 2.5, 0.0), PAL, 2.0);
+                        Vfx.trail(level, this.position().add(0.0, 2.5, 0.0), PAL, 2.0);
                      }
 
                      if (t >= 30) {
-                        Vfx.meteorTrail(level, this.getEntityPos().add(0.0, 2.0, 0.0), this.getVelocity(), PAL);
+                        Vfx.meteorTrail(level, this.position().add(0.0, 2.0, 0.0), this.getDeltaMovement(), PAL);
                      }
                   }
                }
@@ -1042,7 +1042,7 @@ public class GrothmawBoss extends MysticalBoss {
             })
             .tick((b, level, target, t) -> {
                if (this.aim(target, t, 4, 8.0)) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw(), 30.0F, 11.7, 14, PAL);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot(), 30.0F, 11.7, 14, PAL);
                }
 
                if (t >= 4 && t <= 16 && t % 4 == 0) {
@@ -1074,7 +1074,7 @@ public class GrothmawBoss extends MysticalBoss {
             .start((b, level, target, i) -> this.extinctionStart(level))
             .tick((b, level, target, t) -> {
                if (t == 90) {
-                  Vfx.telegraphCircle(level, this.groundAt(level, this.getEntityPos()), 18.0, 30, PAL);
+                  Vfx.telegraphCircle(level, this.groundAt(level, this.position()), 18.0, 30, PAL);
                   Vfx.chargeUp(level, this.heart(), PAL, 30);
                }
             })
@@ -1088,7 +1088,7 @@ public class GrothmawBoss extends MysticalBoss {
             .end((b, level, target, i) -> {
                if (i == -1) {
                   this.buff(100, 1.25F, 1.0F);
-                  Vfx.smoke(level, this.getEntityPos(), PAL.smoke(), 16, 3.0, 2.5);
+                  Vfx.smoke(level, this.position(), PAL.smoke(), 16, 3.0, 2.5);
                }
 
                this.hollows.clear();
@@ -1096,10 +1096,10 @@ public class GrothmawBoss extends MysticalBoss {
       );
    }
 
-   private void jaws(ServerWorld level, List<LivingEntity> hit, double power) {
-      Vec3d o = this.snout(3.5, 3.2);
-      Vfx.slashArc(level, o, this.getYaw(), 10.0F, 90.0F, 3.0, PAL, 120.0F);
-      Vfx.slashArc(level, o, this.getYaw(), 10.0F, -90.0F, 3.0, PAL, 120.0F);
+   private void jaws(ServerLevel level, List<LivingEntity> hit, double power) {
+      Vec3 o = this.snout(3.5, 3.2);
+      Vfx.slashArc(level, o, this.getYRot(), 10.0F, 90.0F, 3.0, PAL, 120.0F);
+      Vfx.slashArc(level, o, this.getYRot(), 10.0F, -90.0F, 3.0, PAL, 120.0F);
       int n = 0;
 
       for (LivingEntity e : hit) {
@@ -1111,38 +1111,38 @@ public class GrothmawBoss extends MysticalBoss {
       }
    }
 
-   private void skyBite(ServerWorld level) {
-      Vec3d head = this.at(4.0, 0.0, 7.0);
-      Vec3d col = this.spot != null ? this.spot : this.groundAt(level, this.at(4.0, 0.0, 0.0));
-      Box box = new Box(head, head).expand(4.5).union(new Box(col.x - 3.5, col.y - 0.5, col.z - 3.5, col.x + 3.5, col.y + 9.0, col.z + 3.5));
+   private void skyBite(ServerLevel level) {
+      Vec3 head = this.at(4.0, 0.0, 7.0);
+      Vec3 col = this.spot != null ? this.spot : this.groundAt(level, this.at(4.0, 0.0, 0.0));
+      AABB box = new AABB(head, head).inflate(4.5).minmax(new AABB(col.x - 3.5, col.y - 0.5, col.z - 3.5, col.x + 3.5, col.y + 9.0, col.z + 3.5));
       List<LivingEntity> in = new ArrayList<>();
 
       for (LivingEntity e : this.targets(level, box)) {
          double cx = e.getX() - col.x;
          double cz = e.getZ() - col.z;
-         double rr = 3.0 + e.getWidth() * 0.5;
+         double rr = 3.0 + e.getBbWidth() * 0.5;
          boolean column = cx * cx + cz * cz <= rr * rr && e.getY() >= col.y - 0.5 && e.getY() <= col.y + 9.0;
-         if (column || mid(e).squaredDistanceTo(head) <= 20.25) {
+         if (column || mid(e).distanceToSqr(head) <= 20.25) {
             in.add(e);
          }
       }
 
-      for (LivingEntity e : this.hurtAll(level, in, this.getEntityPos(), 26.0F, 0.0, 0.0, null, 0.0F)) {
-         e.stopGliding();
-         e.removeStatusEffect(StatusEffects.SLOW_FALLING);
-         Vec3d v = e.getVelocity();
-         e.setVelocity(v.x * 0.2, -1.4, v.z * 0.2);
-         e.knockedBack = true;
+      for (LivingEntity e : this.hurtAll(level, in, this.position(), 26.0F, 0.0, 0.0, null, 0.0F)) {
+         e.stopFallFlying();
+         e.removeEffect(MobEffects.SLOW_FALLING);
+         Vec3 v = e.getDeltaMovement();
+         e.setDeltaMovement(v.x * 0.2, -1.4, v.z * 0.2);
+         e.syncVelocity = true;
       }
 
-      Vfx.slashArc(level, this.at(4.0, 0.0, 6.0), this.getYaw(), -70.0F, -90.0F, 3.5, PAL, 150.0F);
+      Vfx.slashArc(level, this.at(4.0, 0.0, 6.0), this.getYRot(), -70.0F, -90.0F, 3.5, PAL, 150.0F);
       Vfx.impact(level, head, PAL, 0.9);
    }
 
-   private void tectonic(ServerWorld level, int i) {
-      Vec3d c = this.getEntityPos();
-      Vec3d g = this.groundAt(level, c);
-      ParticleEffect dust = dust(level, g);
+   private void tectonic(ServerLevel level, int i) {
+      Vec3 c = this.position();
+      Vec3 g = this.groundAt(level, c);
+      ParticleOptions dust = dust(level, g);
       if (i == 0) {
          BossFx.slam(level, this, c, 4.5, 18.0F, 1.2);
          BossFx.wave(level, this, g, 11.0, 14, 14.0F, dust, 0.8, true);
@@ -1162,42 +1162,42 @@ public class GrothmawBoss extends MysticalBoss {
       }
    }
 
-   private void boneQuake(ServerWorld level) {
-      Vec3d from = this.lineFrom;
+   private void boneQuake(ServerLevel level) {
+      Vec3 from = this.lineFrom;
       if (this.lines.isEmpty()) {
          from = this.groundAt(level, this.at(2.5, 0.0, 0.0));
          this.lines.add(this.fwd());
       }
 
-      List<Vec3d> dirs = List.copyOf(this.lines);
-      Vec3d start = from;
+      List<Vec3> dirs = List.copyOf(this.lines);
+      Vec3 start = from;
 
-      for (Vec3d dir : dirs) {
+      for (Vec3 dir : dirs) {
          this.lineHit(level, start, dir, 20.0, 2.6, 26.0F, 0.9);
          this.spikes(level, start, dir, 20.0, dirs.size() > 1 ? 3 : 2);
       }
 
       if (this.phase() >= 3) {
-         for (Vec3d dir : dirs) {
+         for (Vec3 dir : dirs) {
             Vfx.telegraphLine(level, start, dir, 20.0, 2.6, 24, PAL);
          }
 
          this.schedule(24, () -> {
-            for (Vec3d dirx : dirs) {
+            for (Vec3 dirx : dirs) {
                this.lineHit(level, start, dirx, 20.0, 2.6, 18.0F, 0.6);
                this.spikes(level, start, dirx, 20.0, 3);
-               this.tarPool(level, this.groundAt(level, start.add(new Vec3d(dirx.x, 0.0, dirx.z).normalize().multiply(10.0))));
+               this.tarPool(level, this.groundAt(level, start.add(new Vec3(dirx.x, 0.0, dirx.z).normalize().scale(10.0))));
             }
          });
       }
    }
 
-   private void spikes(ServerWorld level, Vec3d from, Vec3d dir, double length, int every) {
-      Vec3d d = new Vec3d(dir.x, 0.0, dir.z).normalize();
+   private void spikes(ServerLevel level, Vec3 from, Vec3 dir, double length, int every) {
+      Vec3 d = new Vec3(dir.x, 0.0, dir.z).normalize();
       int n = (int)(length / 1.2);
 
       for (int k = every; k <= n; k += every) {
-         Vec3d p = this.groundAt(level, from.add(d.multiply(k * 1.2)));
+         Vec3 p = this.groundAt(level, from.add(d.scale(k * 1.2)));
          Vfx.pillar(level, p, PAL, 2.5, 0.6);
          Vfx.debris(level, p, Vfx.Debris.BONE, 15260864, 3, 0.4);
          if (k / every % 2 == 0) {
@@ -1206,72 +1206,72 @@ public class GrothmawBoss extends MysticalBoss {
       }
    }
 
-   private void paw(ServerWorld level) {
-      Vec3d foot = this.at(0.8, -1.2, 0.0);
-      level.spawnParticles(dust(level, foot), foot.x, foot.y + 0.2, foot.z, 14, 0.5, 0.1, 0.5, 0.12);
+   private void paw(ServerLevel level) {
+      Vec3 foot = this.at(0.8, -1.2, 0.0);
+      level.sendParticles(dust(level, foot), foot.x, foot.y + 0.2, foot.z, 14, 0.5, 0.1, 0.5, 0.12);
       Vfx.smoke(level, foot, PAL.smoke(), 3, 0.6, 1.2);
-      Vfx.shake(level, this.getEntityPos(), 16.0, 0.3, 6);
+      Vfx.shake(level, this.position(), 16.0, 0.3, 6);
    }
 
-   private void launch(ServerWorld level) {
+   private void launch(ServerLevel level) {
       Vfx.heavyImpact(level, this.at(-1.0, 0.0, 0.0), PAL, 0.6);
-      Vfx.streaks(level, this.getEntityPos().add(0.0, 2.0, 0.0), this.fwd(), PAL, 10);
-      this.lastPos = this.getEntityPos();
+      Vfx.streaks(level, this.position().add(0.0, 2.0, 0.0), this.fwd(), PAL, 10);
+      this.lastPos = this.position();
    }
 
-   private void charge(ServerWorld level, int t, int from, int to, int wallFrom, float base) {
+   private void charge(ServerLevel level, int t, int from, int to, int wallFrom, float base) {
       if (t >= from && t <= to) {
          if (this.horizontalCollision && t >= wallFrom) {
             this.forceAction(level, "wall_crash");
          } else {
-            Vec3d c = this.at(2.0, 0.0, 0.0);
+            Vec3 c = this.at(2.0, 0.0, 0.0);
             double r = 2.0;
-            Vec3d f = this.fwd();
-            DamageSource source = this.getDamageSources().mobAttack(this);
+            Vec3 f = this.fwd();
+            DamageSource source = this.damageSources().mobAttack(this);
 
-            for (LivingEntity e : this.targets(level, new Box(c.x - r - 1.0, c.y - 1.0, c.z - r - 1.0, c.x + r + 1.0, c.y + 3.5, c.z + r + 1.0))) {
+            for (LivingEntity e : this.targets(level, new AABB(c.x - r - 1.0, c.y - 1.0, c.z - r - 1.0, c.x + r + 1.0, c.y + 3.5, c.z + r + 1.0))) {
                double dx = e.getX() - c.x;
                double dz = e.getZ() - c.z;
-               double rr = r + e.getWidth() * 0.5;
-               if (!(dx * dx + dz * dz > rr * rr) && this.trampled.add(e.getId()) && e.damage(level, source, this.dmg(base))) {
-                  e.addVelocity(f.x * 2.6, 0.9, f.z * 2.6);
-                  e.knockedBack = true;
+               double rr = r + e.getBbWidth() * 0.5;
+               if (!(dx * dx + dz * dz > rr * rr) && this.trampled.add(e.getId()) && e.hurtServer(level, source, this.dmg(base))) {
+                  e.push(f.x * 2.6, 0.9, f.z * 2.6);
+                  e.syncVelocity = true;
                   Vfx.heavyImpact(level, mid(e), PAL, 0.8);
                }
             }
 
             if (t % 2 == 0) {
-               Vfx.dashTrail(level, this.lastPos, this.getEntityPos(), PAL);
-               level.spawnParticles(dust(level, this.getEntityPos()), this.getX(), this.getY() + 0.2, this.getZ(), 10, 1.2, 0.1, 1.2, 0.15);
-               this.lastPos = this.getEntityPos();
+               Vfx.dashTrail(level, this.lastPos, this.position(), PAL);
+               level.sendParticles(dust(level, this.position()), this.getX(), this.getY() + 0.2, this.getZ(), 10, 1.2, 0.1, 1.2, 0.15);
+               this.lastPos = this.position();
             }
 
             if (t % 5 == 0) {
-               Vfx.shake(level, this.getEntityPos(), 20.0, 0.4, 5);
+               Vfx.shake(level, this.position(), 20.0, 0.4, 5);
                this.voice(level, "step", 2.0F);
             }
          }
       }
    }
 
-   private void vault(ServerWorld level) {
-      Vec3d best = null;
+   private void vault(ServerLevel level) {
+      Vec3 best = null;
       double bestScore = -1.0;
 
       for (float off : new float[]{0.0F, 35.0F, -35.0F}) {
-         Vec3d dir = Vec3d.fromPolar(0.0F, this.getYaw() + 180.0F + off);
-         Vec3d dest = this.getEntityPos().add(dir.multiply(8.0));
+         Vec3 dir = Vec3.directionFromRotation(0.0F, this.getYRot() + 180.0F + off);
+         Vec3 dest = this.position().add(dir.scale(8.0));
          boolean clear = BossFx.safeGround(level, dest, 3.0);
 
          for (int k = 2; clear && k <= 8; k += 2) {
-            clear = level.isSpaceEmpty(this, this.getBoundingBox().offset(dir.x * k, 0.6, dir.z * k));
+            clear = level.noCollision(this, this.getBoundingBox().move(dir.x * k, 0.6, dir.z * k));
          }
 
          if (clear) {
             double score = off == 0.0F ? 0.5 : 0.0;
 
-            for (ServerPlayerEntity p : this.engaged()) {
-               score += Math.sqrt(p.squaredDistanceTo(dest));
+            for (ServerPlayer p : this.engaged()) {
+               score += Math.sqrt(p.distanceToSqr(dest));
             }
 
             if (score > bestScore) {
@@ -1283,30 +1283,30 @@ public class GrothmawBoss extends MysticalBoss {
 
       if (best != null) {
          this.dash(best, 1.25, 9);
-         this.setVelocity(this.getVelocity().x, 0.3, this.getVelocity().z);
-         Vfx.dashTrail(level, this.getEntityPos(), this.getEntityPos().add(best.multiply(8.0)), PAL);
+         this.setDeltaMovement(this.getDeltaMovement().x, 0.3, this.getDeltaMovement().z);
+         Vfx.dashTrail(level, this.position(), this.position().add(best.scale(8.0)), PAL);
       }
    }
 
-   private void hurl(ServerWorld level, @Nullable LivingEntity target) {
-      Vec3d from = this.snout(6.0, 3.6);
-      Vec3d l = target != null ? this.predict(target, 20.0) : this.groundAt(level, this.at(16.0, 0.0, 0.0));
-      if (target != null && target.isOnGround()) {
+   private void hurl(ServerLevel level, @Nullable LivingEntity target) {
+      Vec3 from = this.snout(6.0, 3.6);
+      Vec3 l = target != null ? this.predict(target, 20.0) : this.groundAt(level, this.at(16.0, 0.0, 0.0));
+      if (target != null && target.onGround()) {
          l = this.groundAt(level, l);
       }
 
       double g = 0.06;
       int flight = 20;
-      Vec3d d = l.subtract(from);
-      Vec3d v = new Vec3d(d.x / flight, d.y / flight + g * (flight + 1) * 0.5, d.z / flight);
+      Vec3 d = l.subtract(from);
+      Vec3 v = new Vec3(d.x / flight, d.y / flight + g * (flight + 1) * 0.5, d.z / flight);
       BossBolt.shoot(level, this, BossBolt.Style.SAND, from, v, this.dmg(24.0F)).gravity(g).aoe(3.2).life(40);
       Vfx.telegraphCircle(level, l, 3.2, flight, PAL);
       Vfx.flare(level, from, PAL.core(), 2.5, 6);
       if (this.phase() >= 2) {
-         Vec3d at = l;
+         Vec3 at = l;
          this.schedule(flight, () -> {
             for (int k = 0; k < 3; k++) {
-               Vec3d p = this.near(level, at, 2.5, 4.0);
+               Vec3 p = this.near(level, at, 2.5, 4.0);
                Vfx.telegraphCircle(level, p, 1.8, 12, PAL);
                this.schedule(12, () -> {
                   this.circleHit(level, p, 1.8, 12.0F, 0.5, 0.3, null);
@@ -1318,56 +1318,56 @@ public class GrothmawBoss extends MysticalBoss {
       }
    }
 
-   private void spit(ServerWorld level, @Nullable LivingEntity target) {
-      Vec3d from = this.snout(5.8, 2.9);
-      Vec3d aim;
+   private void spit(ServerLevel level, @Nullable LivingEntity target) {
+      Vec3 from = this.snout(5.8, 2.9);
+      Vec3 aim;
       double flight;
       if (target != null) {
-         flight = Math.max(1.0, from.distanceTo(target.getEntityPos()) / 1.6);
-         aim = this.predict(target, flight).add(0.0, target.getHeight() * 0.5, 0.0);
+         flight = Math.max(1.0, from.distanceTo(target.position()) / 1.6);
+         aim = this.predict(target, flight).add(0.0, target.getBbHeight() * 0.5, 0.0);
       } else {
          flight = 8.0;
          aim = this.at(16.0, 0.0, 1.0);
       }
 
-      Vec3d dir = aim.subtract(from).normalize();
+      Vec3 dir = aim.subtract(from).normalize();
       int n = this.phase() >= 3 ? 3 : 1;
 
       for (int k = 0; k < n; k++) {
          float off = k == 0 ? 0.0F : (k == 1 ? 12 : -12);
-         Vec3d v = dir.rotateY((float)Math.toRadians(off)).multiply(1.6);
+         Vec3 v = dir.yRot((float)Math.toRadians(off)).scale(1.6);
          BossBolt.shoot(level, this, BossBolt.Style.SAND, from, v, this.dmg(14.0F))
             .aoe(1.8)
-            .effect(new StatusEffectInstance(StatusEffects.SLOWNESS, 50, 2))
+            .effect(new MobEffectInstance(MobEffects.SLOWNESS, 50, 2))
             .life(40);
       }
 
       Vfx.flare(level, from, PAL.glow(), 1.8, 5);
       if (this.phase() >= 2 && target != null) {
-         Vec3d pool = this.groundAt(level, aim);
+         Vec3 pool = this.groundAt(level, aim);
          this.schedule((int)Math.round(flight), () -> this.tarPool(level, pool));
       }
    }
 
-   private void tarPool(ServerWorld level, Vec3d center) {
-      BossFx.zone(level, this, center, 2.6, 120, ParticleTypes.LANDING_HONEY, this.dmg(3.0F), new StatusEffectInstance(StatusEffects.SLOWNESS, 30, 1));
+   private void tarPool(ServerLevel level, Vec3 center) {
+      BossFx.zone(level, this, center, 2.6, 120, ParticleTypes.LANDING_HONEY, this.dmg(3.0F), new MobEffectInstance(MobEffects.SLOWNESS, 30, 1));
       Vfx.groundCrack(level, center, 2.6, PAL);
    }
 
-   private void roar(ServerWorld level) {
-      Vec3d c = this.getEntityPos();
-      level.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundCategory.HOSTILE, 6.0F, 0.75F);
-      DamageSource source = this.getDamageSources().mobAttack(this);
+   private void roar(ServerLevel level) {
+      Vec3 c = this.position();
+      level.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundSource.HOSTILE, 6.0F, 0.75F);
+      DamageSource source = this.damageSources().mobAttack(this);
 
-      for (LivingEntity e : this.cone(level, c, this.getYaw(), 70.0F, 16.0)) {
+      for (LivingEntity e : this.cone(level, c, this.getYRot(), 70.0F, 16.0)) {
          this.breakGuard(level, e, 3.0F);
          double dx = e.getX() - c.x;
          double dz = e.getZ() - c.z;
          float falloff = (float)(1.0 - 0.5 * Math.min(1.0, Math.sqrt(dx * dx + dz * dz) / 16.0));
-         if (e.damage(level, source, this.dmg(16.0F) * falloff)) {
+         if (e.hurtServer(level, source, this.dmg(16.0F) * falloff)) {
             shove(e, c, 2.4, 0.5);
-            e.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, 160, 0), this);
-            e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 60, 1), this);
+            e.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 160, 0), this);
+            e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 60, 1), this);
          }
       }
 
@@ -1387,22 +1387,22 @@ public class GrothmawBoss extends MysticalBoss {
       }
    }
 
-   private int minions(World level) {
-      return level.getEntitiesByClass(RealmMob.class, this.getBoundingBox().expand(32.0), LivingEntity::isAlive).size();
+   private int minions(Level level) {
+      return level.getEntitiesOfClass(RealmMob.class, this.getBoundingBox().inflate(32.0), LivingEntity::isAlive).size();
    }
 
-   private void brood(ServerWorld level) {
+   private void brood(ServerLevel level) {
       int near = this.minions(level) + this.eggs.size();
       int n = Math.min(this.phase() >= 2 ? 3 : 2, 6 - near);
-      Vec3d from = this.snout(5.1, 5.6);
+      Vec3 from = this.snout(5.1, 5.6);
       Vfx.flare(level, from, PAL.glow(), 1.4, 6);
 
       for (int k = 0; k < n; k++) {
-         Vec3d egg = BossFx.around(level, this, this.getEntityPos(), 5.0, 11.0);
+         Vec3 egg = BossFx.around(level, this, this.position(), 5.0, 11.0);
 
          for (int s = 2; s <= 12; s += 2) {
-            Vec3d p = eggArc(from, egg, s / 12.0);
-            Vec3d v = eggArc(from, egg, (s + 1) / 12.0).subtract(p);
+            Vec3 p = eggArc(from, egg, s / 12.0);
+            Vec3 v = eggArc(from, egg, (s + 1) / 12.0).subtract(p);
             this.schedule(s, () -> Vfx.meteorTrail(level, p, v, PAL));
          }
 
@@ -1411,22 +1411,22 @@ public class GrothmawBoss extends MysticalBoss {
 
       EntityType<RealmMob> shellback = RealmMobs.type("shellback");
       if (this.phase() >= 3 && near + n < 6 && shellback != null) {
-         BossFx.summonMinions(level, this, shellback, 1, 6.0, null, m -> Vfx.groundCrack(level, m.getEntityPos(), 2.0, PAL));
+         BossFx.summonMinions(level, this, shellback, 1, 6.0, null, m -> Vfx.groundCrack(level, m.position(), 2.0, PAL));
       }
    }
 
-   private static Vec3d eggArc(Vec3d from, Vec3d to, double s) {
+   private static Vec3 eggArc(Vec3 from, Vec3 to, double s) {
       return from.lerp(to, s).add(0.0, 12.0 * s * (1.0 - s), 0.0);
    }
 
-   private void layEgg(ServerWorld level, Vec3d at) {
+   private void layEgg(ServerLevel level, Vec3 at) {
       this.eggs.add(new GrothmawBoss.Egg(at, 60));
       Vfx.telegraphCircle(level, at, 1.3, 60, PAL);
       Vfx.runeCircle(level, at, 1.0, PAL, 60, 0.05F, Vfx.Rune.GLYPH);
       Vfx.impact(level, at, PAL, 0.4);
    }
 
-   private void tickEggs(ServerWorld level, boolean paused) {
+   private void tickEggs(ServerLevel level, boolean paused) {
       if (!this.eggs.isEmpty()) {
          Iterator<GrothmawBoss.Egg> it = this.eggs.iterator();
 
@@ -1441,8 +1441,8 @@ public class GrothmawBoss extends MysticalBoss {
                   it.remove();
                   this.hatch(level, egg.at);
                } else if (egg.left % 10 == 0) {
-                  level.spawnParticles(
-                     new BlockStateParticleEffect(ParticleTypes.BLOCK, Blocks.TURTLE_EGG.getDefaultState()),
+                  level.sendParticles(
+                     new BlockParticleOption(ParticleTypes.BLOCK, Blocks.TURTLE_EGG.defaultBlockState()),
                      egg.at.x,
                      egg.at.y + 0.3,
                      egg.at.z,
@@ -1460,7 +1460,7 @@ public class GrothmawBoss extends MysticalBoss {
    }
 
    private boolean crushed(GrothmawBoss.Egg egg) {
-      for (ServerPlayerEntity p : this.engaged()) {
+      for (ServerPlayer p : this.engaged()) {
          double dx = p.getX() - egg.at.x;
          double dz = p.getZ() - egg.at.z;
          if (dx * dx + dz * dz <= 1.6900000000000002 && Math.abs(p.getY() - egg.at.y) < 1.5) {
@@ -1471,30 +1471,30 @@ public class GrothmawBoss extends MysticalBoss {
       return false;
    }
 
-   private void hatch(ServerWorld level, Vec3d at) {
+   private void hatch(ServerLevel level, Vec3 at) {
       EntityType<RealmMob> type = RealmMobs.type("primal_raptor");
-      RealmMob raptor = type == null ? null : (RealmMob)type.create(level, SpawnReason.MOB_SUMMONED);
+      RealmMob raptor = type == null ? null : (RealmMob)type.create(level, EntitySpawnReason.MOB_SUMMONED);
       if (raptor != null) {
-         raptor.refreshPositionAndAngles(at.x, at.y, at.z, this.random.nextFloat() * 360.0F, 0.0F);
+         raptor.snapTo(at.x, at.y, at.z, this.random.nextFloat() * 360.0F, 0.0F);
          if (this.getTarget() != null) {
             raptor.setTarget(this.getTarget());
          }
 
-         raptor.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 1200, 0));
-         level.spawnEntity(raptor);
+         raptor.addEffect(new MobEffectInstance(MobEffects.SPEED, 1200, 0));
+         level.addFreshEntity(raptor);
          Vfx.pillar(level, at, PAL, 2.5, 0.7);
          Vfx.debris(level, at.add(0.0, 0.5, 0.0), Vfx.Debris.BONE, 15260864, 10, 0.3);
       }
    }
 
-   private void breaker(ServerWorld level, int i) {
-      Vec3d l = this.spot != null ? this.spot : this.getEntityPos();
+   private void breaker(ServerLevel level, int i) {
+      Vec3 l = this.spot != null ? this.spot : this.position();
       if (i == 0) {
          BossFx.slam(level, this, l, 7.0, 50.0F, 2.2);
          Vfx.heavyImpact(level, l, PAL, 2.5);
          Vfx.impactFrame(level, l, 24.0, PAL.glow(), 0.8F);
          Vfx.groundCrack(level, l, 8.0, PAL);
-         this.breakerYaw = this.getYaw();
+         this.breakerYaw = this.getYRot();
          this.fissureLines(level, l, this.breakerYaw);
       } else if (i == 1) {
          this.fissures(level, l, this.breakerYaw);
@@ -1508,21 +1508,21 @@ public class GrothmawBoss extends MysticalBoss {
       }
    }
 
-   private void fissureLines(ServerWorld level, Vec3d l, float base) {
+   private void fissureLines(ServerLevel level, Vec3 l, float base) {
       for (int k = 0; k < 5; k++) {
-         Vfx.telegraphLine(level, l, Vec3d.fromPolar(0.0F, base + k * 72), 16.0, 2.8, 12, PAL);
+         Vfx.telegraphLine(level, l, Vec3.directionFromRotation(0.0F, base + k * 72), 16.0, 2.8, 12, PAL);
       }
    }
 
-   private void fissures(ServerWorld level, Vec3d l, float base) {
+   private void fissures(ServerLevel level, Vec3 l, float base) {
       for (int k = 0; k < 5; k++) {
-         Vec3d dir = Vec3d.fromPolar(0.0F, base + k * 72);
+         Vec3 dir = Vec3.directionFromRotation(0.0F, base + k * 72);
          this.lineHit(level, l, dir, 16.0, 2.8, 42.0F, 1.0);
          this.spikes(level, l, dir, 16.0, 3);
       }
    }
 
-   private Vec3d mawPoint(double sec) {
+   private Vec3 mawPoint(double sec) {
       double[] a = MAW[0];
       if (sec <= a[0]) {
          return this.at(a[1], a[2], a[3]);
@@ -1532,7 +1532,7 @@ public class GrothmawBoss extends MysticalBoss {
          double[] b = MAW[k];
          if (sec <= b[0]) {
             double f = (sec - a[0]) / (b[0] - a[0]);
-            return this.at(MathHelper.lerp(f, a[1], b[1]), MathHelper.lerp(f, a[2], b[2]), MathHelper.lerp(f, a[3], b[3]));
+            return this.at(Mth.lerp(f, a[1], b[1]), Mth.lerp(f, a[2], b[2]), Mth.lerp(f, a[3], b[3]));
          }
 
          a = b;
@@ -1541,51 +1541,51 @@ public class GrothmawBoss extends MysticalBoss {
       return this.at(a[1], a[2], a[3]);
    }
 
-   private void carry(ServerWorld level, int t) {
+   private void carry(ServerLevel level, int t) {
       LivingEntity v = this.grabbed;
       if (v != null && t > 18) {
-         if (v.isAlive() && !v.isRemoved() && v.getEntityWorld() == level && !(v instanceof PlayerEntity p && (p.isCreative() || p.isSpectator()))) {
-            Vec3d jaw = this.mawPoint(t / 20.0);
+         if (v.isAlive() && !v.isRemoved() && v.level() == level && !(v instanceof Player p && (p.isCreative() || p.isSpectator()))) {
+            Vec3 jaw = this.mawPoint(t / 20.0);
             double y = jaw.y - 0.9;
-            Vec3d g = BossFx.ground(level, jaw.x, jaw.y, jaw.z);
+            Vec3 g = BossFx.ground(level, jaw.x, jaw.y, jaw.z);
             if (g != null && y < g.y) {
                y = g.y;
             }
 
-            if (level.isSpaceEmpty(v, v.getBoundingBox().offset(jaw.x - v.getX(), y - v.getY(), jaw.z - v.getZ()))) {
-               v.requestTeleport(jaw.x, y, jaw.z);
+            if (level.noCollision(v, v.getBoundingBox().move(jaw.x - v.getX(), y - v.getY(), jaw.z - v.getZ()))) {
+               v.teleportTo(jaw.x, y, jaw.z);
             }
 
-            v.setVelocity(Vec3d.ZERO);
-            v.onLanding();
-            v.knockedBack = true;
+            v.setDeltaMovement(Vec3.ZERO);
+            v.resetFallDistance();
+            v.syncVelocity = true;
          } else {
             this.grabbed = null;
          }
       }
    }
 
-   private void maw(ServerWorld level, int i) {
-      DamageSource source = this.getDamageSources().mobAttack(this);
+   private void maw(ServerLevel level, int i) {
+      DamageSource source = this.damageSources().mobAttack(this);
       if (i != 0) {
          if (i != 1 && i != 2) {
             LivingEntity v = this.grabbed;
             this.grabbed = null;
             if (v != null && v.isAlive()) {
-               Vec3d from = mid(v);
-               Vec3d f = this.fwd();
-               v.damage(level, source, this.dmg(18.0F));
-               v.onLanding();
-               v.setVelocity(f.x * 2.2, 1.0, f.z * 2.2);
-               v.knockedBack = true;
-               Vfx.dashTrail(level, from, from.add(f.multiply(6.0)).add(0.0, 2.0, 0.0), PAL);
+               Vec3 from = mid(v);
+               Vec3 f = this.fwd();
+               v.hurtServer(level, source, this.dmg(18.0F));
+               v.resetFallDistance();
+               v.setDeltaMovement(f.x * 2.2, 1.0, f.z * 2.2);
+               v.syncVelocity = true;
+               Vfx.dashTrail(level, from, from.add(f.scale(6.0)).add(0.0, 2.0, 0.0), PAL);
                Vfx.impactFrame(level, from, 16.0, PAL.glow(), 0.6F);
             }
          } else {
-            Vec3d p = this.spot != null ? this.spot : this.groundAt(level, this.at(4.6, i == 1 ? 2.8 : -2.8, 0.0));
+            Vec3 p = this.spot != null ? this.spot : this.groundAt(level, this.at(4.6, i == 1 ? 2.8 : -2.8, 0.0));
             LivingEntity v = this.grabbed;
             if (v != null) {
-               v.damage(level, source, this.dmg(14.0F));
+               v.hurtServer(level, source, this.dmg(14.0F));
             }
 
             List<LivingEntity> others = this.inCircle(level, p, 3.0);
@@ -1595,25 +1595,25 @@ public class GrothmawBoss extends MysticalBoss {
             Vfx.groundCrack(level, p, 3.0, PAL);
          }
       } else {
-         List<LivingEntity> in = this.cone(level, this.getEntityPos(), this.getYaw(), 30.0F, 9.5);
-         ServerPlayerEntity prey = null;
+         List<LivingEntity> in = this.cone(level, this.position(), this.getYRot(), 30.0F, 9.5);
+         ServerPlayer prey = null;
          double best = Double.MAX_VALUE;
 
          for (LivingEntity e : in) {
-            if (e instanceof ServerPlayerEntity p && p.squaredDistanceTo(this) < best) {
-               best = p.squaredDistanceTo(this);
+            if (e instanceof ServerPlayer p && p.distanceToSqr(this) < best) {
+               best = p.distanceToSqr(this);
                prey = p;
             }
          }
 
-         this.hurtAll(level, in, this.getEntityPos(), 16.0F, 0.0, 0.0, null, 0.0F);
+         this.hurtAll(level, in, this.position(), 16.0F, 0.0, 0.0, null, 0.0F);
          this.jaws(level, List.of(), 1.0);
          if (prey != null && prey.isAlive()) {
             this.grabbed = prey;
             this.gripDamage = 0.0F;
             this.gripBroken = false;
             prey.stopRiding();
-            prey.stopGliding();
+            prey.stopFallFlying();
             Vfx.impact(level, mid(prey), PAL, 1.1);
          } else {
             this.buff(60, 1.3F, 1.0F);
@@ -1626,13 +1626,13 @@ public class GrothmawBoss extends MysticalBoss {
       this.grabbed = null;
       this.gripDamage = 0.0F;
       if (v != null && v.isAlive()) {
-         v.setVelocity(Vec3d.ZERO);
-         v.onLanding();
-         v.knockedBack = true;
+         v.setDeltaMovement(Vec3.ZERO);
+         v.resetFallDistance();
+         v.syncVelocity = true;
       }
    }
 
-   private void extinctionStart(ServerWorld level) {
+   private void extinctionStart(ServerLevel level) {
       if (this.cooldownLeft("extinction_event") <= 0) {
          this.setCooldown("extinction_event", 1200);
       }
@@ -1640,14 +1640,14 @@ public class GrothmawBoss extends MysticalBoss {
       this.hollows.clear();
 
       for (int tries = 0; tries < 20 && this.hollows.size() < 3; tries++) {
-         Vec3d p = BossFx.around(level, this, this.getEntityPos(), 8.0, 13.0);
+         Vec3 p = BossFx.around(level, this, this.position(), 8.0, 13.0);
          double dx = p.x - this.getX();
          double dz = p.z - this.getZ();
          if (!(dx * dx + dz * dz < 49.0) && BossFx.safeGround(level, p, 3.0)) {
             boolean apart = true;
 
-            for (Vec3d h : this.hollows) {
-               apart &= h.squaredDistanceTo(p) >= 36.0;
+            for (Vec3 h : this.hollows) {
+               apart &= h.distanceToSqr(p) >= 36.0;
             }
 
             if (apart) {
@@ -1658,15 +1658,15 @@ public class GrothmawBoss extends MysticalBoss {
          }
       }
 
-      Vfx.screen(level, this.getEntityPos(), 48.0, 0.6, 30, 2101256, 0.35F);
+      Vfx.screen(level, this.position(), 48.0, 0.6, 30, 2101256, 0.35F);
       Vfx.chargeUp(level, this.heart(), PAL, 30);
-      Vfx.vortex(level, this.getEntityPos(), 5.0, 10.0, PAL, 140);
+      Vfx.vortex(level, this.position(), 5.0, 10.0, PAL, 140);
    }
 
-   private boolean inHollow(Vec3d p, double margin) {
+   private boolean inHollow(Vec3 p, double margin) {
       double r = 2.0 + margin;
 
-      for (Vec3d h : this.hollows) {
+      for (Vec3 h : this.hollows) {
          double dx = p.x - h.x;
          double dz = p.z - h.z;
          if (dx * dx + dz * dz < r * r) {
@@ -1677,31 +1677,31 @@ public class GrothmawBoss extends MysticalBoss {
       return false;
    }
 
-   private void meteorVolley(ServerWorld level) {
-      for (ServerPlayerEntity p : this.engaged()) {
-         Vec3d a = this.groundAt(level, this.predict(p, 20.0));
+   private void meteorVolley(ServerLevel level) {
+      for (ServerPlayer p : this.engaged()) {
+         Vec3 a = this.groundAt(level, this.predict(p, 20.0));
          this.dropRock(level, a, 20, 20.0F, 2.6);
          this.dropRock(level, this.near(level, a, 1.5, 4.0), 20, 20.0F, 2.6);
       }
 
       for (int k = 0; k < 2; k++) {
-         this.dropRock(level, BossFx.around(level, this, this.getEntityPos(), 4.0, 14.0), 20, 20.0F, 2.6);
+         this.dropRock(level, BossFx.around(level, this, this.position(), 4.0, 14.0), 20, 20.0F, 2.6);
       }
 
-      Vfx.radialFlash(level, this.getEntityPos(), 32.0, PAL.glow(), 0.25F);
+      Vfx.radialFlash(level, this.position(), 32.0, PAL.glow(), 0.25F);
    }
 
-   private void primordialNova(ServerWorld level) {
-      Vec3d c = this.getEntityPos();
-      DamageSource source = this.getDamageSources().mobAttack(this);
+   private void primordialNova(ServerLevel level) {
+      Vec3 c = this.position();
+      DamageSource source = this.damageSources().mobAttack(this);
       float full = this.dmg(70.0F);
 
-      for (LivingEntity e : this.targets(level, new Box(c, c).expand(19.0, 8.0, 19.0))) {
+      for (LivingEntity e : this.targets(level, new AABB(c, c).inflate(19.0, 8.0, 19.0))) {
          double dx = e.getX() - c.x;
          double dz = e.getZ() - c.z;
          if (!(dx * dx + dz * dz > 324.0)) {
-            boolean safe = this.inHollow(e.getEntityPos(), 0.3);
-            if (e.damage(level, source, safe ? full * 0.2F : full) && !safe) {
+            boolean safe = this.inHollow(e.position(), 0.3);
+            if (e.hurtServer(level, source, safe ? full * 0.2F : full) && !safe) {
                shove(e, c, 3.0, 1.0);
             }
          }
@@ -1713,26 +1713,26 @@ public class GrothmawBoss extends MysticalBoss {
       Vfx.pillar(level, c, PAL, 20.0, 2.5);
    }
 
-   private void rock(ServerWorld level, Vec3d at, int delay, float base, double radius) {
+   private void rock(ServerLevel level, Vec3 at, int delay, float base, double radius) {
       Vfx.telegraphCircle(level, at, radius, delay, PAL);
       Vfx.smoke(level, at.add(0.0, 18.0, 0.0), PAL.smoke(), 6, 1.5, 2.5);
       int fall = Math.min(10, delay - 1);
 
       for (int k = delay - fall; k < delay; k++) {
-         Vec3d p = at.add(0.0, 18.0 * (delay - k) / fall, 0.0);
-         this.schedule(k, () -> Vfx.meteorTrail(level, p, new Vec3d(0.0, -1.8, 0.0), PAL));
+         Vec3 p = at.add(0.0, 18.0 * (delay - k) / fall, 0.0);
+         this.schedule(k, () -> Vfx.meteorTrail(level, p, new Vec3(0.0, -1.8, 0.0), PAL));
       }
 
       this.schedule(delay, () -> {
-         this.circleHit(level, at, radius, base, 0.8, 0.3, new StatusEffectInstance(StatusEffects.SLOWNESS, 40, 0));
+         this.circleHit(level, at, radius, base, 0.8, 0.3, new MobEffectInstance(MobEffects.SLOWNESS, 40, 0));
          Vfx.heavyImpact(level, at, PAL, 0.8);
          Vfx.shards(level, at, PAL.smoke(), 10, 0.5);
-         level.spawnParticles(dust(level, at), at.x, at.y + 0.2, at.z, 16, radius * 0.4, 0.1, radius * 0.4, 0.15);
+         level.sendParticles(dust(level, at), at.x, at.y + 0.2, at.z, 16, radius * 0.4, 0.1, radius * 0.4, 0.15);
       });
    }
 
-   private void dropRock(ServerWorld level, Vec3d at, int delay, float base, double radius) {
-      Vec3d p = at;
+   private void dropRock(ServerLevel level, Vec3 at, int delay, float base, double radius) {
+      Vec3 p = at;
 
       for (int k = 0; k < 4 && this.inHollow(p, radius); k++) {
          p = this.near(level, at, 3.0, 6.0);
@@ -1743,14 +1743,14 @@ public class GrothmawBoss extends MysticalBoss {
       }
    }
 
-   private void rockfall(ServerWorld level, int count) {
-      List<ServerPlayerEntity> players = this.engaged();
+   private void rockfall(ServerLevel level, int count) {
+      List<ServerPlayer> players = this.engaged();
       if (!players.isEmpty() && count > 0) {
-         Vec3d first = this.groundAt(level, this.predict((LivingEntity)players.get(this.random.nextInt(players.size())), 30.0));
+         Vec3 first = this.groundAt(level, this.predict((LivingEntity)players.get(this.random.nextInt(players.size())), 30.0));
          this.dropRock(level, first, 30, 16.0F, 2.4);
 
          for (int k = 1; k < count; k++) {
-            Vec3d at = players.size() > 1 && this.random.nextBoolean()
+            Vec3 at = players.size() > 1 && this.random.nextBoolean()
                ? this.groundAt(level, this.predict((LivingEntity)players.get(this.random.nextInt(players.size())), 30.0))
                : this.near(level, first, 1.5, 4.0);
             this.dropRock(level, at, 30, 16.0F, 2.4);
@@ -1762,7 +1762,7 @@ public class GrothmawBoss extends MysticalBoss {
       return this.phase() >= 3 ? 4 : this.phase() + 1;
    }
 
-   private void tickRockfall(ServerWorld level) {
+   private void tickRockfall(ServerLevel level) {
       if (this.phase() >= 1 && this.getTarget() != null && --this.rockfallTimer <= 0) {
          int p = Math.min(this.phase(), 3);
          int interval = p == 1 ? 220 + this.random.nextInt(81) : (p == 2 ? 180 + this.random.nextInt(61) : 120 + this.random.nextInt(41));
@@ -1787,14 +1787,14 @@ public class GrothmawBoss extends MysticalBoss {
    }
 
    private void apexInstinct() {
-      List<ServerPlayerEntity> players = this.engaged();
+      List<ServerPlayer> players = this.engaged();
       if (players.size() >= 2) {
          LivingEntity target = this.getTarget();
 
-         for (ServerPlayerEntity p : players) {
-            if (p != target && !(p.squaredDistanceTo(this) > 576.0) && p.isUsingItem()) {
-               UseAction use = p.getActiveItem().getUseAction();
-               if ((use == UseAction.EAT || use == UseAction.DRINK) && this.random.nextFloat() < 0.35F) {
+         for (ServerPlayer p : players) {
+            if (p != target && !(p.distanceToSqr(this) > 576.0) && p.isUsingItem()) {
+               ItemUseAnimation use = p.getUseItem().getUseAnimation();
+               if ((use == ItemUseAnimation.EAT || use == ItemUseAnimation.DRINK) && this.random.nextFloat() < 0.35F) {
                   this.markTarget(p, 100);
                   this.setCooldown("amber_spit", 0);
                   return;
@@ -1803,8 +1803,8 @@ public class GrothmawBoss extends MysticalBoss {
          }
 
          if (this.cullCooldown <= 0) {
-            for (ServerPlayerEntity p : players) {
-               if (p != target && p.squaredDistanceTo(this) <= 256.0 && p.getHealth() < p.getMaxHealth() * 0.3F && this.random.nextFloat() < 0.25F) {
+            for (ServerPlayer p : players) {
+               if (p != target && p.distanceToSqr(this) <= 256.0 && p.getHealth() < p.getMaxHealth() * 0.3F && this.random.nextFloat() < 0.25F) {
                   this.markTarget(p, 80);
                   this.cullCooldown = 600;
                   return;
@@ -1814,7 +1814,7 @@ public class GrothmawBoss extends MysticalBoss {
       }
    }
 
-   private void tryLastStand(ServerWorld level) {
+   private void tryLastStand(ServerLevel level) {
       if (this.lastStandPending && !this.inPhaseClip()) {
          this.lastStandPending = false;
          this.forceAction(level, "extinction_event");
@@ -1822,8 +1822,8 @@ public class GrothmawBoss extends MysticalBoss {
    }
 
    @Override
-   protected void mobTick(ServerWorld world) {
-      super.mobTick(world);
+   protected void customServerAiStep(ServerLevel world) {
+      super.customServerAiStep(world);
       if (this.isAlive() && !this.inIntro()) {
          if (this.gripBroken) {
             this.gripBroken = false;
@@ -1839,9 +1839,9 @@ public class GrothmawBoss extends MysticalBoss {
          this.tickEggs(world, paused);
          if (!paused) {
             this.tickRockfall(world);
-            if (this.phase() >= 3 && this.running() && this.isOnGround() && this.age % 12 == 0) {
-               BossFx.wave(world, this, this.getEntityPos(), 5.0, 8, 8.0F, ParticleTypes.CLOUD, 0.6, true);
-               Vfx.shockwave(world, this.getEntityPos(), PAL, 2.5);
+            if (this.phase() >= 3 && this.running() && this.onGround() && this.tickCount % 12 == 0) {
+               BossFx.wave(world, this, this.position(), 5.0, 8, 8.0F, ParticleTypes.CLOUD, 0.6, true);
+               Vfx.shockwave(world, this.position(), PAL, 2.5);
             }
          }
 
@@ -1864,20 +1864,20 @@ public class GrothmawBoss extends MysticalBoss {
             this.guardClearCooldown = 200;
          }
 
-         if (this.buffed() && this.age % 6 == 0) {
-            Vfx.embers(world, this.getEntityPos().add(0.0, 3.0, 0.0), 16756800, 5, 2.0);
+         if (this.buffed() && this.tickCount % 6 == 0) {
+            Vfx.embers(world, this.position().add(0.0, 3.0, 0.0), 16756800, 5, 2.0);
          }
       }
    }
 
    @Override
-   public boolean damage(ServerWorld world, DamageSource source, float amount) {
+   public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
       boolean wardUp = this.warded();
-      if (!super.damage(world, source, amount)) {
+      if (!super.hurtServer(world, source, amount)) {
          return false;
       }
 
-      if (this.grabbed != null && source.getAttacker() != this.grabbed) {
+      if (this.grabbed != null && source.getEntity() != this.grabbed) {
          this.gripDamage += amount;
          if (this.gripDamage >= this.getMaxHealth() * 0.04F) {
             this.gripBroken = true;
@@ -1885,31 +1885,31 @@ public class GrothmawBoss extends MysticalBoss {
       }
 
       if (wardUp
-         && source.getAttacker() instanceof LivingEntity attacker
-         && source.getSource() == attacker
+         && source.getEntity() instanceof LivingEntity attacker
+         && source.getDirectEntity() == attacker
          && attacker != this
          && attacker.isAlive()
-         && attacker.squaredDistanceTo(this) < 64.0) {
-         attacker.damage(world, this.getDamageSources().thorns(this), this.dmg(6.0F));
-         shove(attacker, this.getEntityPos(), 0.6, 0.2);
-         Vfx.shards(world, attacker.getEyePos(), PAL.core(), 6, 0.3);
+         && attacker.distanceToSqr(this) < 64.0) {
+         attacker.hurtServer(world, this.damageSources().thorns(this), this.dmg(6.0F));
+         shove(attacker, this.position(), 0.6, 0.2);
+         Vfx.shards(world, attacker.getEyePosition(), PAL.core(), 6, 0.3);
       }
 
       return true;
    }
 
    @Override
-   protected void onPhaseChange(ServerWorld level, int phase) {
+   protected void onPhaseChange(ServerLevel level, int phase) {
       this.charges = 0;
       this.rockfallTimer = 60;
       if (phase >= 3) {
-         Vfx.screen(level, this.getEntityPos(), 48.0, 0.8, 30, 3150852, 0.3F);
+         Vfx.screen(level, this.position(), 48.0, 0.8, 30, 3150852, 0.3F);
       }
    }
 
    @Override
-   protected void phaseBurst(ServerWorld level, int phase) {
-      Vec3d c = this.getEntityPos();
+   protected void phaseBurst(ServerLevel level, int phase) {
+      Vec3 c = this.position();
       if (phase <= 1) {
          Vfx.debris(level, this.at(0.0, 1.2, 4.0), Vfx.Debris.BONE, 15260864, 24, 0.7);
          Vfx.debris(level, this.at(0.0, -1.2, 4.0), Vfx.Debris.BONE, 15260864, 24, 0.7);
@@ -1935,42 +1935,42 @@ public class GrothmawBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onStagger(ServerWorld level) {
+   protected void onStagger(ServerLevel level) {
       this.releaseGrab();
       this.charges = 0;
-      Vfx.debris(level, this.getEntityPos().add(0.0, 3.5, 0.0), Vfx.Debris.BONE, 15260864, 16, 0.5);
+      Vfx.debris(level, this.position().add(0.0, 3.5, 0.0), Vfx.Debris.BONE, 15260864, 16, 0.5);
       if (this.phase() >= 2) {
          Vfx.flare(level, this.heart(), PAL.glow(), 3.0, 10);
       }
    }
 
    @Override
-   protected void onEnrage(ServerWorld level) {
+   protected void onEnrage(ServerLevel level) {
       Vfx.flare(level, this.at(4.2, 0.0, 4.8), 16765024, 2.5, 20);
-      Vfx.auraRing(level, this.getEntityPos(), PAL, 4.0);
-      Vfx.nova(level, this.getEntityPos(), PAL, 8.0);
+      Vfx.auraRing(level, this.position(), PAL, 4.0);
+      Vfx.nova(level, this.position(), PAL, 8.0);
    }
 
    @Override
-   protected void desperation(ServerWorld level) {
+   protected void desperation(ServerLevel level) {
       this.lastStand = true;
       this.lastStandPending = true;
       this.tryLastStand(level);
    }
 
    @Override
-   protected void onLand(ServerWorld level) {
-      Vfx.groundCrack(level, this.getEntityPos(), 4.0, PAL);
+   protected void onLand(ServerLevel level) {
+      Vfx.groundCrack(level, this.position(), 4.0, PAL);
    }
 
    @Override
-   protected void onIntroTick(ServerWorld level, int left) {
+   protected void onIntroTick(ServerLevel level, int left) {
       int e = this.introTicks() - left;
-      Vec3d c = this.getEntityPos();
+      Vec3 c = this.position();
       if (e < 20 && e % 6 == 0) {
          Vfx.shards(level, c.add(0.0, 1.5, 0.0), 15260864, 6, 0.3);
-         level.spawnParticles(
-            new BlockStateParticleEffect(ParticleTypes.BLOCK, Blocks.TURTLE_EGG.getDefaultState()), c.x, c.y + 1.5, c.z, 12, 0.9, 0.8, 0.9, 0.15
+         level.sendParticles(
+            new BlockParticleOption(ParticleTypes.BLOCK, Blocks.TURTLE_EGG.defaultBlockState()), c.x, c.y + 1.5, c.z, 12, 0.9, 0.8, 0.9, 0.15
          );
       }
 
@@ -1988,10 +1988,10 @@ public class GrothmawBoss extends MysticalBoss {
             break;
          case 74:
          case 82:
-            Vec3d foot = this.at(0.5, e == 74 ? 1.2 : -1.2, 0.0);
+            Vec3 foot = this.at(0.5, e == 74 ? 1.2 : -1.2, 0.0);
             Vfx.heavyImpact(level, foot, PAL, 0.6);
             Vfx.shake(level, c, 24.0, 0.5, 8);
-            level.spawnParticles(dust(level, foot), foot.x, foot.y + 0.2, foot.z, 14, 0.6, 0.1, 0.6, 0.12);
+            level.sendParticles(dust(level, foot), foot.x, foot.y + 0.2, foot.z, 14, 0.6, 0.1, 0.6, 0.12);
             break;
          case 98:
          case 101:
@@ -1999,34 +1999,34 @@ public class GrothmawBoss extends MysticalBoss {
             Vfx.gather(level, this.snout(4.0, 4.0), PAL, 3.0, 8);
             break;
          case 106:
-            level.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundCategory.HOSTILE, 6.0F, 0.7F);
+            level.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundSource.HOSTILE, 6.0F, 0.7F);
             Vfx.screen(level, c, 40.0, 1.2, 30, PAL.glow(), 0.25F, 1);
             Vfx.nova(level, c, PAL, 12.0);
 
             for (int k = 0; k < 4; k++) {
-               Vfx.streaks(level, c.add(0.0, 2.0, 0.0), Vec3d.fromPolar(0.0F, this.getYaw() + k * 90), PAL, 8);
+               Vfx.streaks(level, c.add(0.0, 2.0, 0.0), Vec3.directionFromRotation(0.0F, this.getYRot() + k * 90), PAL, 8);
             }
 
             BossFx.knockback(level, this, c, 10.0, 1.4);
             break;
          case 136:
-            level.spawnParticles(dust(level, c), c.x, c.y + 0.2, c.z, 24, 1.6, 0.1, 1.6, 0.12);
+            level.sendParticles(dust(level, c), c.x, c.y + 0.2, c.z, 24, 1.6, 0.1, 1.6, 0.12);
       }
    }
 
    @Override
-   protected void onDeathTick(ServerWorld level, int tick) {
-      Vec3d c = this.getEntityPos();
+   protected void onDeathTick(ServerLevel level, int tick) {
+      Vec3 c = this.position();
       switch (tick) {
          case 8:
             Vfx.impact(level, c.add(0.0, 3.0, 0.0), PAL, 1.0);
             break;
          case 28:
-            level.spawnParticles(dust(level, c), c.x, c.y + 0.2, c.z, 20, 1.4, 0.1, 1.4, 0.1);
+            level.sendParticles(dust(level, c), c.x, c.y + 0.2, c.z, 20, 1.4, 0.1, 1.4, 0.1);
             Vfx.shake(level, c, 20.0, 0.5, 8);
             break;
          case 44:
-            level.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundCategory.HOSTILE, 4.0F, 0.6F);
+            level.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundSource.HOSTILE, 4.0F, 0.6F);
             break;
          case 60:
             Vfx.flare(level, this.heart(), PAL.glow(), 3.0, 12);
@@ -2079,28 +2079,28 @@ public class GrothmawBoss extends MysticalBoss {
    }
 
    @Override
-   protected void writeCustomData(WriteView view) {
-      super.writeCustomData(view);
+   protected void addAdditionalSaveData(ValueOutput view) {
+      super.addAdditionalSaveData(view);
       view.putBoolean("GrothmawLastStand", this.lastStand);
    }
 
    @Override
-   protected void readCustomData(ReadView view) {
-      super.readCustomData(view);
-      this.lastStand = view.getBoolean("GrothmawLastStand", false);
+   protected void readAdditionalSaveData(ValueInput view) {
+      super.readAdditionalSaveData(view);
+      this.lastStand = view.getBooleanOr("GrothmawLastStand", false);
    }
 
-   private record Arc(Vec3d from, Vec3d to, int start, int len, double apex) {
-      Vec3d point(double s) {
+   private record Arc(Vec3 from, Vec3 to, int start, int len, double apex) {
+      Vec3 point(double s) {
          return this.from.lerp(this.to, s).add(0.0, this.apex * 4.0 * s * (1.0 - s), 0.0);
       }
    }
 
    private static final class Egg {
-      final Vec3d at;
+      final Vec3 at;
       int left;
 
-      Egg(Vec3d at, int left) {
+      Egg(Vec3 at, int left) {
          this.at = at;
          this.left = left;
       }

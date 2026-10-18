@@ -6,53 +6,53 @@ import com.vexira.mysticalterrain.boss.net.BossStatePayload;
 import com.vexira.mysticalterrain.boss.vfx.Vfx;
 import com.vexira.mysticalterrain.boss.vfx.VfxOptions;
 import com.vexira.mysticalterrain.boss.vfx.VfxParticles;
-import com.vexira.mysticalterrain.mixin.EndDragonFightAccessor;
-import com.vexira.mysticalterrain.mixin.EndDragonFightInvoker;
+import com.vexira.mysticalterrain.mixin.EnderDragonFightAccessor;
+import com.vexira.mysticalterrain.mixin.EnderDragonFightInvoker;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.UUID;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.ExperienceOrbEntity;
-import net.minecraft.entity.Entity.RemovalReason;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.boss.ServerBossBar;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonFight;
-import net.minecraft.entity.boss.dragon.EnderDragonPart;
-import net.minecraft.entity.boss.dragon.phase.ChargingPlayerPhase;
-import net.minecraft.entity.boss.dragon.phase.Phase;
-import net.minecraft.entity.boss.dragon.phase.PhaseType;
-import net.minecraft.entity.boss.dragon.phase.StrafePlayerPhase;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.damage.DamageTypes;
-import net.minecraft.entity.decoration.EndCrystalEntity;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.DragonFireballEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.tag.DamageTypeTags;
-import net.minecraft.registry.tag.ItemTags;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.storage.ReadView;
-import net.minecraft.storage.WriteView;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.Heightmap.Type;
-import net.minecraft.world.event.GameEvent;
-import net.minecraft.world.gen.feature.EndPortalFeature;
-import net.minecraft.world.gen.feature.EndSpikeFeature;
-import net.minecraft.world.gen.feature.EndSpikeFeature.Spike;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Entity.RemovalReason;
+import net.minecraft.world.entity.ExperienceOrb;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
+import net.minecraft.world.entity.boss.enderdragon.phases.DragonChargePlayerPhase;
+import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
+import net.minecraft.world.entity.boss.enderdragon.phases.DragonStrafePlayerPhase;
+import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.hurtingprojectile.DragonFireball;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.dimension.end.EnderDragonFight;
+import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.level.levelgen.Heightmap.Types;
+import net.minecraft.world.level.levelgen.feature.EndPodiumFeature;
+import net.minecraft.world.level.levelgen.feature.EndSpikeFeature;
+import net.minecraft.world.level.levelgen.feature.EndSpikeFeature.EndSpike;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 public class DragonRework {
@@ -173,28 +173,28 @@ public class DragonRework {
       {4.75, 4.9, 2.92, 0.0},
       {4.8, 3.41, 6.1, 0.04}
    };
-   private final EnderDragonEntity dragon;
+   private final EnderDragon dragon;
    private final DragonSense sense = new DragonSense();
    private final DragonHazards hazards = new DragonHazards(this);
    private final BossNet.Sync sync = new BossNet.Sync();
    private final int[] cooldowns = new int[DragonMove.values().length];
    private final Deque<DragonMove> forced = new ArrayDeque<>();
    private final List<DragonRework.Reflect> reflected = new ArrayList<>();
-   private final List<Vec3d> lines = new ArrayList<>();
-   private final List<Spike> recall = new ArrayList<>();
+   private final List<Vec3> lines = new ArrayList<>();
+   private final List<EndSpike> recall = new ArrayList<>();
    private boolean initialized;
    private int stateTicks;
    private int stage;
-   private Vec3d portal = Vec3d.ZERO;
+   private Vec3 portal = Vec3.ZERO;
    private @Nullable DragonMove move;
    private @Nullable DragonMove last1;
    private @Nullable DragonMove last2;
-   private @Nullable ServerPlayerEntity victim;
+   private @Nullable ServerPlayer victim;
    private int rest = 120;
    private boolean takeoffAfter;
-   private Vec3d pa = Vec3d.ZERO;
-   private Vec3d pb = Vec3d.ZERO;
-   private Vec3d pc = Vec3d.ZERO;
+   private Vec3 pa = Vec3.ZERO;
+   private Vec3 pb = Vec3.ZERO;
+   private Vec3 pc = Vec3.ZERO;
    private double speed;
    private int pass;
    private int passes;
@@ -202,9 +202,9 @@ public class DragonRework {
    private int channelLength = 140;
    private int shatterStart;
    private int shatterLength;
-   private @Nullable Vec3d hoverAt;
+   private @Nullable Vec3 hoverAt;
    private float summonStartHealth = 1.0F;
-   private @Nullable Vec3d travelTo;
+   private @Nullable Vec3 travelTo;
    private double travelSpeed;
    private int travelMax;
    private boolean travelTurning;
@@ -236,18 +236,18 @@ public class DragonRework {
    private int perchTicks;
    private float perchDamage;
    private int landingTimer = 900;
-   private @Nullable PhaseType<?> lastPhase;
+   private @Nullable EnderDragonPhase<?> lastPhase;
    private int vanillaTicks;
    private float lastYaw = Float.NaN;
-   private Vec3d lastPos = Vec3d.ZERO;
-   private @Nullable ServerPlayerEntity carried;
+   private Vec3 lastPos = Vec3.ZERO;
+   private @Nullable ServerPlayer carried;
    private float carriedOwn;
    private float carriedOthers;
-   private @Nullable ServerPlayerEntity thrown;
+   private @Nullable ServerPlayer thrown;
    private int thrownTicks;
    private boolean orbFan;
 
-   public DragonRework(EnderDragonEntity dragon) {
+   public DragonRework(EnderDragon dragon) {
       this.dragon = dragon;
    }
 
@@ -302,11 +302,11 @@ public class DragonRework {
       return this.state();
    }
 
-   EnderDragonEntity dragon() {
+   EnderDragon dragon() {
       return this.dragon;
    }
 
-   List<ServerPlayerEntity> engaged() {
+   List<ServerPlayer> engaged() {
       return this.sense.engaged;
    }
 
@@ -335,11 +335,11 @@ public class DragonRework {
       }
    }
 
-   public void tick(ServerWorld level) {
+   public void tick(ServerLevel level) {
       if (!this.initialized) {
          this.initialized = true;
          float frac = this.dragon.getHealth() / this.dragon.getMaxHealth();
-         this.dragon.getAttributeInstance(EntityAttributes.MAX_HEALTH).setBaseValue(800.0);
+         this.dragon.getAttribute(Attributes.MAX_HEALTH).setBaseValue(800.0);
          this.dragon.setHealth(800.0F * frac);
          this.hazards.refreshCrystals(level);
          if (this.state() != 1) {
@@ -442,17 +442,17 @@ public class DragonRework {
          }
 
          this.capTurn();
-         this.lastPos = this.dragon.getEntityPos();
+         this.lastPos = this.dragon.position();
          this.syncBits();
          this.syncBar(level);
       }
    }
 
    private boolean dying() {
-      return this.dragon.isDead() || this.dragon.getPhaseManager().getCurrent().getType() == PhaseType.DYING;
+      return this.dragon.isDeadOrDying() || this.dragon.getPhaseManager().getCurrentPhase().getPhase() == EnderDragonPhase.DYING;
    }
 
-   private void tickFight(ServerWorld level) {
+   private void tickFight(ServerLevel level) {
       if (this.sense.engaged.isEmpty()) {
          if (++this.sense.idleTicks == 1800) {
             this.resetFight();
@@ -488,7 +488,7 @@ public class DragonRework {
          this.poise = Math.min(160.0F, this.poise + 2.3999999F);
       }
 
-      if (this.fightPhase == 0 && ++this.aegisIdle > 100 && this.dragon.age % 20 == 0 && this.aegis < this.aegisCap) {
+      if (this.fightPhase == 0 && ++this.aegisIdle > 100 && this.dragon.tickCount % 20 == 0 && this.aegis < this.aegisCap) {
          this.aegis = Math.min(this.aegisCap, this.aegis + 1.0F);
       }
 
@@ -499,9 +499,9 @@ public class DragonRework {
          this.breakPoise(level);
       }
 
-      EndCrystalEntity crystal = this.dragon.connectedCrystal;
-      if (crystal != null && !crystal.isRemoved() && this.dragon.age % 3 == 0) {
-         Vfx.beam(level, crystal.getEntityPos().add(0.0, 1.2, 0.0), this.core(), V, 0.25, 4);
+      EndCrystal crystal = this.dragon.nearestCrystal;
+      if (crystal != null && !crystal.isRemoved() && this.dragon.tickCount % 3 == 0) {
+         Vfx.beam(level, crystal.position().add(0.0, 1.2, 0.0), this.core(), V, 0.25, 4);
       }
    }
 
@@ -523,10 +523,10 @@ public class DragonRework {
       }
    }
 
-   private void softEnrage(ServerWorld level) {
-      Vec3d core = this.core();
+   private void softEnrage(ServerLevel level) {
+      Vec3 core = this.core();
       DragonFx.sound(level, core, "enrage", 10.0F, 0.9F);
-      Vfx.pillar(level, this.dragon.getEntityPos(), V, 40.0, 3.0);
+      Vfx.pillar(level, this.dragon.position(), V, 40.0, 3.0);
       Vfx.screen(level, core, 128.0, 1.0, 24, 16777215, 0.4F);
       this.hazards.startEdge();
    }
@@ -538,7 +538,7 @@ public class DragonRework {
       }
    }
 
-   private void checkPhases(ServerWorld level) {
+   private void checkPhases(ServerLevel level) {
       if (this.pendingPhase >= 0) {
          if (!this.transitioning) {
             this.beginTransition(level);
@@ -566,17 +566,17 @@ public class DragonRework {
       }
    }
 
-   private void beginTransition(ServerWorld level) {
+   private void beginTransition(ServerLevel level) {
       this.transitioning = true;
       this.forced.clear();
       this.breakPending = false;
       this.poise = 160.0F;
-      DragonFx.sound(level, this.dragon.getEntityPos(), "phase", 8.0F, 1.0F);
+      DragonFx.sound(level, this.dragon.position(), "phase", 8.0F, 1.0F);
       if (this.grounded()) {
          this.interrupt(level);
          if (this.state() != 26) {
             this.setState(26);
-            DragonFx.sound(level, this.dragon.getEntityPos(), "recover.start", 6.0F, 1.0F);
+            DragonFx.sound(level, this.dragon.position(), "recover.start", 6.0F, 1.0F);
          }
       } else {
          this.interrupt(level);
@@ -585,12 +585,12 @@ public class DragonRework {
    }
 
    private void flyToPhaseHover() {
-      this.dragon.getPhaseManager().setPhase(PhaseType.HOVER);
+      this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOVERING);
       this.travel(31, this.portal.add(0.0, 24.0, 0.0), 1.2, 100, null, false, false);
       this.travelPhase = true;
    }
 
-   private void tickPhaseClip(ServerWorld level) {
+   private void tickPhaseClip(ServerLevel level) {
       this.hover();
       int t = this.stateTicks;
       if (t == 28) {
@@ -603,7 +603,7 @@ public class DragonRework {
          this.transitioning = false;
          this.poise = 160.0F;
          this.setState(0);
-         this.dragon.getPhaseManager().setPhase(PhaseType.HOLDING_PATTERN);
+         this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
          this.rest = 20;
          this.resetLanding();
          if (done == 2) {
@@ -614,29 +614,29 @@ public class DragonRework {
       }
    }
 
-   private void phaseBurst(ServerWorld level, int phase) {
-      Vec3d core = this.core();
+   private void phaseBurst(ServerLevel level, int phase) {
+      Vec3 core = this.core();
       if (phase == 1) {
          this.aegis = 0.0F;
          this.aegisCap = 0.0F;
          Vfx.nova(level, this.portal.add(0.0, 20.0, 0.0), V, 24.0);
 
-         for (Spike s : EndSpikeFeature.getSpikes(level)) {
-            Vec3d top = DragonFx.spikeTop(s).add(0.0, 1.0, 0.0);
+         for (EndSpike s : EndSpikeFeature.getSpikesForLevel(level)) {
+            Vec3 top = DragonFx.spikeTop(s).add(0.0, 1.0, 0.0);
             Vfx.shards(level, top, 16777215, 14, 0.6);
             Vfx.sparks(level, top, V.glow(), 10, 0.5, 0.2);
          }
 
-         for (ServerPlayerEntity p : DragonFx.players(level, this.portal, 16.0)) {
-            Vec3d out = DragonFx.away(this.portal, p.getEntityPos());
-            DragonFx.launch(p, new Vec3d(out.x * 1.2, 0.4, out.z * 1.2));
+         for (ServerPlayer p : DragonFx.players(level, this.portal, 16.0)) {
+            Vec3 out = DragonFx.away(this.portal, p.position());
+            DragonFx.launch(p, new Vec3(out.x * 1.2, 0.4, out.z * 1.2));
          }
       } else if (phase == 2) {
          Vfx.explosion(level, core, V, 6.0);
          Vfx.pillar(level, this.portal, V, 40.0, 4.0);
 
-         for (ServerPlayerEntity p : this.sense.engaged) {
-            p.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 60, 0, false, false), this.dragon);
+         for (ServerPlayer p : this.sense.engaged) {
+            p.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 60, 0, false, false), this.dragon);
          }
 
          this.hazards.openRifts(level, this.portal);
@@ -650,7 +650,7 @@ public class DragonRework {
       Vfx.shake(level, core, 96.0, 0.8, 20);
    }
 
-   private void lastLight(ServerWorld level) {
+   private void lastLight(ServerLevel level) {
       this.lastLight = true;
       Vfx.flash(level, this.core(), 128.0, 16777215, 0.5F);
       DragonFx.sound(level, this.core(), "roar", 10.0F, 0.7F);
@@ -666,18 +666,18 @@ public class DragonRework {
          this.interrupt(level);
          this.setState(0);
          if (!this.perched()) {
-            this.dragon.getPhaseManager().setPhase(PhaseType.HOLDING_PATTERN);
+            this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
          }
       }
 
       this.rest = 0;
    }
 
-   private void tickNormal(ServerWorld level) {
-      PhaseType<?> vp = this.vanillaPhase();
-      if (vp == PhaseType.HOVER) {
-         this.dragon.getPhaseManager().setPhase(PhaseType.HOLDING_PATTERN);
-         vp = PhaseType.HOLDING_PATTERN;
+   private void tickNormal(ServerLevel level) {
+      EnderDragonPhase<?> vp = this.vanillaPhase();
+      if (vp == EnderDragonPhase.HOVERING) {
+         this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
+         vp = EnderDragonPhase.HOLDING_PATTERN;
       }
 
       this.vanillaPerchMoves(level, vp);
@@ -694,16 +694,16 @@ public class DragonRework {
       }
    }
 
-   private void tickPerch(PhaseType<?> vp) {
+   private void tickPerch(EnderDragonPhase<?> vp) {
       if (this.perched()) {
          if (this.fightPhase >= 1 && this.perchTicks >= this.perchLimit() || this.perchDamage >= 96.0F) {
             this.perchTicks = 0;
             this.perchDamage = 0.0F;
-            this.dragon.getPhaseManager().setPhase(PhaseType.TAKEOFF);
+            this.dragon.getPhaseManager().setPhase(EnderDragonPhase.TAKEOFF);
          }
-      } else if (this.fightPhase >= 1 && vp == PhaseType.HOLDING_PATTERN && --this.landingTimer <= 0) {
+      } else if (this.fightPhase >= 1 && vp == EnderDragonPhase.HOLDING_PATTERN && --this.landingTimer <= 0) {
          this.resetLanding();
-         this.dragon.getPhaseManager().setPhase(PhaseType.LANDING_APPROACH);
+         this.dragon.getPhaseManager().setPhase(EnderDragonPhase.LANDING_APPROACH);
       }
    }
 
@@ -716,11 +716,11 @@ public class DragonRework {
       this.landingTimer = range[0] + this.dragon.getRandom().nextInt(range[1] - range[0] + 1);
    }
 
-   private void pick(ServerWorld level, PhaseType<?> vp) {
+   private void pick(ServerLevel level, EnderDragonPhase<?> vp) {
       boolean perched = this.perched();
-      boolean air = vp == PhaseType.HOLDING_PATTERN || vp == PhaseType.STRAFE_PLAYER || vp == PhaseType.CHARGING_PLAYER;
-      if ((perched || air) && vp != PhaseType.SITTING_ATTACKING) {
-         ServerPlayerEntity t = this.sense.target();
+      boolean air = vp == EnderDragonPhase.HOLDING_PATTERN || vp == EnderDragonPhase.STRAFE_PLAYER || vp == EnderDragonPhase.CHARGING_PLAYER;
+      if ((perched || air) && vp != EnderDragonPhase.SITTING_ATTACKING) {
+         ServerPlayer t = this.sense.target();
          if (t != null) {
             DragonMove[] all = DragonMove.values();
             float[] weights = new float[all.length];
@@ -757,19 +757,19 @@ public class DragonRework {
       }
    }
 
-   private float utility(ServerWorld level, DragonMove m, ServerPlayerEntity t) {
+   private float utility(ServerLevel level, DragonMove m, ServerPlayer t) {
       DragonSense s = this.sense;
-      double dist = t.getEntityPos().distanceTo(this.dragon.getEntityPos());
+      double dist = t.position().distanceTo(this.dragon.position());
 
       return switch (m) {
-         case STRAFE_BREATH -> t.isOnGround() && !(DragonFx.flatDist(t.getEntityPos(), this.portal) > 100.0) ? (!s.kiting() && !s.healing ? 1.0F : 1.5F) : 0.0F;
+         case STRAFE_BREATH -> t.onGround() && !(DragonFx.flatDist(t.position(), this.portal) > 100.0) ? (!s.kiting() && !s.healing ? 1.0F : 1.5F) : 0.0F;
          case RAKE_DIVE -> dist > 110.0 ? 0.0F : (!s.gliding && !s.pillaring ? 1.0F : 2.0F);
          case ROAR -> this.gliderWithin(28.0) ? 6.0F : 1.0F;
          case TALON_RAPTURE -> t.getY() < this.portal.y - 10.0 ? 0.0F : (s.gliding ? 3.0F : (s.pillaring ? 2.5F : (s.aiming ? 1.5F : 1.0F)));
          case WING_WARD -> !s.aiming && !(s.projectileShare() >= 0.5F) && !this.projectileInbound(level) ? 1.0F : 5.0F;
          case VOID_BEAM -> !s.aiming && !s.kiting() ? (s.healing ? 1.5F : 1.0F) : 2.0F;
          case GRAVITY_WELL -> !s.pillaring && s.airTicks < 60 && s.glidingTicks < 80 ? 1.0F : 8.0F;
-         case METEOR_RAIN -> t.isOnGround() ? 1.0F : 0.0F;
+         case METEOR_RAIN -> t.onGround() ? 1.0F : 0.0F;
          case CRYSTAL_RECALL -> DragonFx.emptySpikes(level).size() < 2 ? 0.0F : (this.belowMidBand() ? 2.0F : 1.0F);
          case SHATTERDIVE, OBLIVION_NOVA -> 1.0F;
          case BREATH_SWEEP -> this.playersInFront(100.0, 22.0) > 0 ? 1.0F : 0.0F;
@@ -777,7 +777,7 @@ public class DragonRework {
          case RENDING_BITE -> this.playerAtHead(7.0) ? (s.blocking ? 1.5F : 1.0F) : 0.0F;
          case VOID_FISSURE -> this.playersInFrontBetween(6.0, 22.0) ? 1.0F : 0.0F;
          case WING_STORM -> this.playersInFront(60.0, 10.0) < 2 && !s.hugging() ? 1.0F : 2.0F;
-         case POUNCE -> t.isOnGround() && dist >= 8.0 && dist <= 20.0 && DragonFx.groundBelow(level, t.getEntityPos().add(0.0, 1.0, 0.0)) != null
+         case POUNCE -> t.onGround() && dist >= 8.0 && dist <= 20.0 && DragonFx.groundBelow(level, t.position().add(0.0, 1.0, 0.0)) != null
             ? (!s.aiming && !s.kiting() ? 1.0F : 2.0F)
             : 0.0F;
          default -> 0.0F;
@@ -792,8 +792,8 @@ public class DragonRework {
    }
 
    private boolean gliderWithin(double r) {
-      for (ServerPlayerEntity p : this.sense.engaged) {
-         if (p.isGliding() && p.distanceTo(this.dragon) <= r) {
+      for (ServerPlayer p : this.sense.engaged) {
+         if (p.isFallFlying() && p.distanceTo(this.dragon) <= r) {
             return true;
          }
       }
@@ -801,12 +801,12 @@ public class DragonRework {
       return false;
    }
 
-   private boolean projectileInbound(ServerWorld level) {
-      Vec3d core = this.core();
-      Box box = this.dragon.getBoundingBox().expand(24.0);
+   private boolean projectileInbound(ServerLevel level) {
+      Vec3 core = this.core();
+      AABB box = this.dragon.getBoundingBox().inflate(24.0);
 
-      for (ProjectileEntity p : level.getEntitiesByClass(ProjectileEntity.class, box, e -> e.getOwner() instanceof PlayerEntity)) {
-         if (p.getVelocity().lengthSquared() > 0.04 && p.getVelocity().dotProduct(core.subtract(p.getEntityPos())) > 0.0) {
+      for (Projectile p : level.getEntitiesOfClass(Projectile.class, box, e -> e.getOwner() instanceof Player)) {
+         if (p.getDeltaMovement().lengthSqr() > 0.04 && p.getDeltaMovement().dot(core.subtract(p.position())) > 0.0) {
             return true;
          }
       }
@@ -816,12 +816,12 @@ public class DragonRework {
 
    private int playersInFront(double halfAngle, double range) {
       int n = 0;
-      Vec3d head = this.dragon.head.getEntityPos();
+      Vec3 head = this.dragon.head.position();
 
-      for (ServerPlayerEntity p : this.sense.engaged) {
+      for (ServerPlayer p : this.sense.engaged) {
          if (Math.abs(p.getY() - this.dragon.getY()) < 8.0
-            && DragonFx.inCone(this.dragon.getEntityPos(), this.fwd(), halfAngle, range + 6.5, p.getEntityPos())
-            && p.getEntityPos().distanceTo(head) <= range) {
+            && DragonFx.inCone(this.dragon.position(), this.fwd(), halfAngle, range + 6.5, p.position())
+            && p.position().distanceTo(head) <= range) {
             n++;
          }
       }
@@ -830,11 +830,11 @@ public class DragonRework {
    }
 
    private boolean playersInFrontBetween(double min, double max) {
-      Vec3d head = this.dragon.head.getEntityPos();
+      Vec3 head = this.dragon.head.position();
 
-      for (ServerPlayerEntity p : this.sense.engaged) {
-         double d = DragonFx.flatDist(p.getEntityPos(), head);
-         if (d >= min && d <= max && DragonFx.angle(this.fwd(), p.getEntityPos().subtract(this.dragon.getEntityPos())) < 80.0) {
+      for (ServerPlayer p : this.sense.engaged) {
+         double d = DragonFx.flatDist(p.position(), head);
+         if (d >= min && d <= max && DragonFx.angle(this.fwd(), p.position().subtract(this.dragon.position())) < 80.0) {
             return true;
          }
       }
@@ -843,10 +843,10 @@ public class DragonRework {
    }
 
    private boolean playerBehindHips() {
-      Vec3d hips = this.hips();
+      Vec3 hips = this.hips();
 
-      for (ServerPlayerEntity p : this.sense.engaged) {
-         if (DragonFx.flatDist(p.getEntityPos(), hips) <= 12.0 && DragonFx.angle(this.fwd(), p.getEntityPos().subtract(this.dragon.getEntityPos())) > 60.0) {
+      for (ServerPlayer p : this.sense.engaged) {
+         if (DragonFx.flatDist(p.position(), hips) <= 12.0 && DragonFx.angle(this.fwd(), p.position().subtract(this.dragon.position())) > 60.0) {
             return true;
          }
       }
@@ -855,10 +855,10 @@ public class DragonRework {
    }
 
    private boolean playerAtHead(double range) {
-      Vec3d head = this.dragon.head.getEntityPos();
+      Vec3 head = this.dragon.head.position();
 
-      for (ServerPlayerEntity p : this.sense.engaged) {
-         if (p.getEntityPos().distanceTo(head) <= range && DragonFx.angle(this.fwd(), p.getEntityPos().subtract(this.dragon.getEntityPos())) < 70.0) {
+      for (ServerPlayer p : this.sense.engaged) {
+         if (p.position().distanceTo(head) <= range && DragonFx.angle(this.fwd(), p.position().subtract(this.dragon.position())) < 70.0) {
             return true;
          }
       }
@@ -867,7 +867,7 @@ public class DragonRework {
    }
 
    private int restFor(boolean perched) {
-      int[] r = (perched ? PERCH_REST : AIR_REST)[MathHelper.clamp(this.fightPhase, 0, 3)];
+      int[] r = (perched ? PERCH_REST : AIR_REST)[Mth.clamp(this.fightPhase, 0, 3)];
       int v = r[0] + this.dragon.getRandom().nextInt(r[1] - r[0] + 1);
       return this.combatTicks >= 18000 ? (int)(v * 0.7F) : v;
    }
@@ -879,22 +879,22 @@ public class DragonRework {
       }
    }
 
-   private void start(ServerWorld level, DragonMove m, @Nullable ServerPlayerEntity t) {
+   private void start(ServerLevel level, DragonMove m, @Nullable ServerPlayer t) {
       this.victim = t;
       this.setCooldown(m);
       this.last2 = this.last1;
       this.last1 = m;
-      Vec3d pos = this.dragon.getEntityPos();
+      Vec3 pos = this.dragon.position();
       switch (m) {
          case STRAFE_BREATH: {
-            Vec3d tp = t != null ? t.getEntityPos() : pos.add(this.fwd().multiply(30.0));
-            Vec3d d = DragonFx.flat(tp.subtract(pos));
-            d = d.lengthSquared() < 1.0 ? this.fwd() : d.normalize();
-            Vec3d g = DragonFx.groundBelow(level, tp.add(0.0, 0.5, 0.0));
+            Vec3 tp = t != null ? t.position() : pos.add(this.fwd().scale(30.0));
+            Vec3 d = DragonFx.flat(tp.subtract(pos));
+            d = d.lengthSqr() < 1.0 ? this.fwd() : d.normalize();
+            Vec3 g = DragonFx.groundBelow(level, tp.add(0.0, 0.5, 0.0));
             double y = (g != null ? g.y : tp.y) + 7.0;
             this.pb = d;
             this.speed = y;
-            this.travel(30, new Vec3d(tp.x - d.x * 30.0, y, tp.z - d.z * 30.0), 1.6, 100, m, true, false);
+            this.travel(30, new Vec3(tp.x - d.x * 30.0, y, tp.z - d.z * 30.0), 1.6, 100, m, true, false);
             break;
          }
          case RAKE_DIVE:
@@ -910,10 +910,10 @@ public class DragonRework {
             this.begin(level, m);
             break;
          case TALON_RAPTURE: {
-            Vec3d tp = t != null ? t.getEntityPos() : pos.add(this.fwd().multiply(30.0));
-            Vec3d d = DragonFx.flat(tp.subtract(pos));
-            d = d.lengthSquared() < 1.0 ? this.fwd() : d.normalize();
-            this.travel(30, tp.subtract(d.multiply(24.0)).add(0.0, 10.0, 0.0), 1.6, 100, m, true, false);
+            Vec3 tp = t != null ? t.position() : pos.add(this.fwd().scale(30.0));
+            Vec3 d = DragonFx.flat(tp.subtract(pos));
+            d = d.lengthSqr() < 1.0 ? this.fwd() : d.normalize();
+            this.travel(30, tp.subtract(d.scale(24.0)).add(0.0, 10.0, 0.0), 1.6, 100, m, true, false);
             break;
          }
          case METEOR_RAIN:
@@ -930,18 +930,18 @@ public class DragonRework {
       }
    }
 
-   private void begin(ServerWorld level, DragonMove m) {
+   private void begin(ServerLevel level, DragonMove m) {
       this.move = m;
       if (m.where == DragonMove.Where.HOVER) {
-         this.dragon.getPhaseManager().setPhase(PhaseType.HOVER);
+         this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOVERING);
       }
 
       this.setState(m.state);
-      DragonFx.sound(level, this.dragon.getEntityPos(), m.anim + ".start", 6.0F, 1.0F);
+      DragonFx.sound(level, this.dragon.position(), m.anim + ".start", 6.0F, 1.0F);
       this.tickMove(level);
    }
 
-   private void travel(int state, Vec3d to, double speed, int max, @Nullable DragonMove then, boolean turning, boolean abort) {
+   private void travel(int state, Vec3 to, double speed, int max, @Nullable DragonMove then, boolean turning, boolean abort) {
       this.setState(state);
       this.move = null;
       this.travelTo = to;
@@ -954,13 +954,13 @@ public class DragonRework {
       this.travelPhase = false;
    }
 
-   private void travelLoop(Vec3d to, double speed, int ticks, DragonMove then) {
+   private void travelLoop(Vec3 to, double speed, int ticks, DragonMove then) {
       this.travel(30, to, speed, ticks, then, true, false);
       this.travelLoop = true;
    }
 
-   private void tickTravel(ServerWorld level) {
-      Vec3d to = this.travelTo != null ? this.travelTo : this.dragon.getEntityPos();
+   private void tickTravel(ServerLevel level) {
+      Vec3 to = this.travelTo != null ? this.travelTo : this.dragon.position();
       boolean there;
       if (this.travelLoop) {
          this.flyTo(to, this.travelSpeed, 9.0F);
@@ -979,7 +979,7 @@ public class DragonRework {
          if (!there && this.travelAbort) {
             this.finishAir();
          } else if (this.travelPhase) {
-            this.setState(27 + MathHelper.clamp(this.pendingPhase, 1, 3) - 1);
+            this.setState(27 + Mth.clamp(this.pendingPhase, 1, 3) - 1);
          } else {
             DragonMove next = this.travelThen;
             if (next == null) {
@@ -991,71 +991,71 @@ public class DragonRework {
       }
    }
 
-   private boolean flyTo(Vec3d to, double speed, float turn) {
-      Vec3d pos = this.dragon.getEntityPos();
-      Vec3d d = to.subtract(pos);
+   private boolean flyTo(Vec3 to, double speed, float turn) {
+      Vec3 pos = this.dragon.position();
+      Vec3 d = to.subtract(pos);
       if (d.length() < Math.max(3.0, speed)) {
          return true;
       }
 
-      Vec3d flat = DragonFx.flat(d);
-      float yaw = this.dragon.getYaw();
-      if (flat.lengthSquared() > 1.0E-4) {
-         yaw = MathHelper.stepUnwrappedAngleTowards(yaw, DragonFx.dragonYaw(flat), turn);
-         this.dragon.setYaw(yaw);
+      Vec3 flat = DragonFx.flat(d);
+      float yaw = this.dragon.getYRot();
+      if (flat.lengthSqr() > 1.0E-4) {
+         yaw = Mth.approachDegrees(yaw, DragonFx.dragonYaw(flat), turn);
+         this.dragon.setYRot(yaw);
       }
 
-      Vec3d f = DragonFx.forward(yaw);
-      double climb = MathHelper.clamp(d.y * 0.1, -speed * 0.6, speed * 0.6);
-      this.dragon.setPosition(pos.x + f.x * speed, pos.y + climb, pos.z + f.z * speed);
-      this.dragon.setVelocity(Vec3d.ZERO);
+      Vec3 f = DragonFx.forward(yaw);
+      double climb = Mth.clamp(d.y * 0.1, -speed * 0.6, speed * 0.6);
+      this.dragon.setPos(pos.x + f.x * speed, pos.y + climb, pos.z + f.z * speed);
+      this.dragon.setDeltaMovement(Vec3.ZERO);
       return false;
    }
 
-   private boolean steerTo(@Nullable Vec3d to, double blocksPerTick) {
+   private boolean steerTo(@Nullable Vec3 to, double blocksPerTick) {
       if (to == null) {
          return true;
       }
 
-      Vec3d pos = this.dragon.getEntityPos();
-      Vec3d d = to.subtract(pos);
+      Vec3 pos = this.dragon.position();
+      Vec3 d = to.subtract(pos);
       double dist = d.length();
       if (dist < Math.max(1.0, blocksPerTick)) {
-         this.dragon.setPosition(to.x, to.y, to.z);
+         this.dragon.setPos(to.x, to.y, to.z);
          return true;
       }
 
-      Vec3d step = d.multiply(blocksPerTick / dist);
-      this.dragon.setPosition(pos.x + step.x, pos.y + step.y, pos.z + step.z);
-      this.dragon.setVelocity(Vec3d.ZERO);
-      if (d.horizontalLengthSquared() > 1.0) {
-         this.dragon.setYaw(MathHelper.stepUnwrappedAngleTowards(this.dragon.getYaw(), DragonFx.dragonYaw(d), 6.0F));
+      Vec3 step = d.scale(blocksPerTick / dist);
+      this.dragon.setPos(pos.x + step.x, pos.y + step.y, pos.z + step.z);
+      this.dragon.setDeltaMovement(Vec3.ZERO);
+      if (d.horizontalDistanceSqr() > 1.0) {
+         this.dragon.setYRot(Mth.approachDegrees(this.dragon.getYRot(), DragonFx.dragonYaw(d), 6.0F));
       }
 
       return false;
    }
 
    private void hover() {
-      this.dragon.setVelocity(Vec3d.ZERO);
+      this.dragon.setDeltaMovement(Vec3.ZERO);
    }
 
    private void glide(double blocksPerTick) {
-      Vec3d f = this.fwd();
-      Vec3d pos = this.dragon.getEntityPos();
-      this.dragon.setPosition(pos.x + f.x * blocksPerTick, pos.y, pos.z + f.z * blocksPerTick);
-      this.dragon.setVelocity(Vec3d.ZERO);
+      Vec3 f = this.fwd();
+      Vec3 pos = this.dragon.position();
+      this.dragon.setPos(pos.x + f.x * blocksPerTick, pos.y, pos.z + f.z * blocksPerTick);
+      this.dragon.setDeltaMovement(Vec3.ZERO);
    }
 
-   private void turnToward(Vec3d dir, float maxDegrees) {
-      Vec3d flat = DragonFx.flat(dir);
-      if (flat.lengthSquared() > 1.0E-4) {
-         this.dragon.setYaw(MathHelper.stepUnwrappedAngleTowards(this.dragon.getYaw(), DragonFx.dragonYaw(flat), maxDegrees));
+   private void turnToward(Vec3 dir, float maxDegrees) {
+      Vec3 flat = DragonFx.flat(dir);
+      if (flat.lengthSqr() > 1.0E-4) {
+         this.dragon.setYRot(Mth.approachDegrees(this.dragon.getYRot(), DragonFx.dragonYaw(flat), maxDegrees));
       }
    }
 
    private void faceVictim(float maxDegrees) {
       if (this.victim != null && this.victim.isAlive()) {
-         this.turnToward(this.victim.getEntityPos().subtract(this.dragon.getEntityPos()), maxDegrees);
+         this.turnToward(this.victim.position().subtract(this.dragon.position()), maxDegrees);
       }
    }
 
@@ -1063,7 +1063,7 @@ public class DragonRework {
       this.move = null;
       this.reflectTicks = 0;
       this.setState(0);
-      this.dragon.getPhaseManager().setPhase(PhaseType.HOLDING_PATTERN);
+      this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
       this.rest = this.restFor(false);
    }
 
@@ -1081,11 +1081,11 @@ public class DragonRework {
       this.takeoffAfter = false;
       this.move = null;
       this.setState(0);
-      this.dragon.getPhaseManager().setPhase(PhaseType.TAKEOFF);
+      this.dragon.getPhaseManager().setPhase(EnderDragonPhase.TAKEOFF);
       this.rest = this.restFor(false);
    }
 
-   private void interrupt(ServerWorld level) {
+   private void interrupt(ServerLevel level) {
       if (this.carried != null) {
          this.carried = null;
       }
@@ -1098,11 +1098,11 @@ public class DragonRework {
       this.lines.clear();
    }
 
-   private void tickMove(ServerWorld level) {
+   private void tickMove(ServerLevel level) {
       DragonMove m = this.move;
       int t = this.stateTicks;
       if (m != null && m.state == this.state() && t > 0 && m.hitAt(t)) {
-         DragonFx.sound(level, this.dragon.getEntityPos(), m.anim + ".hit", 6.0F, 0.95F + this.dragon.getRandom().nextFloat() * 0.1F);
+         DragonFx.sound(level, this.dragon.position(), m.anim + ".hit", 6.0F, 0.95F + this.dragon.getRandom().nextFloat() * 0.1F);
       }
 
       switch (this.state()) {
@@ -1178,9 +1178,9 @@ public class DragonRework {
       return this.move != null && this.move.hitAt(t);
    }
 
-   private void tickFireball(ServerWorld level) {
+   private void tickFireball(ServerLevel level) {
       if (this.stateTicks == 4) {
-         Vec3d mouth = this.mouth();
+         Vec3 mouth = this.mouth();
          Vfx.flare(level, mouth, 16777215, 2.6, 5);
          Vfx.flare(level, mouth, V.glow(), 4.5, 8);
          Vfx.sparks(level, mouth, V.glow(), 10, 0.4, 0.25);
@@ -1192,36 +1192,36 @@ public class DragonRework {
       }
    }
 
-   private void fanOrbs(ServerWorld level) {
+   private void fanOrbs(ServerLevel level) {
       if (this.fightPhase >= 1) {
-         Box box = this.dragon.getBoundingBox().expand(16.0);
+         AABB box = this.dragon.getBoundingBox().inflate(16.0);
 
-         for (DragonFireballEntity orb : level.getEntitiesByClass(DragonFireballEntity.class, box, e -> e.getOwner() == this.dragon && e.age <= 1)) {
+         for (DragonFireball orb : level.getEntitiesOfClass(DragonFireball.class, box, e -> e.getOwner() == this.dragon && e.tickCount <= 1)) {
             this.onOrb(level, orb);
          }
       }
    }
 
-   public void onOrb(ServerWorld level, DragonFireballEntity orb) {
+   public void onOrb(ServerLevel level, DragonFireball orb) {
       if (this.fightPhase >= 1) {
          float[] angles = this.fightPhase >= 3 ? new float[]{-24.0F, -12.0F, 12.0F, 24.0F} : new float[]{-12.0F, 12.0F};
-         Vec3d v = orb.getVelocity();
-         if (!(v.lengthSquared() < 1.0E-6)) {
+         Vec3 v = orb.getDeltaMovement();
+         if (!(v.lengthSqr() < 1.0E-6)) {
             for (float deg : angles) {
-               Vec3d dir = v.rotateY(deg * (float) (Math.PI / 180.0));
-               DragonFireballEntity extra = new DragonFireballEntity(level, this.dragon, dir.normalize());
-               extra.refreshPositionAndAngles(orb.getX(), orb.getY(), orb.getZ(), 0.0F, 0.0F);
-               extra.setVelocity(dir);
-               level.spawnEntity(extra);
+               Vec3 dir = v.yRot(deg * (float) (Math.PI / 180.0));
+               DragonFireball extra = new DragonFireball(level, this.dragon, dir.normalize());
+               extra.snapTo(orb.getX(), orb.getY(), orb.getZ(), 0.0F, 0.0F);
+               extra.setDeltaMovement(dir);
+               level.addFreshEntity(extra);
             }
          }
       }
    }
 
-   private void tickRoar(ServerWorld level) {
+   private void tickRoar(ServerLevel level) {
       int t = this.stateTicks;
       this.glide(0.3);
-      Vec3d head = this.dragon.head.getEntityPos();
+      Vec3 head = this.dragon.head.position();
       if (t == 0) {
          Vfx.chargeUp(level, this.mouth(), V, 12);
       }
@@ -1230,23 +1230,23 @@ public class DragonRework {
          Vfx.nova(level, this.core(), V, 18.0);
          Vfx.shake(level, head, 64.0, 0.7, 20);
 
-         for (ServerPlayerEntity p : DragonFx.players(level, head, 18.0)) {
-            Vec3d out = DragonFx.away(head, p.getEntityPos());
-            if (p.isGliding()) {
-               Vec3d g = DragonFx.ground(level, p.getX(), p.getZ());
+         for (ServerPlayer p : DragonFx.players(level, head, 18.0)) {
+            Vec3 out = DragonFx.away(head, p.position());
+            if (p.isFallFlying()) {
+               Vec3 g = DragonFx.ground(level, p.getX(), p.getZ());
                if (g == null) {
-                  DragonFx.launch(p, new Vec3d(out.x * 0.8, 0.2, out.z * 0.8));
+                  DragonFx.launch(p, new Vec3(out.x * 0.8, 0.2, out.z * 0.8));
                } else {
-                  p.stopGliding();
+                  p.stopFallFlying();
                   DragonFx.hurt(level, this.dragon, p, this.dmg(6.0F), false);
-                  DragonFx.launch(p, new Vec3d(out.x * 1.6, -0.4, out.z * 1.6));
+                  DragonFx.launch(p, new Vec3(out.x * 1.6, -0.4, out.z * 1.6));
                   if (p.getY() - g.y > 20.0) {
-                     p.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOW_FALLING, 40, 0), this.dragon);
+                     p.addEffect(new MobEffectInstance(MobEffects.SLOW_FALLING, 40, 0), this.dragon);
                   }
                }
             } else {
-               DragonFx.launch(p, new Vec3d(out.x * 0.8, 0.3, out.z * 0.8));
-               p.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 60, 0, false, false), this.dragon);
+               DragonFx.launch(p, new Vec3(out.x * 0.8, 0.3, out.z * 0.8));
+               p.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 60, 0, false, false), this.dragon);
             }
          }
       }
@@ -1256,29 +1256,29 @@ public class DragonRework {
       }
    }
 
-   private void tickStrafeBreath(ServerWorld level) {
+   private void tickStrafeBreath(ServerLevel level) {
       int t = this.stateTicks;
-      Vec3d d = this.pb;
+      Vec3 d = this.pb;
       this.turnToward(d, 8.0F);
-      Vec3d pos = this.dragon.getEntityPos();
-      double y = pos.y + MathHelper.clamp(this.speed - pos.y, -0.4, 0.4);
-      this.dragon.setPosition(pos.x + d.x, y, pos.z + d.z);
-      this.dragon.setVelocity(Vec3d.ZERO);
+      Vec3 pos = this.dragon.position();
+      double y = pos.y + Mth.clamp(this.speed - pos.y, -0.4, 0.4);
+      this.dragon.setPos(pos.x + d.x, y, pos.z + d.z);
+      this.dragon.setDeltaMovement(Vec3.ZERO);
       if (t == 0) {
-         Vec3d g = DragonFx.ground(level, pos.x, pos.z);
-         Vfx.telegraphLine(level, g != null ? g : new Vec3d(pos.x, this.speed - 7.0, pos.z), d, 52.0, 4.0, 16, V);
+         Vec3 g = DragonFx.ground(level, pos.x, pos.z);
+         Vfx.telegraphLine(level, g != null ? g : new Vec3(pos.x, this.speed - 7.0, pos.z), d, 52.0, 4.0, 16, V);
       }
 
-      Vec3d mouth = this.at(4.3, -0.5);
-      Vec3d g = DragonFx.ground(level, mouth.x + d.x * 2.0, mouth.z + d.z * 2.0);
+      Vec3 mouth = this.at(4.3, -0.5);
+      Vec3 g = DragonFx.ground(level, mouth.x + d.x * 2.0, mouth.z + d.z * 2.0);
       if (t >= 16 && t <= 50 && t % 2 == 0 && g != null) {
          Vfx.beam(level, mouth, g, V, 0.8);
          Vfx.smoke(level, g, V.smoke(), 3, 0.6, 1.2);
       }
 
       if (this.hit(t) && g != null) {
-         for (ServerPlayerEntity p : DragonFx.players(level, g, 6.0)) {
-            if (DragonFx.flatDist(p.getEntityPos(), g) <= 2.5 && Math.abs(p.getY() - g.y) <= 4.0) {
+         for (ServerPlayer p : DragonFx.players(level, g, 6.0)) {
+            if (DragonFx.flatDist(p.position(), g) <= 2.5 && Math.abs(p.getY() - g.y) <= 4.0) {
                DragonFx.hurt(level, this.dragon, p, this.dmg(7.0F), false);
             }
          }
@@ -1292,62 +1292,62 @@ public class DragonRework {
       }
    }
 
-   private void tickRake(ServerWorld level) {
+   private void tickRake(ServerLevel level) {
       int t = this.stateTicks;
-      ServerPlayerEntity tg = this.victim;
-      Vec3d pos = this.dragon.getEntityPos();
+      ServerPlayer tg = this.victim;
+      Vec3 pos = this.dragon.position();
       if (t == 0) {
-         Vec3d aim = tg != null && tg.isAlive() ? predict(tg, 20.0) : pos.add(this.fwd().multiply(24.0)).add(0.0, -20.0, 0.0);
-         Vec3d g = DragonFx.groundBelow(level, aim.add(0.0, 1.0, 0.0));
+         Vec3 aim = tg != null && tg.isAlive() ? predict(tg, 20.0) : pos.add(this.fwd().scale(24.0)).add(0.0, -20.0, 0.0);
+         Vec3 g = DragonFx.groundBelow(level, aim.add(0.0, 1.0, 0.0));
          this.pa = g != null ? g : aim;
          this.pc = pos;
       }
 
       if (t <= 8) {
-         Vec3d toP = DragonFx.flat(this.pa.subtract(pos));
+         Vec3 toP = DragonFx.flat(this.pa.subtract(pos));
          this.turnToward(toP, 8.0F);
-         Vec3d f = this.fwd();
-         this.dragon.setPosition(pos.x + f.x * 0.5, pos.y + 0.375, pos.z + f.z * 0.5);
+         Vec3 f = this.fwd();
+         this.dragon.setPos(pos.x + f.x * 0.5, pos.y + 0.375, pos.z + f.z * 0.5);
          if (t == 4) {
-            Vec3d g0 = DragonFx.ground(level, pos.x, pos.z);
-            Vec3d from = g0 != null ? g0 : new Vec3d(pos.x, this.pa.y, pos.z);
-            Vec3d line = DragonFx.flat(this.pa.subtract(from));
-            Vfx.telegraphLine(level, from, line.lengthSquared() > 1.0E-4 ? line.normalize() : f, line.length() + 10.0, 5.0, 16, V);
+            Vec3 g0 = DragonFx.ground(level, pos.x, pos.z);
+            Vec3 from = g0 != null ? g0 : new Vec3(pos.x, this.pa.y, pos.z);
+            Vec3 line = DragonFx.flat(this.pa.subtract(from));
+            Vfx.telegraphLine(level, from, line.lengthSqr() > 1.0E-4 ? line.normalize() : f, line.length() + 10.0, 5.0, 16, V);
          }
 
          if (t == 8) {
-            Vec3d d = this.pa.add(0.0, 2.2, 0.0).subtract(this.dragon.getEntityPos());
-            this.speed = MathHelper.clamp(d.length() / 12.0, 1.2, 2.6);
-            this.pb = d.lengthSquared() > 1.0E-4 ? d.normalize() : f;
-            this.pc = this.dragon.getEntityPos();
+            Vec3 d = this.pa.add(0.0, 2.2, 0.0).subtract(this.dragon.position());
+            this.speed = Mth.clamp(d.length() / 12.0, 1.2, 2.6);
+            this.pb = d.lengthSqr() > 1.0E-4 ? d.normalize() : f;
+            this.pc = this.dragon.position();
          }
       } else if (t <= 20) {
-         Vec3d d = this.pa.add(0.0, 2.2, 0.0).subtract(pos);
+         Vec3 d = this.pa.add(0.0, 2.2, 0.0).subtract(pos);
          double step = Math.min(this.speed, d.length());
          if (step > 0.01) {
-            Vec3d s = d.normalize().multiply(step);
-            this.dragon.setPosition(pos.x + s.x, pos.y + s.y, pos.z + s.z);
+            Vec3 s = d.normalize().scale(step);
+            this.dragon.setPos(pos.x + s.x, pos.y + s.y, pos.z + s.z);
          }
 
          this.turnToward(this.pb, 10.0F);
          if (t % 2 == 0) {
-            Vfx.streaks(level, this.core(), this.pb.multiply(-3.0), V, 4);
+            Vfx.streaks(level, this.core(), this.pb.scale(-3.0), V, 4);
          }
 
          if (t == 20) {
             this.rakeHit(level);
          }
       } else {
-         Vec3d h = DragonFx.flat(this.pb);
-         h = h.lengthSquared() > 1.0E-4 ? h.normalize() : this.fwd();
-         this.dragon.setPosition(pos.x + h.x * 0.707, pos.y + 0.707, pos.z + h.z * 0.707);
+         Vec3 h = DragonFx.flat(this.pb);
+         h = h.lengthSqr() > 1.0E-4 ? h.normalize() : this.fwd();
+         this.dragon.setPos(pos.x + h.x * 0.707, pos.y + 0.707, pos.z + h.z * 0.707);
       }
 
-      this.dragon.setVelocity(Vec3d.ZERO);
+      this.dragon.setDeltaMovement(Vec3.ZERO);
       if (t >= 40) {
          if (this.pass < this.passes) {
             this.pass++;
-            Vec3d back = tg != null && tg.isAlive() ? tg.getEntityPos().add(0.0, 12.0, 0.0) : this.pa.add(0.0, 12.0, 0.0);
+            Vec3 back = tg != null && tg.isAlive() ? tg.position().add(0.0, 12.0, 0.0) : this.pa.add(0.0, 12.0, 0.0);
             this.travelLoop(back, 1.4, 40, DragonMove.RAKE_DIVE);
          } else if (this.passes >= 3 && this.fightPhase >= 3 && this.cooldowns[DragonMove.SHATTERDIVE.ordinal()] <= 0) {
             this.start(level, DragonMove.SHATTERDIVE, tg);
@@ -1357,60 +1357,60 @@ public class DragonRework {
       }
    }
 
-   private void rakeHit(ServerWorld level) {
-      Vec3d belly = this.grabPoint();
-      Vec3d h = DragonFx.flat(this.pb);
-      h = h.lengthSquared() > 1.0E-4 ? h.normalize() : this.fwd();
+   private void rakeHit(ServerLevel level) {
+      Vec3 belly = this.grabPoint();
+      Vec3 h = DragonFx.flat(this.pb);
+      h = h.lengthSqr() > 1.0E-4 ? h.normalize() : this.fwd();
 
-      for (ServerPlayerEntity p : DragonFx.players(level, belly, 5.0)) {
+      for (ServerPlayer p : DragonFx.players(level, belly, 5.0)) {
          if (!(DragonFx.center(p).distanceTo(belly) > 3.5)) {
             DragonFx.hurt(level, this.dragon, p, this.dmg(14.0F), false);
-            DragonFx.launch(p, new Vec3d(h.x * 1.2, 0.9, h.z * 1.2));
+            DragonFx.launch(p, new Vec3(h.x * 1.2, 0.9, h.z * 1.2));
          }
       }
 
       Vfx.claw(level, belly, DragonFx.fxYaw(h), 20.0F, 4.5, V);
-      Vfx.dashTrail(level, this.pc, this.dragon.getEntityPos(), V);
-      Vfx.streaks(level, belly, this.pb.multiply(4.0), V, 12);
+      Vfx.dashTrail(level, this.pc, this.dragon.position(), V);
+      Vfx.streaks(level, belly, this.pb.scale(4.0), V, 12);
       Vfx.impact(level, belly, V, 1.0);
    }
 
-   private void tickTalon(ServerWorld level) {
+   private void tickTalon(ServerLevel level) {
       int t = this.stateTicks;
-      ServerPlayerEntity tg = this.victim;
-      Vec3d pos = this.dragon.getEntityPos();
+      ServerPlayer tg = this.victim;
+      Vec3 pos = this.dragon.position();
       if (t == 0) {
-         Vec3d at = tg != null && tg.isAlive() ? predict(tg, 20.0) : pos.add(this.fwd().multiply(24.0)).add(0.0, -10.0, 0.0);
-         Vec3d d = DragonFx.flat(at.subtract(pos));
-         d = d.lengthSquared() < 1.0E-4 ? this.fwd() : d.normalize();
-         this.pa = at.add(0.0, 0.9 - TALON_STRIKE[1], 0.0).subtract(d.multiply(TALON_STRIKE[0]));
-         Vec3d jaw = this.pa.add(d.multiply(TALON_JAW[0]));
-         Vec3d g = DragonFx.ground(level, jaw.x, jaw.z);
+         Vec3 at = tg != null && tg.isAlive() ? predict(tg, 20.0) : pos.add(this.fwd().scale(24.0)).add(0.0, -10.0, 0.0);
+         Vec3 d = DragonFx.flat(at.subtract(pos));
+         d = d.lengthSqr() < 1.0E-4 ? this.fwd() : d.normalize();
+         this.pa = at.add(0.0, 0.9 - TALON_STRIKE[1], 0.0).subtract(d.scale(TALON_STRIKE[0]));
+         Vec3 jaw = this.pa.add(d.scale(TALON_JAW[0]));
+         Vec3 g = DragonFx.ground(level, jaw.x, jaw.z);
          double lift = g == null ? 0.0 : g.y + 0.6 - (this.pa.y + TALON_JAW[1]);
          if (lift > 0.0 && lift < 2.5) {
             this.pa = this.pa.add(0.0, lift, 0.0);
          }
 
          this.pb = d;
-         this.speed = MathHelper.clamp(this.pa.distanceTo(pos) / 20.0, 1.2, 2.4);
+         this.speed = Mth.clamp(this.pa.distanceTo(pos) / 20.0, 1.2, 2.4);
          this.carried = null;
       }
 
       if (t < 20) {
-         Vec3d d = this.pa.subtract(pos);
+         Vec3 d = this.pa.subtract(pos);
          double step = Math.min(this.speed, d.length());
          if (step > 0.01) {
-            Vec3d s = d.normalize().multiply(step);
-            this.dragon.setPosition(pos.x + s.x, pos.y + s.y, pos.z + s.z);
+            Vec3 s = d.normalize().scale(step);
+            this.dragon.setPos(pos.x + s.x, pos.y + s.y, pos.z + s.z);
          }
 
          this.turnToward(this.pb, 8.0F);
          if (t == 2) {
-            Vec3d g0 = DragonFx.ground(level, pos.x, pos.z);
-            Vec3d from = g0 != null ? g0 : new Vec3d(pos.x, this.pa.y + 0.1, pos.z);
+            Vec3 g0 = DragonFx.ground(level, pos.x, pos.z);
+            Vec3 from = g0 != null ? g0 : new Vec3(pos.x, this.pa.y + 0.1, pos.z);
             Vfx.telegraphLine(level, from, this.pb, DragonFx.flatDist(from, this.pa) + 4.0, 4.0, 18, V);
             if (tg != null) {
-               Vec3d feet = DragonFx.groundBelow(level, tg.getEntityPos().add(0.0, 0.5, 0.0));
+               Vec3 feet = DragonFx.groundBelow(level, tg.position().add(0.0, 0.5, 0.0));
                if (feet != null) {
                   Vfx.telegraphCircle(level, feet, 3.0, 18, V);
                }
@@ -1418,7 +1418,7 @@ public class DragonRework {
          }
 
          if (t % 2 == 0) {
-            Vfx.streaks(level, this.core(), this.pb.multiply(-3.0), V, 3);
+            Vfx.streaks(level, this.core(), this.pb.scale(-3.0), V, 3);
          }
       } else if (t == 20) {
          this.grab(level);
@@ -1429,11 +1429,11 @@ public class DragonRework {
          }
 
          double ang = Math.atan2(pos.z - this.portal.z, pos.x - this.portal.x) + 0.05;
-         Vec3d goal = new Vec3d(this.portal.x + Math.cos(ang) * 20.0, this.portal.y + 14.0, this.portal.z + Math.sin(ang) * 20.0);
-         Vec3d d = goal.subtract(pos);
-         Vec3d flat = DragonFx.flat(d);
-         Vec3d step = flat.length() > 1.0 ? flat.normalize() : flat;
-         this.dragon.setPosition(pos.x + step.x, pos.y + MathHelper.clamp(d.y, -0.35, 0.35), pos.z + step.z);
+         Vec3 goal = new Vec3(this.portal.x + Math.cos(ang) * 20.0, this.portal.y + 14.0, this.portal.z + Math.sin(ang) * 20.0);
+         Vec3 d = goal.subtract(pos);
+         Vec3 flat = DragonFx.flat(d);
+         Vec3 step = flat.length() > 1.0 ? flat.normalize() : flat;
+         this.dragon.setPos(pos.x + step.x, pos.y + Mth.clamp(d.y, -0.35, 0.35), pos.z + step.z);
          this.turnToward(step, 8.0F);
          this.carryTick(level);
       }
@@ -1442,21 +1442,21 @@ public class DragonRework {
          this.throwCarried(level);
       }
 
-      this.dragon.setVelocity(Vec3d.ZERO);
+      this.dragon.setDeltaMovement(Vec3.ZERO);
       if (t >= 80) {
          this.finishAir();
       }
    }
 
-   private void grab(ServerWorld level) {
-      Vec3d talon = this.talonPoint();
-      ServerPlayerEntity best = null;
+   private void grab(ServerLevel level) {
+      Vec3 talon = this.talonPoint();
+      ServerPlayer best = null;
       if (this.victim != null && this.victim.isAlive() && DragonFx.center(this.victim).distanceTo(talon) <= 3.5) {
          best = this.victim;
       } else {
          double bestD = 3.5;
 
-         for (ServerPlayerEntity p : this.sense.engaged) {
+         for (ServerPlayer p : this.sense.engaged) {
             double d = DragonFx.center(p).distanceTo(talon);
             if (d <= bestD) {
                best = p;
@@ -1475,26 +1475,26 @@ public class DragonRework {
          this.carried = best;
          this.carriedOwn = 0.0F;
          this.carriedOthers = 0.0F;
-         best.stopGliding();
+         best.stopFallFlying();
          DragonFx.hurt(level, this.dragon, best, this.dmg(8.0F), false);
-         best.sendMessage(Text.translatableWithFallback("message.mysticalterrain.dragon.grabbed", "Strike the dragon to break free!"), true);
+         best.sendOverlayMessage(Component.translatableWithFallback("message.mysticalterrain.dragon.grabbed", "Strike the dragon to break free!"));
          Vfx.impact(level, talon, V, 1.2);
          Vfx.claw(level, talon, DragonFx.fxYaw(this.fwd()), 60.0F, 3.0, V);
       }
    }
 
-   private void carryTick(ServerWorld level) {
-      ServerPlayerEntity p = this.carried;
+   private void carryTick(ServerLevel level) {
+      ServerPlayer p = this.carried;
       if (p != null) {
-         if (p.isAlive() && !p.isSpectator() && p.getEntityWorld() == level) {
-            Vec3d talon = this.carryPoint();
+         if (p.isAlive() && !p.isSpectator() && p.level() == level) {
+            Vec3 talon = this.carryPoint();
             if (!(DragonFx.center(p).distanceTo(talon) > 6.0) && !(this.carriedOwn >= 14.0F) && !(this.carriedOthers >= 40.0F)) {
-               Vec3d velocity = this.dragon.getEntityPos().subtract(this.lastPos);
-               Vec3d hang = talon.add(0.0, -1.7, 0.0);
-               DragonFx.launch(p, hang.subtract(p.getEntityPos()).multiply(0.6).add(velocity));
-               p.onLanding();
+               Vec3 velocity = this.dragon.position().subtract(this.lastPos);
+               Vec3 hang = talon.add(0.0, -1.7, 0.0);
+               DragonFx.launch(p, hang.subtract(p.position()).scale(0.6).add(velocity));
+               p.resetFallDistance();
                if (this.stateTicks % 4 == 0) {
-                  Vfx.streaks(level, talon, velocity.multiply(-4.0), V, 3);
+                  Vfx.streaks(level, talon, velocity.scale(-4.0), V, 3);
                }
             } else {
                this.breakFree(level);
@@ -1505,33 +1505,33 @@ public class DragonRework {
       }
    }
 
-   private void breakFree(ServerWorld level) {
-      ServerPlayerEntity p = this.carried;
+   private void breakFree(ServerLevel level) {
+      ServerPlayer p = this.carried;
       this.carried = null;
       if (p != null) {
          this.stage = 3;
          this.sense.threat.add(p, 15.0F);
          this.losePoise(40.0F);
-         Vec3d talon = this.carryPoint();
+         Vec3 talon = this.carryPoint();
          Vfx.shards(level, talon, 16777215, 16, 0.5);
          Vfx.flare(level, talon, 16777215, 3.0, 6);
          DragonFx.sound(level, talon, "hurt", 5.0F, 1.1F);
       }
    }
 
-   private void throwCarried(ServerWorld level) {
-      ServerPlayerEntity p = this.carried;
+   private void throwCarried(ServerLevel level) {
+      ServerPlayer p = this.carried;
       this.carried = null;
       if (p != null) {
-         Vec3d out = DragonFx.flat(p.getEntityPos().subtract(this.portal));
-         out = out.lengthSquared() < 1.0E-4 ? new Vec3d(1.0, 0.0, 0.0) : out.normalize();
-         Vec3d aim = this.portal.add(out.multiply(8.0 + this.dragon.getRandom().nextDouble() * 6.0));
-         Vec3d d = DragonFx.flat(aim.subtract(p.getEntityPos()));
-         d = d.lengthSquared() > 1.0E-4 ? d.normalize() : out.multiply(-1.0);
-         DragonFx.launch(p, new Vec3d(d.x * 1.8, -1.4, d.z * 1.8));
+         Vec3 out = DragonFx.flat(p.position().subtract(this.portal));
+         out = out.lengthSqr() < 1.0E-4 ? new Vec3(1.0, 0.0, 0.0) : out.normalize();
+         Vec3 aim = this.portal.add(out.scale(8.0 + this.dragon.getRandom().nextDouble() * 6.0));
+         Vec3 d = DragonFx.flat(aim.subtract(p.position()));
+         d = d.lengthSqr() > 1.0E-4 ? d.normalize() : out.scale(-1.0);
+         DragonFx.launch(p, new Vec3(d.x * 1.8, -1.4, d.z * 1.8));
          this.thrown = p;
          this.thrownTicks = 0;
-         Vfx.streaks(level, DragonFx.center(p), new Vec3d(d.x * 4.0, -3.0, d.z * 4.0), V, 10);
+         Vfx.streaks(level, DragonFx.center(p), new Vec3(d.x * 4.0, -3.0, d.z * 4.0), V, 10);
       }
    }
 
@@ -1546,24 +1546,24 @@ public class DragonRework {
       return out;
    }
 
-   private void tickThrown(ServerWorld level) {
-      ServerPlayerEntity p = this.thrown;
+   private void tickThrown(ServerLevel level) {
+      ServerPlayer p = this.thrown;
       if (p != null) {
          this.thrownTicks++;
-         if (p.isAlive() && p.getEntityWorld() == level && this.thrownTicks <= 60) {
-            p.onLanding();
-            if (this.thrownTicks > 2 && p.isOnGround()) {
+         if (p.isAlive() && p.level() == level && this.thrownTicks <= 60) {
+            p.resetFallDistance();
+            if (this.thrownTicks > 2 && p.onGround()) {
                this.thrown = null;
-               Vec3d at = p.getEntityPos();
+               Vec3 at = p.position();
                DragonFx.hurt(level, this.dragon, p, this.dmg(12.0F), false);
                Vfx.heavyImpact(level, at, V, 0.8);
                DragonFx.sound(level, at, "talon_rapture.hit", 5.0F, 0.8F);
 
-               for (ServerPlayerEntity o : DragonFx.players(level, at, 3.0)) {
+               for (ServerPlayer o : DragonFx.players(level, at, 3.0)) {
                   if (o != p) {
                      DragonFx.hurt(level, this.dragon, o, this.dmg(5.0F), false);
-                     Vec3d away = DragonFx.away(at, o.getEntityPos());
-                     DragonFx.launch(o, new Vec3d(away.x * 0.8, 0.3, away.z * 0.8));
+                     Vec3 away = DragonFx.away(at, o.position());
+                     DragonFx.launch(o, new Vec3(away.x * 0.8, 0.3, away.z * 0.8));
                   }
                }
             }
@@ -1573,7 +1573,7 @@ public class DragonRework {
       }
    }
 
-   private void tickWingWard(ServerWorld level) {
+   private void tickWingWard(ServerLevel level) {
       int t = this.stateTicks;
       this.hover();
       this.faceVictim(6.0F);
@@ -1586,13 +1586,13 @@ public class DragonRework {
       }
 
       if (t == 44) {
-         Vec3d core = this.core();
+         Vec3 core = this.core();
          Vfx.shockwave(level, core, V, 8.0);
-         Vfx.streaks(level, core, this.fwd().multiply(4.0), V, 10);
+         Vfx.streaks(level, core, this.fwd().scale(4.0), V, 10);
 
-         for (ServerPlayerEntity p : DragonFx.players(level, core, 8.0)) {
-            Vec3d out = DragonFx.away(core, p.getEntityPos());
-            DragonFx.launch(p, new Vec3d(out.x * 0.6, 0.3, out.z * 0.6));
+         for (ServerPlayer p : DragonFx.players(level, core, 8.0)) {
+            Vec3 out = DragonFx.away(core, p.position());
+            DragonFx.launch(p, new Vec3(out.x * 0.6, 0.3, out.z * 0.6));
          }
       }
 
@@ -1601,31 +1601,31 @@ public class DragonRework {
       }
    }
 
-   private void tickVoidBeam(ServerWorld level) {
+   private void tickVoidBeam(ServerLevel level) {
       int t = this.stateTicks;
-      ServerPlayerEntity tg = this.victim;
-      Vec3d pos = this.dragon.getEntityPos();
+      ServerPlayer tg = this.victim;
+      Vec3 pos = this.dragon.position();
       if (t == 0) {
-         this.pa = tg != null ? tg.getEntityPos() : pos.add(this.fwd().multiply(20.0)).add(0.0, -18.0, 0.0);
+         this.pa = tg != null ? tg.position() : pos.add(this.fwd().scale(20.0)).add(0.0, -18.0, 0.0);
       }
 
       this.hover();
-      Vec3d g = DragonFx.ground(level, pos.x, pos.z);
+      Vec3 g = DragonFx.ground(level, pos.x, pos.z);
       double wantY = (g != null ? g.y : pos.y - 18.0) + 18.0;
-      this.dragon.setPosition(pos.x, pos.y + MathHelper.clamp(wantY - pos.y, -0.25, 0.25), pos.z);
+      this.dragon.setPos(pos.x, pos.y + Mth.clamp(wantY - pos.y, -0.25, 0.25), pos.z);
       this.turnToward(this.pa.subtract(pos), 5.0F);
       if (tg != null && tg.isAlive()) {
          double cap = t < 30 ? 0.35 : 0.22;
-         Vec3d d = tg.getEntityPos().subtract(this.pa);
-         this.pa = d.length() <= cap ? tg.getEntityPos() : this.pa.add(d.normalize().multiply(cap));
+         Vec3 d = tg.position().subtract(this.pa);
+         this.pa = d.length() <= cap ? tg.position() : this.pa.add(d.normalize().scale(cap));
       }
 
-      Vec3d mouth = this.jaw(BEAM_JAW, t);
+      Vec3 mouth = this.jaw(BEAM_JAW, t);
       if (t == 0) {
          Vfx.chargeUp(level, this.jaw(BEAM_JAW, 30), V, 30);
-         Vec3d g0 = g != null ? g : new Vec3d(pos.x, this.pa.y, pos.z);
-         Vec3d dir = DragonFx.flat(this.pa.subtract(g0));
-         Vfx.telegraphLine(level, g0, dir.lengthSquared() > 1.0E-4 ? dir.normalize() : this.fwd(), Math.max(4.0, dir.length()), 2.0, 30, V);
+         Vec3 g0 = g != null ? g : new Vec3(pos.x, this.pa.y, pos.z);
+         Vec3 dir = DragonFx.flat(this.pa.subtract(g0));
+         Vfx.telegraphLine(level, g0, dir.lengthSqr() > 1.0E-4 ? dir.normalize() : this.fwd(), Math.max(4.0, dir.length()), 2.0, 30, V);
       }
 
       if (t < 30 && t % 4 == 0) {
@@ -1633,12 +1633,12 @@ public class DragonRework {
       }
 
       if (t >= 30 && t <= 66 && t % 2 == 0) {
-         Vec3d aim = this.pa.subtract(mouth);
-         Vec3d end = DragonFx.rayEnd(level, mouth, this.pa.add(aim.normalize().multiply(8.0)), this.dragon);
+         Vec3 aim = this.pa.subtract(mouth);
+         Vec3 end = DragonFx.rayEnd(level, mouth, this.pa.add(aim.normalize().scale(8.0)), this.dragon);
          Vfx.beam(level, mouth, end, V, 1.2);
          if (this.hit(t)) {
-            for (ServerPlayerEntity p : DragonFx.players(level, mouth, 80.0)) {
-               Vec3d c = DragonFx.center(p);
+            for (ServerPlayer p : DragonFx.players(level, mouth, 80.0)) {
+               Vec3 c = DragonFx.center(p);
                if (c.distanceTo(end) <= 2.2 || DragonFx.toSegment(c, mouth, end) <= 1.5) {
                   DragonFx.hurt(level, this.dragon, p, this.dmg(7.0F), false);
                }
@@ -1657,20 +1657,20 @@ public class DragonRework {
       }
    }
 
-   private void tickGravityWell(ServerWorld level) {
+   private void tickGravityWell(ServerLevel level) {
       int t = this.stateTicks;
-      ServerPlayerEntity tg = this.victim;
+      ServerPlayer tg = this.victim;
       this.hover();
       this.faceVictim(5.0F);
       if (t == 0) {
          Vfx.chargeUp(level, this.jaw(WELL_JAW, 24), V, 24);
-         this.pa = this.dragon.getEntityPos().add(this.fwd().multiply(12.0)).add(0.0, -10.0, 0.0);
+         this.pa = this.dragon.position().add(this.fwd().scale(12.0)).add(0.0, -10.0, 0.0);
       }
 
       if (t == 10) {
-         Vec3d at = tg != null && tg.isAlive() ? predict(tg, 10.0) : this.pa;
+         Vec3 at = tg != null && tg.isAlive() ? predict(tg, 10.0) : this.pa;
          this.pa = at.add(0.0, 1.0, 0.0);
-         Vec3d g = DragonFx.groundBelow(level, this.pa);
+         Vec3 g = DragonFx.groundBelow(level, this.pa);
          Vfx.telegraphCircle(level, g != null ? g : this.pa, 8.0, 22, V);
       }
 
@@ -1683,14 +1683,14 @@ public class DragonRework {
             Vfx.beam(level, this.jaw(WELL_JAW, t), this.pa, V, 0.3);
          }
 
-         for (ServerPlayerEntity p : DragonFx.players(level, this.pa, 8.0)) {
-            Vec3d in = this.pa.subtract(p.getEntityPos());
-            Vec3d pull = in.lengthSquared() > 1.0E-4 ? in.normalize().multiply(0.09) : Vec3d.ZERO;
+         for (ServerPlayer p : DragonFx.players(level, this.pa, 8.0)) {
+            Vec3 in = this.pa.subtract(p.position());
+            Vec3 pull = in.lengthSqr() > 1.0E-4 ? in.normalize().scale(0.09) : Vec3.ZERO;
             DragonFx.nudge(p, pull.add(0.0, -0.06, 0.0));
          }
 
          if (this.hit(t)) {
-            for (ServerPlayerEntity p : DragonFx.players(level, this.pa, 3.0)) {
+            for (ServerPlayer p : DragonFx.players(level, this.pa, 3.0)) {
                DragonFx.hurt(level, this.dragon, p, this.dmg(5.0F), true);
             }
 
@@ -1700,18 +1700,18 @@ public class DragonRework {
       }
 
       if (t == 68) {
-         Vec3d g = DragonFx.groundBelow(level, this.pa);
+         Vec3 g = DragonFx.groundBelow(level, this.pa);
          Vfx.nova(level, this.pa, V, 8.0);
          Vfx.heavyImpact(level, g != null ? g : this.pa, V, 1.0);
 
-         for (ServerPlayerEntity p : DragonFx.players(level, this.pa, 8.0)) {
+         for (ServerPlayer p : DragonFx.players(level, this.pa, 8.0)) {
             DragonFx.hurt(level, this.dragon, p, this.dmg(8.0F), false);
-            if (p.isGliding()) {
-               p.stopGliding();
+            if (p.isFallFlying()) {
+               p.stopFallFlying();
             }
 
-            Vec3d out = DragonFx.away(this.pa, p.getEntityPos());
-            DragonFx.launch(p, new Vec3d(out.x * 0.7, -1.0, out.z * 0.7));
+            Vec3 out = DragonFx.away(this.pa, p.position());
+            DragonFx.launch(p, new Vec3(out.x * 0.7, -1.0, out.z * 0.7));
          }
       }
 
@@ -1720,7 +1720,7 @@ public class DragonRework {
       }
    }
 
-   private void tickMeteorRain(ServerWorld level) {
+   private void tickMeteorRain(ServerLevel level) {
       int t = this.stateTicks;
       this.hover();
       this.faceVictim(5.0F);
@@ -1729,14 +1729,14 @@ public class DragonRework {
       }
 
       if (this.hit(t)) {
-         List<ServerPlayerEntity> engaged = this.sense.engaged;
+         List<ServerPlayer> engaged = this.sense.engaged;
          int n = Math.min(5, 2 + Math.max(0, engaged.size() - 1)) + (this.fightPhase >= 3 ? 1 : 0);
          int volley = (t - 30) / 10;
 
          for (int i = 0; i < n; i++) {
-            Vec3d at = null;
+            Vec3 at = null;
             if (i < n - 1 && !engaged.isEmpty()) {
-               ServerPlayerEntity p = engaged.get((volley + i) % engaged.size());
+               ServerPlayer p = engaged.get((volley + i) % engaged.size());
                at = DragonFx.groundBelow(level, predict(p, 20.0).add(0.0, 1.0, 0.0));
             }
 
@@ -1750,7 +1750,7 @@ public class DragonRework {
          }
 
          if (t == 80 && this.victim != null && this.victim.isAlive()) {
-            Vec3d at = DragonFx.groundBelow(level, predict(this.victim, 20.0).add(0.0, 1.0, 0.0));
+            Vec3 at = DragonFx.groundBelow(level, predict(this.victim, 20.0).add(0.0, 1.0, 0.0));
             if (at != null) {
                this.hazards.meteor(level, at, true);
             }
@@ -1764,11 +1764,11 @@ public class DragonRework {
       }
    }
 
-   private @Nullable Vec3d randomIsland(ServerWorld level, double radius) {
+   private @Nullable Vec3 randomIsland(ServerLevel level, double radius) {
       for (int i = 0; i < 10; i++) {
          double a = this.dragon.getRandom().nextDouble() * Math.PI * 2.0;
          double r = Math.sqrt(this.dragon.getRandom().nextDouble()) * radius;
-         Vec3d g = DragonFx.ground(level, this.portal.x + Math.cos(a) * r, this.portal.z + Math.sin(a) * r);
+         Vec3 g = DragonFx.ground(level, this.portal.x + Math.cos(a) * r, this.portal.z + Math.sin(a) * r);
          if (g != null && Math.abs(g.y - this.portal.y) < 16.0) {
             return g;
          }
@@ -1777,13 +1777,13 @@ public class DragonRework {
       return null;
    }
 
-   private void tickRecall(ServerWorld level) {
+   private void tickRecall(ServerLevel level) {
       int t = this.stateTicks;
       this.hover();
-      Vec3d core = this.core();
+      Vec3 core = this.core();
       if (t == 0) {
          this.recall.clear();
-         List<Spike> empty = new ArrayList<>(DragonFx.emptySpikes(level));
+         List<EndSpike> empty = new ArrayList<>(DragonFx.emptySpikes(level));
          int want = this.fightPhase >= 2 ? 3 : 2;
 
          while (!empty.isEmpty() && this.recall.size() < want) {
@@ -1793,15 +1793,15 @@ public class DragonRework {
          this.channelDamage = 0.0F;
          this.channelLength = this.fightPhase >= 2 ? 120 : 140;
 
-         for (Spike spike : this.recall) {
+         for (EndSpike spike : this.recall) {
             Vfx.pillar(level, DragonFx.spikeTop(spike), V, 16.0, 1.4);
          }
 
-         level.playSound(null, core.x, core.y, core.z, MysticalBosses.DRAGON_CHANNEL, SoundCategory.HOSTILE, 6.0F, 0.8F);
+         level.playSound(null, core.x, core.y, core.z, MysticalBosses.DRAGON_CHANNEL, SoundSource.HOSTILE, 6.0F, 0.8F);
       }
 
       if (t % 6 == 0) {
-         for (Spike spike : this.recall) {
+         for (EndSpike spike : this.recall) {
             Vfx.beam(level, DragonFx.spikeTop(spike).add(0.0, 1.0, 0.0), core, V, 0.45, 8);
          }
       }
@@ -1812,7 +1812,7 @@ public class DragonRework {
       }
 
       if (t > 0 && t % 20 == 0) {
-         level.playSound(null, core.x, core.y, core.z, MysticalBosses.DRAGON_CHANNEL, SoundCategory.HOSTILE, 4.0F, 0.6F + t / 300.0F);
+         level.playSound(null, core.x, core.y, core.z, MysticalBosses.DRAGON_CHANNEL, SoundSource.HOSTILE, 4.0F, 0.6F + t / 300.0F);
       }
 
       if (this.channelDamage >= (this.fightPhase >= 2 ? 55 : 40)) {
@@ -1827,8 +1827,8 @@ public class DragonRework {
          if (t >= this.channelLength) {
             boolean shroud = this.fightPhase >= 2;
 
-            for (Spike spike : this.recall) {
-               EndCrystalEntity crystal = DragonFx.rebuildCrystal(level, spike);
+            for (EndSpike spike : this.recall) {
+               EndCrystal crystal = DragonFx.rebuildCrystal(level, spike);
                if (shroud) {
                   this.hazards.shroud(level, crystal, 200);
                }
@@ -1838,29 +1838,29 @@ public class DragonRework {
 
             this.aegisCap = Math.max(this.aegisCap, this.aegis);
             this.hazards.refreshCrystals(level);
-            EnderDragonFight fight = this.dragon.getFight();
+            EnderDragonFight fight = this.dragon.getDragonFight();
             if (fight != null) {
-               ((EndDragonFightInvoker)fight).mysticalterrain$updateCrystalCount();
+               ((EnderDragonFightInvoker)fight).mysticalterrain$updateCrystalCount();
             }
 
             this.recall.clear();
-            this.dragon.getPhaseManager().setPhase(PhaseType.HOLDING_PATTERN);
+            this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
             this.begin(level, DragonMove.ROAR);
          }
       }
    }
 
-   private void beginClimb(ServerWorld level) {
-      ServerPlayerEntity t = this.victim;
-      Vec3d p = this.portal;
-      if (t != null && t.isAlive() && DragonFx.flatDist(t.getEntityPos(), this.portal) > 20.0) {
-         Vec3d pr = predict(t, 60.0);
-         Vec3d off = new Vec3d(pr.x - this.portal.x, 0.0, pr.z - this.portal.z);
+   private void beginClimb(ServerLevel level) {
+      ServerPlayer t = this.victim;
+      Vec3 p = this.portal;
+      if (t != null && t.isAlive() && DragonFx.flatDist(t.position(), this.portal) > 20.0) {
+         Vec3 pr = predict(t, 60.0);
+         Vec3 off = new Vec3(pr.x - this.portal.x, 0.0, pr.z - this.portal.z);
          if (off.length() > 36.0) {
-            off = off.normalize().multiply(36.0);
+            off = off.normalize().scale(36.0);
          }
 
-         Vec3d g = DragonFx.ground(level, this.portal.x + off.x, this.portal.z + off.z);
+         Vec3 g = DragonFx.ground(level, this.portal.x + off.x, this.portal.z + off.z);
          if (g != null && Math.abs(g.y - this.portal.y) < 20.0) {
             p = g;
          }
@@ -1868,28 +1868,28 @@ public class DragonRework {
 
       this.pa = p;
       this.move = DragonMove.SHATTERDIVE;
-      this.dragon.getPhaseManager().setPhase(PhaseType.HOVER);
+      this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOVERING);
       this.setState(4);
-      this.shatterStart = this.dragon.age;
-      this.shatterLength = (int)(this.dragon.getEntityPos().distanceTo(p.add(0.0, 58.0, 0.0)) / 1.3) + 50 + 20;
-      level.playSound(null, this.dragon.getX(), this.dragon.getY(), this.dragon.getZ(), MysticalBosses.DRAGON_ROAR, SoundCategory.HOSTILE, 8.0F, 0.7F);
+      this.shatterStart = this.dragon.tickCount;
+      this.shatterLength = (int)(this.dragon.position().distanceTo(p.add(0.0, 58.0, 0.0)) / 1.3) + 50 + 20;
+      level.playSound(null, this.dragon.getX(), this.dragon.getY(), this.dragon.getZ(), MysticalBosses.DRAGON_ROAR, SoundSource.HOSTILE, 8.0F, 0.7F);
    }
 
-   private void tickClimb(ServerWorld level) {
+   private void tickClimb(ServerLevel level) {
       if (this.stateTicks % 2 == 0) {
          Vfx.trail(level, this.core(), V, 2.5);
       }
 
       if (this.steerTo(this.pa.add(0.0, 58.0, 0.0), 1.3) || this.stateTicks > 200) {
-         this.shatterLength = this.dragon.age - this.shatterStart + 50 + 20;
+         this.shatterLength = this.dragon.tickCount - this.shatterStart + 50 + 20;
          this.move = DragonMove.SHATTERDIVE;
          this.setState(17);
-         DragonFx.sound(level, this.dragon.getEntityPos(), "shatterdive.start", 10.0F, 1.0F);
+         DragonFx.sound(level, this.dragon.position(), "shatterdive.start", 10.0F, 1.0F);
          this.tickApex(level);
       }
    }
 
-   private void tickApex(ServerWorld level) {
+   private void tickApex(ServerLevel level) {
       int t = this.stateTicks;
       this.hover();
       if (t == 0) {
@@ -1905,14 +1905,14 @@ public class DragonRework {
          this.move = DragonMove.DIVE;
          this.setState(8);
          this.speed = 0.6;
-         this.pc = this.dragon.getEntityPos();
-         DragonFx.sound(level, this.dragon.getEntityPos(), "dive.start", 8.0F, 1.0F);
+         this.pc = this.dragon.position();
+         DragonFx.sound(level, this.dragon.position(), "dive.start", 8.0F, 1.0F);
       }
    }
 
-   private void tickPlunge(ServerWorld level) {
+   private void tickPlunge(ServerLevel level) {
       this.speed = Math.min(3.6, this.speed + 0.25);
-      Vec3d from = this.dragon.getEntityPos();
+      Vec3 from = this.dragon.position();
       if (this.stage == 0 && from.distanceTo(this.pa) < 6.0 * this.speed) {
          this.stage = 1;
          DragonFx.sound(level, this.pa, "slam.start", 8.0F, 1.0F);
@@ -1920,19 +1920,19 @@ public class DragonRework {
 
       boolean there = this.steerTo(this.pa, this.speed);
       if (this.stateTicks % 2 == 0) {
-         Vfx.dashTrail(level, from.add(0.0, 2.0, 0.0), this.dragon.getEntityPos().add(0.0, 2.0, 0.0), V);
-         Vfx.streaks(level, this.core(), new Vec3d(0.0, 4.0, 0.0), V, 6);
+         Vfx.dashTrail(level, from.add(0.0, 2.0, 0.0), this.dragon.position().add(0.0, 2.0, 0.0), V);
+         Vfx.streaks(level, this.core(), new Vec3(0.0, 4.0, 0.0), V, 6);
       }
 
       if (there || this.stateTicks > 80) {
          this.move = DragonMove.SLAM;
-         this.dragon.getPhaseManager().setPhase(PhaseType.SITTING_SCANNING);
+         this.dragon.getPhaseManager().setPhase(EnderDragonPhase.SITTING_SCANNING);
          this.setState(5);
          this.tickSlam(level);
       }
    }
 
-   private void tickSlam(ServerWorld level) {
+   private void tickSlam(ServerLevel level) {
       int t = this.stateTicks;
       this.hover();
       if (t == 2) {
@@ -1954,36 +1954,36 @@ public class DragonRework {
       }
    }
 
-   private void slamImpact(ServerWorld level, Vec3d at) {
+   private void slamImpact(ServerLevel level, Vec3 at) {
       Vfx.heavyImpact(level, at, V, 2.5);
       Vfx.groundCrack(level, at, 12.0, V);
       Vfx.impactFrame(level, at, 96.0, 16777215, 0.7F);
       Vfx.pillar(level, at, V, 40.0, 4.0);
 
-      for (ServerPlayerEntity p : DragonFx.players(level, at, 30.0)) {
-         float falloff = (float)Math.max(0.0, 1.0 - p.getEntityPos().distanceTo(at) / 30.0);
+      for (ServerPlayer p : DragonFx.players(level, at, 30.0)) {
+         float falloff = (float)Math.max(0.0, 1.0 - p.position().distanceTo(at) / 30.0);
          DragonFx.hurt(level, this.dragon, p, this.dmg(6.0F + 20.0F * falloff), false);
-         Vec3d out = DragonFx.away(at, p.getEntityPos());
+         Vec3 out = DragonFx.away(at, p.position());
          double push = 1.2 + 2.2 * falloff;
-         DragonFx.launch(p, new Vec3d(out.x * push, 0.6 + 0.6 * falloff, out.z * push));
+         DragonFx.launch(p, new Vec3(out.x * push, 0.6 + 0.6 * falloff, out.z * push));
       }
 
       double r = this.fightPhase >= 3 ? 8.0 : 9.0;
 
       for (int i = 0; i < 4; i++) {
          double a = i * Math.PI / 2.0 + (Math.PI / 4);
-         Vec3d g = DragonFx.ground(level, at.x + Math.cos(a) * r, at.z + Math.sin(a) * r);
+         Vec3 g = DragonFx.ground(level, at.x + Math.cos(a) * r, at.z + Math.sin(a) * r);
          if (g != null) {
             DragonFx.pool(level, this.dragon, g, 3.5F, 160);
          }
       }
    }
 
-   private Vec3d novaPoint(ServerWorld level) {
-      List<Spike> spikes = EndSpikeFeature.getSpikes(level);
+   private Vec3 novaPoint(ServerLevel level) {
+      List<EndSpike> spikes = EndSpikeFeature.getSpikesForLevel(level);
       double ang;
       if (!spikes.isEmpty()) {
-         Spike s = spikes.get(this.dragon.getRandom().nextInt(spikes.size()));
+         EndSpike s = spikes.get(this.dragon.getRandom().nextInt(spikes.size()));
          ang = Math.atan2(s.getCenterZ() + 0.5 - this.portal.z, s.getCenterX() + 0.5 - this.portal.x);
       } else {
          ang = this.dragon.getRandom().nextDouble() * Math.PI * 2.0;
@@ -1992,23 +1992,23 @@ public class DragonRework {
       ang += (this.dragon.getRandom().nextFloat() * 40.0F - 20.0F) * (float) (Math.PI / 180.0);
       double x = this.portal.x + Math.cos(ang) * 34.0;
       double z = this.portal.z + Math.sin(ang) * 34.0;
-      Vec3d g = DragonFx.ground(level, x, z);
-      return new Vec3d(x, (g != null ? g.y : this.portal.y) + 8.0, z);
+      Vec3 g = DragonFx.ground(level, x, z);
+      return new Vec3(x, (g != null ? g.y : this.portal.y) + 8.0, z);
    }
 
-   private void tickNova(ServerWorld level) {
+   private void tickNova(ServerLevel level) {
       int t = this.stateTicks;
       this.hover();
-      this.turnToward(this.portal.subtract(this.dragon.getEntityPos()), 4.0F);
-      Vec3d core = this.core();
+      this.turnToward(this.portal.subtract(this.dragon.position()), 4.0F);
+      Vec3 core = this.core();
       if (t == 0) {
          Vfx.chargeUp(level, core, V, 96);
-         Vec3d g = DragonFx.ground(level, this.dragon.getX(), this.dragon.getZ());
-         Vfx.runeCircle(level, g != null ? g : this.dragon.getEntityPos().add(0.0, -8.0, 0.0), 6.0, V, 96, 0.03F, Vfx.Rune.ASTRAL);
+         Vec3 g = DragonFx.ground(level, this.dragon.getX(), this.dragon.getZ());
+         Vfx.runeCircle(level, g != null ? g : this.dragon.position().add(0.0, -8.0, 0.0), 6.0, V, 96, 0.03F, Vfx.Rune.ASTRAL);
 
-         for (ServerPlayerEntity p : this.sense.engaged) {
-            p.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 120, 0, false, false), this.dragon);
-            p.sendMessage(Text.translatableWithFallback("message.mysticalterrain.dragon.oblivion", "Break its line of sight!"), true);
+         for (ServerPlayer p : this.sense.engaged) {
+            p.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 120, 0, false, false), this.dragon);
+            p.sendOverlayMessage(Component.translatableWithFallback("message.mysticalterrain.dragon.oblivion", "Break its line of sight!"));
          }
       }
 
@@ -2017,29 +2017,29 @@ public class DragonRework {
       }
 
       if (t >= 10 && t < 96 && t % 10 == 0) {
-         Vec3d head = this.jaw(NOVA_JAW, t);
+         Vec3 head = this.jaw(NOVA_JAW, t);
 
-         for (ServerPlayerEntity p : this.sense.engaged) {
-            if (DragonFx.clear(level, head, p.getEyePos(), this.dragon)) {
-               Vfx.beam(level, head, p.getEyePos(), V, 0.12, 10);
+         for (ServerPlayer p : this.sense.engaged) {
+            if (DragonFx.clear(level, head, p.getEyePosition(), this.dragon)) {
+               Vfx.beam(level, head, p.getEyePosition(), V, 0.12, 10);
             }
          }
       }
 
       if (t == 96) {
-         Vec3d head = this.jawAt(NOVA_JAW, 4.8);
+         Vec3 head = this.jawAt(NOVA_JAW, 4.8);
          Vfx.impactFrame(level, core, 160.0, 16777215, 1.0F);
          Vfx.nova(level, core, V, 64.0);
          Vfx.explosion(level, core, V, 6.0);
 
-         for (ServerPlayerEntity p : this.sense.engaged) {
-            if (!(p.getEntityPos().distanceTo(core) > 96.0)) {
-               if (DragonFx.clear(level, head, p.getEyePos(), this.dragon)) {
+         for (ServerPlayer p : this.sense.engaged) {
+            if (!(p.position().distanceTo(core) > 96.0)) {
+               if (DragonFx.clear(level, head, p.getEyePosition(), this.dragon)) {
                   DragonFx.hurt(level, this.dragon, p, this.dmg(30.0F), true);
-                  p.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 80, 1), this.dragon);
-                  DragonFx.nudge(p, new Vec3d(0.0, 0.6, 0.0));
+                  p.addEffect(new MobEffectInstance(MobEffects.WITHER, 80, 1), this.dragon);
+                  DragonFx.nudge(p, new Vec3(0.0, 0.6, 0.0));
                } else {
-                  Vfx.shake(level, p.getEntityPos(), 3.0, 0.3, 10);
+                  Vfx.shake(level, p.position(), 3.0, 0.3, 10);
                }
             }
          }
@@ -2050,9 +2050,9 @@ public class DragonRework {
       }
    }
 
-   private void tickBreathSweep(ServerWorld level) {
+   private void tickBreathSweep(ServerLevel level) {
       int t = this.stateTicks;
-      Vec3d mouth = this.jaw(SWEEP_JAW, t);
+      Vec3 mouth = this.jaw(SWEEP_JAW, t);
       if (t == 0) {
          Vfx.telegraphCone(level, this.headGround(level), DragonFx.fxYaw(this.fwd()), 70.0F, 20.0, 16, V);
          Vfx.chargeUp(level, this.jaw(SWEEP_JAW, 11), V, 13);
@@ -2066,30 +2066,30 @@ public class DragonRework {
       if (s >= 0.65F && s <= 2.55F) {
          float k = (s - 0.65F) / 1.9F;
          k = k < 0.5F ? 4.0F * k * k * k : 1.0F - (float)Math.pow(-2.0F * k + 2.0F, 3.0) / 2.0F;
-         float angle = (this.dragon.getYaw() - 50.0F + 100.0F * k) * (float) (Math.PI / 180.0);
-         Vec3d dir = new Vec3d(MathHelper.sin(angle), -0.35, -MathHelper.cos(angle)).normalize();
+         float angle = (this.dragon.getYRot() - 50.0F + 100.0F * k) * (float) (Math.PI / 180.0);
+         Vec3 dir = new Vec3(Mth.sin(angle), -0.35, -Mth.cos(angle)).normalize();
          if (t % 2 == 0) {
-            Vfx.beam(level, mouth, mouth.add(dir.multiply(18.0)), V, 0.9);
-            Vfx.emit(level, VfxOptions.of(VfxParticles.Kind.SPARK, 16777215, 0.35, 12).streak(3.0F).gravity(0.0F).drag(0.96F).build(), mouth, dir.multiply(1.2));
+            Vfx.beam(level, mouth, mouth.add(dir.scale(18.0)), V, 0.9);
+            Vfx.emit(level, VfxOptions.of(VfxParticles.Kind.SPARK, 16777215, 0.35, 12).streak(3.0F).gravity(0.0F).drag(0.96F).build(), mouth, dir.scale(1.2));
 
             for (int i = 0; i < 5; i++) {
-               Vfx.smoke(level, mouth.add(dir.multiply(3 + i * 3)), 14211288, 3, 0.4, 1.2);
+               Vfx.smoke(level, mouth.add(dir.scale(3 + i * 3)), 14211288, 3, 0.4, 1.2);
             }
          }
 
          if (this.hit(t)) {
-            Vec3d flat = DragonFx.flat(dir).normalize();
-            Vec3d a = mouth.add(flat.multiply(3.0));
-            Vec3d b = mouth.add(flat.multiply(18.0));
+            Vec3 flat = DragonFx.flat(dir).normalize();
+            Vec3 a = mouth.add(flat.scale(3.0));
+            Vec3 b = mouth.add(flat.scale(18.0));
 
-            for (ServerPlayerEntity p : DragonFx.players(level, this.dragon.getEntityPos(), 28.0)) {
-               if (Math.abs(p.getY() - this.dragon.getY()) <= 8.0 && DragonFx.toSegmentFlat(p.getEntityPos(), a, b) <= 2.5) {
+            for (ServerPlayer p : DragonFx.players(level, this.dragon.position(), 28.0)) {
+               if (Math.abs(p.getY() - this.dragon.getY()) <= 8.0 && DragonFx.toSegmentFlat(p.position(), a, b) <= 2.5) {
                   DragonFx.hurt(level, this.dragon, p, this.dmg(8.0F), false);
                }
             }
 
             double along = 6.0 + this.dragon.getRandom().nextDouble() * 10.0;
-            Vec3d g = DragonFx.groundBelow(level, mouth.add(flat.multiply(along)));
+            Vec3 g = DragonFx.groundBelow(level, mouth.add(flat.scale(along)));
             if (g != null) {
                DragonFx.pool(level, this.dragon, g, 2.6F, this.fightPhase >= 2 ? 160 : 100);
             }
@@ -2101,30 +2101,30 @@ public class DragonRework {
       }
    }
 
-   private void tickTailSweep(ServerWorld level) {
+   private void tickTailSweep(ServerLevel level) {
       int t = this.stateTicks;
-      Vec3d hips = this.hips();
+      Vec3 hips = this.hips();
       if (t == 0) {
-         Vec3d g = DragonFx.groundBelow(level, hips.add(0.0, 1.0, 0.0));
+         Vec3 g = DragonFx.groundBelow(level, hips.add(0.0, 1.0, 0.0));
          Vfx.telegraphCircle(level, g != null ? g : hips, 11.0, 21, V);
       }
 
       if (t == 21) {
-         Vec3d f = this.fwd();
+         Vec3 f = this.fwd();
 
-         for (ServerPlayerEntity p : DragonFx.players(level, hips, 14.0)) {
-            if (!(DragonFx.flatDist(p.getEntityPos(), hips) > 11.0)) {
-               Vec3d fromBody = p.getEntityPos().subtract(this.dragon.getEntityPos());
-               if (!(DragonFx.flat(fromBody).lengthSquared() > 1.0) || !(DragonFx.angle(f, fromBody) < 60.0)) {
+         for (ServerPlayer p : DragonFx.players(level, hips, 14.0)) {
+            if (!(DragonFx.flatDist(p.position(), hips) > 11.0)) {
+               Vec3 fromBody = p.position().subtract(this.dragon.position());
+               if (!(DragonFx.flat(fromBody).lengthSqr() > 1.0) || !(DragonFx.angle(f, fromBody) < 60.0)) {
                   DragonFx.hurt(level, this.dragon, p, this.dmg(14.0F), false);
-                  Vec3d out = DragonFx.away(hips, p.getEntityPos());
-                  DragonFx.launch(p, new Vec3d(out.x * 1.6, 0.5, out.z * 1.6));
+                  Vec3 out = DragonFx.away(hips, p.position());
+                  DragonFx.launch(p, new Vec3(out.x * 1.6, 0.5, out.z * 1.6));
                }
             }
          }
 
-         Vfx.slashArc(level, hips.add(0.0, 1.2, 0.0), DragonFx.fxYaw(f.multiply(-1.0)), 0.0F, 11.0, V, 240.0F);
-         Vfx.streaks(level, hips.add(0.0, 1.0, 0.0), this.right().multiply(5.0), V, 10);
+         Vfx.slashArc(level, hips.add(0.0, 1.2, 0.0), DragonFx.fxYaw(f.scale(-1.0)), 0.0F, 11.0, V, 240.0F);
+         Vfx.streaks(level, hips.add(0.0, 1.0, 0.0), this.right().scale(5.0), V, 10);
       }
 
       if (t >= 44) {
@@ -2132,10 +2132,10 @@ public class DragonRework {
       }
    }
 
-   private void tickBite(ServerWorld level) {
+   private void tickBite(ServerLevel level) {
       int t = this.stateTicks;
       this.faceVictim(4.0F);
-      Vec3d f = this.fwd();
+      Vec3 f = this.fwd();
       if (t == 2 || t == 13) {
          Vfx.telegraphCone(level, this.headGround(level), DragonFx.fxYaw(f), 35.0F, t == 2 ? 7.0 : 8.0, 8, V);
       }
@@ -2143,15 +2143,15 @@ public class DragonRework {
       if (t == 10 || t == 21) {
          boolean second = t == 21;
          double range = second ? 8.0 : 7.0;
-         Vec3d head = this.dragon.head.getEntityPos();
-         Vec3d origin = head.subtract(f.multiply(1.5));
+         Vec3 head = this.dragon.head.position();
+         Vec3 origin = head.subtract(f.scale(1.5));
 
-         for (ServerPlayerEntity p : DragonFx.players(level, head, range + 3.0)) {
-            if (!(Math.abs(p.getY() - head.y) > 5.0) && DragonFx.inCone(origin, f, 35.0, range + 1.5, p.getEntityPos())) {
+         for (ServerPlayer p : DragonFx.players(level, head, range + 3.0)) {
+            if (!(Math.abs(p.getY() - head.y) > 5.0) && DragonFx.inCone(origin, f, 35.0, range + 1.5, p.position())) {
                if (second && p.isBlocking()) {
-                  ItemStack shield = p.getActiveItem();
-                  p.getItemCooldownManager().set(shield, 100);
-                  p.clearActiveItem();
+                  ItemStack shield = p.getUseItem();
+                  p.getCooldowns().addCooldown(shield, 100);
+                  p.stopUsingItem();
                   DragonFx.hurt(level, this.dragon, p, this.dmg(14.0F) * 0.5F, false);
                   Vfx.shards(level, DragonFx.center(p), 16777215, 10, 0.4);
                } else {
@@ -2159,15 +2159,15 @@ public class DragonRework {
                }
 
                if (!second) {
-                  Vec3d out = DragonFx.away(head, p.getEntityPos());
-                  DragonFx.launch(p, new Vec3d(out.x * 0.6, 0.25, out.z * 0.6));
+                  Vec3 out = DragonFx.away(head, p.position());
+                  DragonFx.launch(p, new Vec3(out.x * 0.6, 0.25, out.z * 0.6));
                }
             }
          }
 
-         Vec3d snap = second ? this.at(4.9, 2.2) : this.at(4.5, 3.7);
+         Vec3 snap = second ? this.at(4.9, 2.2) : this.at(4.5, 3.7);
          Vfx.slashArc(level, snap, DragonFx.fxYaw(f), 25.0F, 90.0F, 3.5, V, 120.0F);
-         Vfx.sparks(level, snap.add(f.multiply(1.5)), 16777215, 10, 0.35, 0.2);
+         Vfx.sparks(level, snap.add(f.scale(1.5)), 16777215, 10, 0.35, 0.2);
       }
 
       if (t >= 32) {
@@ -2175,70 +2175,70 @@ public class DragonRework {
       }
    }
 
-   private void tickFissure(ServerWorld level) {
+   private void tickFissure(ServerLevel level) {
       int t = this.stateTicks;
       if (t < 14) {
          this.faceVictim(4.0F);
       }
 
       if (t == 14) {
-         Vec3d c0 = this.claw();
-         Vec3d g = DragonFx.groundBelow(level, c0.add(0.0, 1.5, 0.0));
+         Vec3 c0 = this.claw();
+         Vec3 g = DragonFx.groundBelow(level, c0.add(0.0, 1.5, 0.0));
          this.pa = g != null ? g : c0;
-         Vec3d f = this.fwd();
+         Vec3 f = this.fwd();
          this.lines.clear();
 
-         for (ServerPlayerEntity p : this.sense.engaged) {
-            Vec3d d = DragonFx.flat(p.getEntityPos().subtract(this.pa));
-            if (this.lines.size() < 3 && d.lengthSquared() > 1.0 && DragonFx.angle(f, d) < 90.0) {
+         for (ServerPlayer p : this.sense.engaged) {
+            Vec3 d = DragonFx.flat(p.position().subtract(this.pa));
+            if (this.lines.size() < 3 && d.lengthSqr() > 1.0 && DragonFx.angle(f, d) < 90.0) {
                this.lines.add(d.normalize());
             }
          }
 
          if (this.lines.isEmpty()) {
-            Vec3d base = this.victim != null ? DragonFx.flat(this.victim.getEntityPos().subtract(this.pa)) : f;
-            base = base.lengthSquared() > 1.0E-4 ? base.normalize() : f;
+            Vec3 base = this.victim != null ? DragonFx.flat(this.victim.position().subtract(this.pa)) : f;
+            base = base.lengthSqr() > 1.0E-4 ? base.normalize() : f;
 
             for (float off : new float[]{-25.0F, 0.0F, 25.0F}) {
-               this.lines.add(base.rotateY(off * (float) (Math.PI / 180.0)));
+               this.lines.add(base.yRot(off * (float) (Math.PI / 180.0)));
             }
          }
 
-         for (Vec3d d : this.lines) {
+         for (Vec3 d : this.lines) {
             Vfx.telegraphLine(level, this.pa, d, 22.0, 2.5, 14, V);
          }
 
          Vfx.groundCrack(level, this.pa, 3.0, V);
          Vfx.claw(level, this.pa.add(0.0, 0.6, 0.0), DragonFx.fxYaw(f), 60.0F, 2.5, V);
 
-         for (ServerPlayerEntity p : DragonFx.players(level, this.pa, 3.0)) {
+         for (ServerPlayer p : DragonFx.players(level, this.pa, 3.0)) {
             DragonFx.hurt(level, this.dragon, p, this.dmg(10.0F), false);
          }
       }
 
       if (t == 28) {
-         for (Vec3d d : this.lines) {
+         for (Vec3 d : this.lines) {
             for (int i = 2; i <= 22; i += 2) {
-               Vec3d q = this.pa.add(d.multiply(i));
-               Vec3d g = DragonFx.groundBelow(level, q.add(0.0, 3.0, 0.0));
+               Vec3 q = this.pa.add(d.scale(i));
+               Vec3 g = DragonFx.groundBelow(level, q.add(0.0, 3.0, 0.0));
                if (g != null) {
                   Vfx.pillar(level, g, V, 5.0, 1.2);
                }
             }
 
             if (this.fightPhase >= 2) {
-               Vec3d end = DragonFx.groundBelow(level, this.pa.add(d.multiply(22.0)).add(0.0, 3.0, 0.0));
+               Vec3 end = DragonFx.groundBelow(level, this.pa.add(d.scale(22.0)).add(0.0, 3.0, 0.0));
                if (end != null) {
                   DragonFx.pool(level, this.dragon, end, 2.2F, 120);
                }
             }
          }
 
-         for (ServerPlayerEntity p : DragonFx.players(level, this.pa, 26.0)) {
-            for (Vec3d d : this.lines) {
-               if (Math.abs(p.getY() - this.pa.y) <= 4.0 && DragonFx.toSegmentFlat(p.getEntityPos(), this.pa, this.pa.add(d.multiply(22.0))) <= 1.6) {
+         for (ServerPlayer p : DragonFx.players(level, this.pa, 26.0)) {
+            for (Vec3 d : this.lines) {
+               if (Math.abs(p.getY() - this.pa.y) <= 4.0 && DragonFx.toSegmentFlat(p.position(), this.pa, this.pa.add(d.scale(22.0))) <= 1.6) {
                   DragonFx.hurt(level, this.dragon, p, this.dmg(11.0F), false);
-                  DragonFx.launch(p, new Vec3d(0.0, 0.9, 0.0));
+                  DragonFx.launch(p, new Vec3(0.0, 0.9, 0.0));
                   break;
                }
             }
@@ -2251,37 +2251,37 @@ public class DragonRework {
       }
    }
 
-   private void tickWingStorm(ServerWorld level) {
+   private void tickWingStorm(ServerLevel level) {
       int t = this.stateTicks;
-      Vec3d f = this.fwd();
-      Vec3d chest = this.chest();
-      Vec3d g = DragonFx.groundBelow(level, chest);
-      Vec3d cg = g != null ? g : this.dragon.getEntityPos();
+      Vec3 f = this.fwd();
+      Vec3 chest = this.chest();
+      Vec3 g = DragonFx.groundBelow(level, chest);
+      Vec3 cg = g != null ? g : this.dragon.position();
       if (t == 0) {
          Vfx.telegraphCone(level, cg, DragonFx.fxYaw(f), 60.0F, 18.0, 18, V);
       }
 
       if (this.hit(t)) {
-         for (ServerPlayerEntity p : DragonFx.players(level, cg, 20.0)) {
-            if (!(Math.abs(p.getY() - cg.y) > 6.0) && DragonFx.inCone(cg, f, 60.0, 18.0, p.getEntityPos())) {
+         for (ServerPlayer p : DragonFx.players(level, cg, 20.0)) {
+            if (!(Math.abs(p.getY() - cg.y) > 6.0) && DragonFx.inCone(cg, f, 60.0, 18.0, p.position())) {
                DragonFx.hurt(level, this.dragon, p, this.dmg(3.0F), false);
-               Vec3d out = DragonFx.away(cg, p.getEntityPos());
-               DragonFx.launch(p, new Vec3d(out.x * 1.4, 0.35, out.z * 1.4));
+               Vec3 out = DragonFx.away(cg, p.position());
+               DragonFx.launch(p, new Vec3(out.x * 1.4, 0.35, out.z * 1.4));
             }
          }
 
-         Box box = new Box(cg.x - 18.0, cg.y - 4.0, cg.z - 18.0, cg.x + 18.0, cg.y + 16.0, cg.z + 18.0);
+         AABB box = new AABB(cg.x - 18.0, cg.y - 4.0, cg.z - 18.0, cg.x + 18.0, cg.y + 16.0, cg.z + 18.0);
 
-         for (ProjectileEntity pr : level.getEntitiesByClass(ProjectileEntity.class, box, e -> e.getOwner() instanceof PlayerEntity)) {
-            if (DragonFx.inCone(cg, f, 60.0, 18.0, pr.getEntityPos()) && pr.getVelocity().lengthSquared() > 0.01) {
-               pr.setVelocity(pr.getVelocity().multiply(-1.0));
+         for (Projectile pr : level.getEntitiesOfClass(Projectile.class, box, e -> e.getOwner() instanceof Player)) {
+            if (DragonFx.inCone(cg, f, 60.0, 18.0, pr.position()) && pr.getDeltaMovement().lengthSqr() > 0.01) {
+               pr.setDeltaMovement(pr.getDeltaMovement().scale(-1.0));
                pr.setOwner(this.dragon);
-               pr.knockedBack = true;
+               pr.syncVelocity = true;
             }
          }
 
-         Vfx.streaks(level, chest, f.multiply(12.0), V, 12);
-         Vfx.smoke(level, cg.add(f.multiply(4.0)), V.smoke(), 8, 3.0, 1.6);
+         Vfx.streaks(level, chest, f.scale(12.0), V, 12);
+         Vfx.smoke(level, cg.add(f.scale(4.0)), V.smoke(), 8, 3.0, 1.6);
       }
 
       if (t >= 52) {
@@ -2289,40 +2289,40 @@ public class DragonRework {
       }
    }
 
-   private void tickPounce(ServerWorld level) {
+   private void tickPounce(ServerLevel level) {
       int t = this.stateTicks;
-      ServerPlayerEntity tg = this.victim;
+      ServerPlayer tg = this.victim;
       if (t < 14) {
          this.faceVictim(4.0F);
       }
 
       if (t == 0) {
-         this.pa = this.dragon.getEntityPos();
+         this.pa = this.dragon.position();
       }
 
       if (t == 6) {
-         Vec3d at = tg != null && tg.isAlive() ? predict(tg, 16.0) : this.dragon.getEntityPos().add(this.fwd().multiply(12.0));
-         Vec3d g = DragonFx.groundBelow(level, at.add(0.0, 2.0, 0.0));
-         this.pa = g != null ? g : this.dragon.getEntityPos();
+         Vec3 at = tg != null && tg.isAlive() ? predict(tg, 16.0) : this.dragon.position().add(this.fwd().scale(12.0));
+         Vec3 g = DragonFx.groundBelow(level, at.add(0.0, 2.0, 0.0));
+         this.pa = g != null ? g : this.dragon.position();
          Vfx.telegraphCircle(level, this.pa, 5.0, 16, V);
       }
 
       if (t == 14) {
-         this.pc = this.dragon.getEntityPos();
+         this.pc = this.dragon.position();
       }
 
       if (t > 14 && t <= 22) {
          float k = (t - 14) / 8.0F;
-         Vec3d p = this.pc.lerp(this.pa, k).add(0.0, 20.0F * k * (1.0F - k), 0.0);
-         this.dragon.setPosition(p.x, p.y, p.z);
+         Vec3 p = this.pc.lerp(this.pa, k).add(0.0, 20.0F * k * (1.0F - k), 0.0);
+         this.dragon.setPos(p.x, p.y, p.z);
          this.turnToward(this.pa.subtract(this.pc), 4.0F);
       }
 
       if (t == 22) {
-         for (ServerPlayerEntity p : DragonFx.players(level, this.pa, 5.0)) {
+         for (ServerPlayer p : DragonFx.players(level, this.pa, 5.0)) {
             DragonFx.hurt(level, this.dragon, p, this.dmg(16.0F), false);
-            Vec3d out = DragonFx.away(this.pa, p.getEntityPos());
-            DragonFx.launch(p, new Vec3d(out.x * 1.3, 0.5, out.z * 1.3));
+            Vec3 out = DragonFx.away(this.pa, p.position());
+            DragonFx.launch(p, new Vec3(out.x * 1.3, 0.5, out.z * 1.3));
          }
 
          Vfx.heavyImpact(level, this.pa, V, 1.2);
@@ -2341,10 +2341,10 @@ public class DragonRework {
       }
    }
 
-   private void trackVanillaPhase(ServerWorld level) {
-      PhaseType<?> p = this.vanillaPhase();
+   private void trackVanillaPhase(ServerLevel level) {
+      EnderDragonPhase<?> p = this.vanillaPhase();
       if (p != this.lastPhase) {
-         PhaseType<?> old = this.lastPhase;
+         EnderDragonPhase<?> old = this.lastPhase;
          this.lastPhase = p;
          this.vanillaTicks = 0;
          this.onVanillaPhase(level, old, p);
@@ -2357,15 +2357,15 @@ public class DragonRework {
       }
    }
 
-   private void onVanillaPhase(ServerWorld level, @Nullable PhaseType<?> old, PhaseType<?> now) {
-      ServerPlayerEntity t = this.sense.target();
-      if (now == PhaseType.STRAFE_PLAYER && t != null) {
-         ((StrafePlayerPhase)this.dragon.getPhaseManager().create(PhaseType.STRAFE_PLAYER)).setTargetEntity(t);
-      } else if (now == PhaseType.CHARGING_PLAYER && t != null) {
-         ((ChargingPlayerPhase)this.dragon.getPhaseManager().create(PhaseType.CHARGING_PLAYER)).setPathTarget(t.getEntityPos());
-      } else if (now == PhaseType.SITTING_ATTACKING && this.state() == 0) {
-         DragonFx.sound(level, this.dragon.getEntityPos(), "perch_roar.start", 6.0F, 1.0F);
-      } else if (now == PhaseType.SITTING_FLAMING && this.state() == 0) {
+   private void onVanillaPhase(ServerLevel level, @Nullable EnderDragonPhase<?> old, EnderDragonPhase<?> now) {
+      ServerPlayer t = this.sense.target();
+      if (now == EnderDragonPhase.STRAFE_PLAYER && t != null) {
+         ((DragonStrafePlayerPhase)this.dragon.getPhaseManager().getPhase(EnderDragonPhase.STRAFE_PLAYER)).setTarget(t);
+      } else if (now == EnderDragonPhase.CHARGING_PLAYER && t != null) {
+         ((DragonChargePlayerPhase)this.dragon.getPhaseManager().getPhase(EnderDragonPhase.CHARGING_PLAYER)).setTarget(t.position());
+      } else if (now == EnderDragonPhase.SITTING_ATTACKING && this.state() == 0) {
+         DragonFx.sound(level, this.dragon.position(), "perch_roar.start", 6.0F, 1.0F);
+      } else if (now == EnderDragonPhase.SITTING_FLAMING && this.state() == 0) {
          Vfx.telegraphCone(level, this.headGround(level), DragonFx.fxYaw(this.fwd()), 25.0F, 10.0, 10, V);
          DragonFx.sound(level, this.mouth(), "breath.start", 5.0F, 1.0F);
       }
@@ -2375,44 +2375,44 @@ public class DragonRework {
          this.perchDamage = 0.0F;
       }
 
-      if (now == PhaseType.TAKEOFF) {
+      if (now == EnderDragonPhase.TAKEOFF) {
          this.resetLanding();
       }
    }
 
-   private void vanillaPerchMoves(ServerWorld level, PhaseType<?> vp) {
-      if (vp == PhaseType.SITTING_ATTACKING && this.vanillaTicks == 15) {
+   private void vanillaPerchMoves(ServerLevel level, EnderDragonPhase<?> vp) {
+      if (vp == EnderDragonPhase.SITTING_ATTACKING && this.vanillaTicks == 15) {
          this.dominionRoar(level);
-      } else if (vp == PhaseType.SITTING_FLAMING) {
+      } else if (vp == EnderDragonPhase.SITTING_FLAMING) {
          if (this.vanillaTicks == 10) {
             DragonFx.sound(level, this.mouth(), "breath.hit", 5.0F, 1.0F);
          }
 
          if (this.vanillaTicks >= 10 && this.vanillaTicks < 200 && this.vanillaTicks % 4 == 0) {
-            Vec3d mouth = this.mouth();
-            Vec3d g = this.dropped(level, this.dragon.head.getEntityPos().add(this.fwd().multiply(2.5)));
+            Vec3 mouth = this.mouth();
+            Vec3 g = this.dropped(level, this.dragon.head.position().add(this.fwd().scale(2.5)));
             Vfx.beam(level, mouth, g, V, 0.6);
             Vfx.smoke(level, g.add(0.0, 0.3, 0.0), 14211288, 4, 1.2, 1.4);
          }
       }
    }
 
-   private void dominionRoar(ServerWorld level) {
-      Vec3d pos = this.dragon.getEntityPos();
+   private void dominionRoar(ServerLevel level) {
+      Vec3 pos = this.dragon.position();
       Vfx.shockwave(level, pos, V, 10.0);
       DragonFx.sound(level, pos, "perch_roar.hit", 6.0F, 1.0F);
 
-      for (ServerPlayerEntity p : DragonFx.players(level, pos, 24.0)) {
-         if (DragonFx.flatDist(p.getEntityPos(), pos) <= 10.0) {
-            Vec3d out = DragonFx.away(pos, p.getEntityPos());
-            DragonFx.launch(p, new Vec3d(out.x * 1.2, 0.35, out.z * 1.2));
+      for (ServerPlayer p : DragonFx.players(level, pos, 24.0)) {
+         if (DragonFx.flatDist(p.position(), pos) <= 10.0) {
+            Vec3 out = DragonFx.away(pos, p.position());
+            DragonFx.launch(p, new Vec3(out.x * 1.2, 0.35, out.z * 1.2));
             if (this.fightPhase >= 2) {
                DragonFx.hurt(level, this.dragon, p, this.dmg(6.0F), false);
-               p.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 40, 1), this.dragon);
+               p.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 40, 1), this.dragon);
             }
          }
 
-         p.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 80, 0, false, false), this.dragon);
+         p.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 80, 0, false, false), this.dragon);
       }
    }
 
@@ -2446,21 +2446,21 @@ public class DragonRework {
       }
    }
 
-   private void breakPoise(ServerWorld level) {
+   private void breakPoise(ServerLevel level) {
       this.breakPending = false;
       this.staggered = true;
-      Vec3d core = this.core();
+      Vec3 core = this.core();
       Vfx.shards(level, core, 16777215, 24, 0.7);
       Vfx.sparks(level, core, V.glow(), 24, 0.6, 0.24);
       Vfx.flare(level, core, 16777215, 6.0, 6);
-      Vfx.ring(level, this.dragon.getEntityPos(), V.glow(), 10.0, 14);
+      Vfx.ring(level, this.dragon.position(), V.glow(), 10.0, 14);
       Vfx.shake(level, core, 32.0, 0.6, 10);
       boolean recallBroken = this.state() == 3;
       boolean wasPerched = this.perched() && !recallBroken;
       this.interrupt(level);
       this.groundedFor = recallBroken ? 120 : (this.fightPhase >= 3 ? 80 : 100);
       if (wasPerched) {
-         this.dragon.getPhaseManager().setPhase(PhaseType.SITTING_SCANNING);
+         this.dragon.getPhaseManager().setPhase(EnderDragonPhase.SITTING_SCANNING);
          this.setState(25);
          DragonFx.sound(level, core, "stagger", 8.0F, 1.0F);
       } else {
@@ -2468,21 +2468,21 @@ public class DragonRework {
       }
    }
 
-   private void startCrash(ServerWorld level) {
-      Vec3d pos = this.dragon.getEntityPos();
-      Vec3d land = null;
-      Vec3d below = DragonFx.ground(level, pos.x, pos.z);
+   private void startCrash(ServerLevel level) {
+      Vec3 pos = this.dragon.position();
+      Vec3 land = null;
+      Vec3 below = DragonFx.ground(level, pos.x, pos.z);
       if (below != null && below.y < pos.y && DragonFx.flatDist(below, this.portal) <= 48.0) {
          land = below;
       }
 
       if (land == null) {
-         Vec3d d = DragonFx.flat(this.portal.subtract(pos));
+         Vec3 d = DragonFx.flat(this.portal.subtract(pos));
          double max = Math.min(d.length(), 33.599999999999994);
-         Vec3d dir = d.lengthSquared() > 1.0E-4 ? d.normalize() : Vec3d.ZERO;
+         Vec3 dir = d.lengthSqr() > 1.0E-4 ? d.normalize() : Vec3.ZERO;
 
          for (double s = 1.0; s <= max; s++) {
-            Vec3d q = DragonFx.ground(level, pos.x + dir.x * s, pos.z + dir.z * s);
+            Vec3 q = DragonFx.ground(level, pos.x + dir.x * s, pos.z + dir.z * s);
             if (q != null && q.y < pos.y && DragonFx.flatDist(q, this.portal) <= 48.0) {
                land = q;
                break;
@@ -2496,18 +2496,18 @@ public class DragonRework {
 
       this.pa = land;
       this.pc = pos;
-      this.dragon.getPhaseManager().setPhase(PhaseType.SITTING_SCANNING);
+      this.dragon.getPhaseManager().setPhase(EnderDragonPhase.SITTING_SCANNING);
       this.setState(24);
       DragonFx.sound(level, pos, "crash.start", 8.0F, 1.0F);
    }
 
-   private void tickCrash(ServerWorld level) {
+   private void tickCrash(ServerLevel level) {
       int t = this.stateTicks;
       this.hover();
       if (t <= 24) {
          float k = t / 24.0F;
          this.dragon
-            .setPosition(MathHelper.lerp(k, this.pc.x, this.pa.x), MathHelper.lerp(k * k, this.pc.y, this.pa.y), MathHelper.lerp(k, this.pc.z, this.pa.z));
+            .setPos(Mth.lerp(k, this.pc.x, this.pa.x), Mth.lerp(k * k, this.pc.y, this.pa.y), Mth.lerp(k, this.pc.z, this.pa.z));
          if (t % 2 == 0) {
             Vfx.smoke(level, this.core(), V.smoke(), 4, 1.5, 1.6);
          }
@@ -2518,10 +2518,10 @@ public class DragonRework {
          Vfx.groundCrack(level, this.pa, 6.0, V);
          DragonFx.sound(level, this.pa, "crash.hit", 8.0F, 0.9F);
 
-         for (ServerPlayerEntity p : DragonFx.players(level, this.pa, 5.0)) {
+         for (ServerPlayer p : DragonFx.players(level, this.pa, 5.0)) {
             DragonFx.hurt(level, this.dragon, p, this.dmg(8.0F), false);
-            Vec3d out = DragonFx.away(this.pa, p.getEntityPos());
-            DragonFx.launch(p, new Vec3d(out.x, 0.4, out.z));
+            Vec3 out = DragonFx.away(this.pa, p.position());
+            DragonFx.launch(p, new Vec3(out.x, 0.4, out.z));
          }
       }
 
@@ -2530,10 +2530,10 @@ public class DragonRework {
       }
    }
 
-   private void tickStunned(ServerWorld level) {
+   private void tickStunned(ServerLevel level) {
       int t = this.stateTicks;
       this.hover();
-      Vec3d head = this.at(4.4, 1.2).add(this.right().multiply(0.55));
+      Vec3 head = this.at(4.4, 1.2).add(this.right().scale(0.55));
       if (t % 5 == 0) {
          Vfx.sparks(level, head.add(0.0, 1.0, 0.0), V.glow(), 6, 0.2, 0.2);
       }
@@ -2544,11 +2544,11 @@ public class DragonRework {
 
       if (t >= this.groundedFor) {
          this.setState(26);
-         DragonFx.sound(level, this.dragon.getEntityPos(), "recover.start", 6.0F, 1.0F);
+         DragonFx.sound(level, this.dragon.position(), "recover.start", 6.0F, 1.0F);
       }
    }
 
-   private void tickRecover(ServerWorld level) {
+   private void tickRecover(ServerLevel level) {
       this.hover();
       if (this.stateTicks >= 36) {
          this.staggered = false;
@@ -2559,20 +2559,20 @@ public class DragonRework {
             this.flyToPhaseHover();
          } else {
             this.setState(0);
-            this.dragon.getPhaseManager().setPhase(PhaseType.TAKEOFF);
+            this.dragon.getPhaseManager().setPhase(EnderDragonPhase.TAKEOFF);
             this.rest = this.restFor(false);
          }
       }
    }
 
-   public boolean hurt(ServerWorld level, EnderDragonPart part, DamageSource source, float amount) {
-      Phase phase = this.dragon.getPhaseManager().getCurrent();
-      if (phase.getType() != PhaseType.DYING && !this.dragon.isDead()) {
-         Entity attacker = source.getAttacker();
-         boolean admin = source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY)
-            || attacker == null && source.getSource() == null && !source.isOf(DamageTypes.BAD_RESPAWN_POINT);
+   public boolean hurt(ServerLevel level, EnderDragonPart part, DamageSource source, float amount) {
+      DragonPhaseInstance phase = this.dragon.getPhaseManager().getCurrentPhase();
+      if (phase.getPhase() != EnderDragonPhase.DYING && !this.dragon.isDeadOrDying()) {
+         Entity attacker = source.getEntity();
+         boolean admin = source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)
+            || attacker == null && source.getDirectEntity() == null && !source.is(DamageTypes.BAD_RESPAWN_POINT);
          if (admin) {
-            if (!source.isIn(DamageTypeTags.ALWAYS_HURTS_ENDER_DRAGONS) && !source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
+            if (!source.is(DamageTypeTags.ALWAYS_HURTS_ENDER_DRAGONS) && !source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
                return false;
             }
 
@@ -2585,29 +2585,29 @@ public class DragonRework {
             }
 
             boolean grounded = this.grounded();
-            float f = grounded ? amount : phase.modifyDamageTaken(source, amount);
+            float f = grounded ? amount : phase.onHurt(source, amount);
             if (f < 0.01F) {
                return false;
             }
 
-            if (!(attacker instanceof PlayerEntity) && !source.isIn(DamageTypeTags.ALWAYS_HURTS_ENDER_DRAGONS)) {
+            if (!(attacker instanceof Player) && !source.is(DamageTypeTags.ALWAYS_HURTS_ENDER_DRAGONS)) {
                return true;
             }
 
-            if (source == this.lastSource && this.dragon.age == this.lastSourceTick) {
+            if (source == this.lastSource && this.dragon.tickCount == this.lastSourceTick) {
                return false;
             }
 
             this.lastSource = source;
-            this.lastSourceTick = this.dragon.age;
-            if (this.reflectTicks > 0 && source.getSource() instanceof ProjectileEntity shot && !(shot instanceof DragonFireballEntity)) {
-               this.reflected.add(new DragonRework.Reflect(shot, shot.getOwner(), shot.getVelocity().length()));
-               Vfx.glint(level, shot.getEntityPos(), 16777215, 1.4);
-               Vfx.sparks(level, shot.getEntityPos(), V.glow(), 8, 0.3, 0.2);
+            this.lastSourceTick = this.dragon.tickCount;
+            if (this.reflectTicks > 0 && source.getDirectEntity() instanceof Projectile shot && !(shot instanceof DragonFireball)) {
+               this.reflected.add(new DragonRework.Reflect(shot, shot.getOwner(), shot.getDeltaMovement().length()));
+               Vfx.glint(level, shot.position(), 16777215, 1.4);
+               Vfx.sparks(level, shot.position(), V.glow(), 8, 0.3, 0.2);
                return false;
             }
 
-            boolean projectile = source.isIn(DamageTypeTags.IS_PROJECTILE) || attacker != null && source.getSource() != attacker;
+            boolean projectile = source.is(DamageTypeTags.IS_PROJECTILE) || attacker != null && source.getDirectEntity() != attacker;
             boolean head = part == this.dragon.head;
             float mult;
             if (grounded) {
@@ -2622,7 +2622,7 @@ public class DragonRework {
                };
             }
 
-            boolean bed = source.isOf(DamageTypes.BAD_RESPAWN_POINT);
+            boolean bed = source.is(DamageTypes.BAD_RESPAWN_POINT);
             if (bed) {
                mult *= 0.25F;
             }
@@ -2633,7 +2633,7 @@ public class DragonRework {
 
             float raw = f;
             float dmg = f * mult * 0.5F * this.multiplayer();
-            if (attacker instanceof ServerPlayerEntity sp) {
+            if (attacker instanceof ServerPlayer sp) {
                this.sense.threat.add(sp, raw * (projectile ? 1.5F : 1.0F));
                if (sp == this.carried) {
                   this.carriedOwn += raw;
@@ -2668,7 +2668,7 @@ public class DragonRework {
             }
 
             if (soaked > 0.0F) {
-               Vec3d at = part.getEntityPos().add(0.0, part.getHeight() * 0.5, 0.0);
+               Vec3 at = part.position().add(0.0, part.getBbHeight() * 0.5, 0.0);
                Vfx.glint(level, at, 16777215, 1.2);
                Vfx.shards(level, at, 14211288, 6, 0.3);
                if (this.aegis <= 0.0F && this.obsidian <= 0.0F) {
@@ -2687,11 +2687,11 @@ public class DragonRework {
                if (soaked <= 0.0F
                   && this.fightPhase == 0
                   && !this.hazards.crystals().isEmpty()
-                  && attacker instanceof ServerPlayerEntity sp
+                  && attacker instanceof ServerPlayer sp
                   && this.aegisMessage <= 0) {
                   this.aegisMessage = 40;
-                  sp.sendMessage(Text.translatableWithFallback("message.mysticalterrain.dragon.aegis", "The crystals shield the Sovereign"), true);
-                  Vfx.glint(level, part.getEntityPos(), 16777215, 1.0);
+                  sp.sendOverlayMessage(Component.translatableWithFallback("message.mysticalterrain.dragon.aegis", "The crystals shield the Sovereign"));
+                  Vfx.glint(level, part.position(), 16777215, 1.0);
                }
 
                return soaked > 0.0F;
@@ -2710,10 +2710,10 @@ public class DragonRework {
       }
    }
 
-   private void afterHurt(Phase phase) {
-      if (this.dragon.isDead() && !phase.isSittingOrHovering()) {
+   private void afterHurt(DragonPhaseInstance phase) {
+      if (this.dragon.isDeadOrDying() && !phase.isSitting()) {
          this.dragon.setHealth(1.0F);
-         this.dragon.getPhaseManager().setPhase(PhaseType.DYING);
+         this.dragon.getPhaseManager().setPhase(EnderDragonPhase.DYING);
       }
    }
 
@@ -2734,15 +2734,15 @@ public class DragonRework {
 
    private float poiseMult(DamageSource source, boolean head, boolean projectile) {
       float f = head ? 1.5F : 1.0F;
-      ItemStack weapon = source.getWeaponStack();
-      if (weapon == null || !weapon.isIn(ItemTags.AXES) && !weapon.isOf(Items.MACE)) {
-         if (source.getAttacker() instanceof PlayerEntity p
-            && source.getSource() == p
+      ItemStack weapon = source.getWeaponItem();
+      if (weapon == null || !weapon.is(ItemTags.AXES) && !weapon.is(Items.MACE)) {
+         if (source.getEntity() instanceof Player p
+            && source.getDirectEntity() == p
             && p.fallDistance > 0.0
-            && !p.isOnGround()
-            && !p.isClimbing()
-            && !p.isTouchingWater()
-            && !p.hasVehicle()
+            && !p.onGround()
+            && !p.onClimbable()
+            && !p.isInWater()
+            && !p.isPassenger()
             && !p.isSprinting()) {
             f *= 1.5F;
          }
@@ -2764,13 +2764,13 @@ public class DragonRework {
 
    private void tickReflections() {
       for (DragonRework.Reflect r : this.reflected) {
-         ProjectileEntity p = r.projectile();
+         Projectile p = r.projectile();
          if (!p.isRemoved() && r.owner() != null && r.owner().isAlive()) {
-            Vec3d to = r.owner().getEyePos().subtract(p.getEntityPos());
-            if (!(to.lengthSquared() < 1.0E-4)) {
+            Vec3 to = r.owner().getEyePosition().subtract(p.position());
+            if (!(to.lengthSqr() < 1.0E-4)) {
                p.setOwner(this.dragon);
-               p.setVelocity(to.normalize().multiply(Math.max(1.0, r.speed()) * 1.2));
-               p.knockedBack = true;
+               p.setDeltaMovement(to.normalize().scale(Math.max(1.0, r.speed()) * 1.2));
+               p.syncVelocity = true;
             }
          }
       }
@@ -2778,7 +2778,7 @@ public class DragonRework {
       this.reflected.clear();
    }
 
-   public void onCrystalDestroyed(ServerWorld level, EndCrystalEntity crystal, DamageSource source) {
+   public void onCrystalDestroyed(ServerLevel level, EndCrystal crystal, DamageSource source) {
       this.hazards.refreshCrystals(level);
       if (this.fightPhase == 0) {
          this.aegisCap = Math.max(0.0F, this.aegisCap - 12.0F);
@@ -2786,23 +2786,23 @@ public class DragonRework {
 
       if (this.aegis > 0.0F) {
          this.aegis = Math.max(0.0F, this.aegis - 12.0F);
-         Vec3d core = this.core();
+         Vec3 core = this.core();
          Vfx.shards(level, core, 16777215, 18, 0.6);
          Vfx.flare(level, core, 16777215, 4.0, 5);
-         Vfx.ring(level, this.dragon.getEntityPos(), V.glow(), 6.0, 12);
+         Vfx.ring(level, this.dragon.position(), V.glow(), 6.0, 12);
       }
 
-      if (source.getAttacker() instanceof ServerPlayerEntity p) {
+      if (source.getEntity() instanceof ServerPlayer p) {
          this.sense.threat.add(p, 20.0F);
       }
    }
 
-   public void beginSummon(Vec3d hoverAt) {
+   public void beginSummon(Vec3 hoverAt) {
       this.initialized = true;
-      this.dragon.getAttributeInstance(EntityAttributes.MAX_HEALTH).setBaseValue(800.0);
+      this.dragon.getAttribute(Attributes.MAX_HEALTH).setBaseValue(800.0);
       this.summonStartHealth = 1.0F;
       this.dragon.setHealth(1.0F);
-      this.dragon.getPhaseManager().setPhase(PhaseType.HOVER);
+      this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOVERING);
       this.fightPhase = 0;
       this.pendingPhase = -1;
       this.lastLight = false;
@@ -2811,37 +2811,37 @@ public class DragonRework {
       this.hoverAt = hoverAt;
    }
 
-   private void tickSummon(ServerWorld level) {
+   private void tickSummon(ServerLevel level) {
       float f = Math.min(1.0F, this.stateTicks / 160.0F);
-      this.dragon.setHealth(MathHelper.lerp(f, this.summonStartHealth, 800.0F));
+      this.dragon.setHealth(Mth.lerp(f, this.summonStartHealth, 800.0F));
       if (this.hoverAt == null) {
          this.hoverAt = this.portal.add(0.0, 28.0, 0.0);
       }
 
       double e = 1.0 - Math.pow(1.0F - f, 3.0);
-      Vec3d from = new Vec3d(this.hoverAt.x, this.hoverAt.y - 75.0, this.hoverAt.z);
-      Vec3d pos = from.lerp(this.hoverAt, e);
-      this.dragon.setPosition(pos.x, pos.y, pos.z);
-      this.dragon.setVelocity(Vec3d.ZERO);
-      Vec3d mid = this.dragon.getEntityPos().add(0.0, 2.0, 0.0);
+      Vec3 from = new Vec3(this.hoverAt.x, this.hoverAt.y - 75.0, this.hoverAt.z);
+      Vec3 pos = from.lerp(this.hoverAt, e);
+      this.dragon.setPos(pos.x, pos.y, pos.z);
+      this.dragon.setDeltaMovement(Vec3.ZERO);
+      Vec3 mid = this.dragon.position().add(0.0, 2.0, 0.0);
       if (this.stateTicks % 3 == 0) {
          Vfx.gather(level, mid, V, 9.0, 18);
          Vfx.trail(level, mid, V, 3.5);
       }
 
       if (this.stateTicks % 20 == 0) {
-         Vfx.ring(level, this.dragon.getEntityPos().add(0.0, -2.0, 0.0), V.glow(), 14.0, 22);
-         Vfx.shake(level, this.dragon.getEntityPos(), 72.0, 0.25 + 0.5 * f, 20);
+         Vfx.ring(level, this.dragon.position().add(0.0, -2.0, 0.0), V.glow(), 14.0, 22);
+         Vfx.shake(level, this.dragon.position(), 72.0, 0.25 + 0.5 * f, 20);
       }
 
       if (this.stateTicks % 4 == 0) {
-         level.spawnParticles(ParticleTypes.END_ROD, mid.x, mid.y, mid.z, 24, 4.0, 3.0, 4.0, 0.12);
-         Vfx.smoke(level, this.dragon.getEntityPos(), V.smoke(), 8, 3.0, 2.0);
+         level.sendParticles(ParticleTypes.END_ROD, mid.x, mid.y, mid.z, 24, 4.0, 3.0, 4.0, 0.12);
+         Vfx.smoke(level, this.dragon.position(), V.smoke(), 8, 3.0, 2.0);
       }
 
       if (this.stateTicks >= 160) {
          Vfx.explosion(level, mid, V, 7.0);
-         Vfx.screen(level, this.dragon.getEntityPos(), 96.0, 1.6, 30, V.glow(), 0.5F);
+         Vfx.screen(level, this.dragon.position(), 96.0, 1.6, 30, V.glow(), 0.5F);
          this.dragon.setHealth(800.0F);
          this.hazards.refreshCrystals(level);
          this.fightPhase = this.hazards.crystals().isEmpty() ? 1 : 0;
@@ -2849,14 +2849,14 @@ public class DragonRework {
          this.combatTicks = 0;
          this.poise = 160.0F;
          this.resetLanding();
-         this.dragon.getPhaseManager().setPhase(PhaseType.HOLDING_PATTERN);
+         this.dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
          this.begin(level, DragonMove.ROAR);
       }
    }
 
-   public void customDeath(ServerWorld level) {
-      this.dragon.ticksSinceDeath++;
-      int t = this.dragon.ticksSinceDeath;
+   public void customDeath(ServerLevel level) {
+      this.dragon.dragonDeathTime++;
+      int t = this.dragon.dragonDeathTime;
       if (t == 1) {
          this.interrupt(level);
          this.forced.clear();
@@ -2864,20 +2864,20 @@ public class DragonRework {
          this.thrown = null;
       }
 
-      EnderDragonFight deathFight = this.dragon.getFight();
+      EnderDragonFight deathFight = this.dragon.getDragonFight();
       if (deathFight != null) {
-         deathFight.updateFight(this.dragon);
+         deathFight.updateDragon(this.dragon);
       }
 
-      this.dragon.setVelocity(Vec3d.ZERO);
+      this.dragon.setDeltaMovement(Vec3.ZERO);
       if (t < 150) {
-         int ground = level.getTopY(Type.MOTION_BLOCKING, this.dragon.getBlockX(), this.dragon.getBlockZ());
+         int ground = level.getHeight(Types.MOTION_BLOCKING, this.dragon.getBlockX(), this.dragon.getBlockZ());
          if (this.dragon.getY() > ground + 6) {
-            this.dragon.setPosition(this.dragon.getX(), this.dragon.getY() - 0.06, this.dragon.getZ());
+            this.dragon.setPos(this.dragon.getX(), this.dragon.getY() - 0.06, this.dragon.getZ());
          }
       }
 
-      Vec3d c = this.dragon.getEntityPos().add(0.0, 2.0, 0.0);
+      Vec3 c = this.dragon.position().add(0.0, 2.0, 0.0);
       if (t == 1) {
          DragonFx.sound(level, c, "death", 10.0F, 1.0F);
       }
@@ -2897,23 +2897,23 @@ public class DragonRework {
       this.deathEffects(level);
       this.syncBar(level);
       if (t >= 200 && !this.dragon.isRemoved()) {
-         EnderDragonFight fight = this.dragon.getFight();
-         int xp = fight != null && !fight.hasPreviouslyKilled() ? 12000 : 500;
-         ExperienceOrbEntity.spawn(level, this.dragon.getEntityPos(), xp);
+         EnderDragonFight fight = this.dragon.getDragonFight();
+         int xp = fight != null && !fight.hasPreviouslyKilledDragon() ? 12000 : 500;
+         ExperienceOrb.award(level, this.dragon.position(), xp);
          if (fight != null) {
-            fight.dragonKilled(this.dragon);
+            fight.setDragonKilled(this.dragon);
          }
 
          this.dragon.remove(RemovalReason.KILLED);
-         this.dragon.emitGameEvent(GameEvent.ENTITY_DIE);
+         this.dragon.gameEvent(GameEvent.ENTITY_DIE);
       }
    }
 
-   private void deathEffects(ServerWorld level) {
-      int t = this.dragon.ticksSinceDeath;
-      Vec3d c = this.dragon.getEntityPos().add(0.0, 2.0, 0.0);
+   private void deathEffects(ServerLevel level) {
+      int t = this.dragon.dragonDeathTime;
+      Vec3 c = this.dragon.position().add(0.0, 2.0, 0.0);
       if (t % 6 == 0 && t < 178) {
-         Vec3d crack = c.add(
+         Vec3 crack = c.add(
             (this.dragon.getRandom().nextDouble() - 0.5) * 8.0,
             (this.dragon.getRandom().nextDouble() - 0.3) * 4.0,
             (this.dragon.getRandom().nextDouble() - 0.5) * 8.0
@@ -2933,35 +2933,35 @@ public class DragonRework {
 
       if (t == 178) {
          Vfx.explosion(level, c, V, 10.0);
-         Vfx.pillar(level, this.dragon.getEntityPos(), V, 60.0, 5.0);
+         Vfx.pillar(level, this.dragon.position(), V, 60.0, 5.0);
          Vfx.screen(level, c, 160.0, 2.0, 40, 16777215, 0.8F);
       }
    }
 
-   private @Nullable ServerBossBar bar() {
-      EnderDragonFight fight = this.dragon.getFight();
-      return fight == null ? null : ((EndDragonFightAccessor)fight).mysticalterrain$dragonEvent();
+   private @Nullable ServerBossEvent bar() {
+      EnderDragonFight fight = this.dragon.getDragonFight();
+      return fight == null ? null : ((EnderDragonFightAccessor)fight).mysticalterrain$dragonEvent();
    }
 
-   private void syncBar(ServerWorld level) {
-      ServerBossBar bar = this.bar();
+   private void syncBar(ServerLevel level) {
+      ServerBossEvent bar = this.bar();
       if (bar != null) {
          String cast = "";
          int castTick = 0;
          int castLength = 0;
          boolean telegraph = false;
          int s = this.state();
-         boolean dead = this.dragon.isDead();
+         boolean dead = this.dragon.isDeadOrDying();
          if (!dead) {
             switch (s) {
                case 0:
-                  PhaseType<?> vp = this.vanillaPhase();
-                  if (vp == PhaseType.SITTING_ATTACKING) {
+                  EnderDragonPhase<?> vp = this.vanillaPhase();
+                  if (vp == EnderDragonPhase.SITTING_ATTACKING) {
                      cast = DragonMove.PERCH_ROAR.anim;
                      castTick = Math.min(this.vanillaTicks, 40);
                      castLength = 40;
                      telegraph = this.vanillaTicks < 15;
-                  } else if (vp == PhaseType.SITTING_FLAMING) {
+                  } else if (vp == EnderDragonPhase.SITTING_FLAMING) {
                      cast = DragonMove.BREATH.anim;
                      castTick = Math.min(this.vanillaTicks, 200);
                      castLength = 200;
@@ -3014,7 +3014,7 @@ public class DragonRework {
                case 8:
                case 17:
                   cast = DragonMove.SHATTERDIVE.anim;
-                  castTick = this.dragon.age - this.shatterStart;
+                  castTick = this.dragon.tickCount - this.shatterStart;
                   castLength = Math.max(castTick + 1, this.shatterLength);
                   telegraph = s != 4;
             }
@@ -3039,9 +3039,9 @@ public class DragonRework {
 
          float shield = this.aegis + this.obsidian;
          float shieldMax = Math.max(this.aegisCap, this.aegis) + (this.obsidianTicks > 0 ? 48 : 0);
-         float poiseFrac = this.staggered ? 0.0F : MathHelper.clamp(this.poise / 160.0F, 0.0F, 1.0F);
+         float poiseFrac = this.staggered ? 0.0F : Mth.clamp(this.poise / 160.0F, 0.0F, 1.0F);
          BossStatePayload payload = new BossStatePayload(
-            bar.getUuid(),
+            bar.getId(),
             "ender_dragon",
             80,
             2.0F,
@@ -3060,12 +3060,12 @@ public class DragonRework {
          );
          UUID marked = null;
          if (this.sense.markTicks > 0 && this.sense.marked != null) {
-            marked = this.sense.marked.getUuid();
+            marked = this.sense.marked.getUUID();
          } else if (this.sense.engaged.size() >= 2 && this.sense.target != null) {
-            marked = this.sense.target.getUuid();
+            marked = this.sense.target.getUUID();
          }
 
-         this.sync.tick(this.dragon.age, bar, payload, marked);
+         this.sync.tick(this.dragon.tickCount, bar, payload, marked);
       }
    }
 
@@ -3078,12 +3078,12 @@ public class DragonRework {
             && this.dragon.getHealth() <= THRESHOLDS[0] * this.dragon.getMaxHealth() + 0.5F;
    }
 
-   private PhaseType<?> vanillaPhase() {
-      return this.dragon.getPhaseManager().getCurrent().getType();
+   private EnderDragonPhase<?> vanillaPhase() {
+      return this.dragon.getPhaseManager().getCurrentPhase().getPhase();
    }
 
-   private static boolean isSitting(PhaseType<?> p) {
-      return p == PhaseType.SITTING_SCANNING || p == PhaseType.SITTING_ATTACKING || p == PhaseType.SITTING_FLAMING;
+   private static boolean isSitting(EnderDragonPhase<?> p) {
+      return p == EnderDragonPhase.SITTING_SCANNING || p == EnderDragonPhase.SITTING_ATTACKING || p == EnderDragonPhase.SITTING_FLAMING;
    }
 
    private boolean perched() {
@@ -3092,37 +3092,37 @@ public class DragonRework {
 
    private void capTurn() {
       if (!Float.isNaN(this.lastYaw) && (this.perched() || this.grounded())) {
-         float yaw = MathHelper.stepUnwrappedAngleTowards(this.lastYaw, this.dragon.getYaw(), 4.0F);
-         if (yaw != this.dragon.getYaw()) {
-            this.dragon.setYaw(yaw);
-            this.dragon.bodyYaw = yaw;
+         float yaw = Mth.approachDegrees(this.lastYaw, this.dragon.getYRot(), 4.0F);
+         if (yaw != this.dragon.getYRot()) {
+            this.dragon.setYRot(yaw);
+            this.dragon.yBodyRot = yaw;
          }
       }
 
-      this.lastYaw = this.dragon.getYaw();
+      this.lastYaw = this.dragon.getYRot();
    }
 
-   private Vec3d fwd() {
-      return DragonFx.forward(this.dragon.getYaw());
+   private Vec3 fwd() {
+      return DragonFx.forward(this.dragon.getYRot());
    }
 
-   private Vec3d right() {
-      return DragonFx.right(this.dragon.getYaw());
+   private Vec3 right() {
+      return DragonFx.right(this.dragon.getYRot());
    }
 
-   private Vec3d at(double fwd, double up) {
-      return this.dragon.getEntityPos().add(this.fwd().multiply(fwd)).add(0.0, up, 0.0);
+   private Vec3 at(double fwd, double up) {
+      return this.dragon.position().add(this.fwd().scale(fwd)).add(0.0, up, 0.0);
    }
 
-   private Vec3d mouth() {
+   private Vec3 mouth() {
       return DragonPose.mouth(this.dragon, 1.0F);
    }
 
-   private Vec3d jaw(double[][] track, int t) {
+   private Vec3 jaw(double[][] track, int t) {
       return this.jawAt(track, (t - 2) / 20.0);
    }
 
-   private Vec3d jawAt(double[][] track, double s) {
+   private Vec3 jawAt(double[][] track, double s) {
       int i = 1;
 
       while (i < track.length - 1 && track[i][0] < s) {
@@ -3131,67 +3131,68 @@ public class DragonRework {
 
       double[] a = track[i - 1];
       double[] b = track[i];
-      double u = MathHelper.clamp((s - a[0]) / (b[0] - a[0]), 0.0, 1.0);
-      return this.at(MathHelper.lerp(u, a[1], b[1]), MathHelper.lerp(u, a[2], b[2])).add(this.right().multiply(MathHelper.lerp(u, a[3], b[3])));
+      double u = Mth.clamp((s - a[0]) / (b[0] - a[0]), 0.0, 1.0);
+      return this.at(Mth.lerp(u, a[1], b[1]), Mth.lerp(u, a[2], b[2])).add(this.right().scale(Mth.lerp(u, a[3], b[3])));
    }
 
-   private Vec3d core() {
+   private Vec3 core() {
       return this.at(1.1, 2.0);
    }
 
-   private Vec3d grabPoint() {
+   private Vec3 grabPoint() {
       return this.at(-1.0, 1.0);
    }
 
-   private Vec3d talonPoint() {
+   private Vec3 talonPoint() {
       return this.at(TALON_STRIKE[0], TALON_STRIKE[1]);
    }
 
-   private Vec3d carryPoint() {
+   private Vec3 carryPoint() {
       return this.at(-3.2, 0.2);
    }
 
-   private Vec3d hips() {
-      return this.dragon.getEntityPos().add(this.fwd().multiply(-2.0));
+   private Vec3 hips() {
+      return this.dragon.position().add(this.fwd().scale(-2.0));
    }
 
-   private Vec3d chest() {
-      return this.dragon.getEntityPos().add(this.fwd().multiply(2.0)).add(0.0, 2.0, 0.0);
+   private Vec3 chest() {
+      return this.dragon.position().add(this.fwd().scale(2.0)).add(0.0, 2.0, 0.0);
    }
 
-   private Vec3d claw() {
-      return this.at(1.5, 0.0).add(this.right().multiply(0.85));
+   private Vec3 claw() {
+      return this.at(1.5, 0.0).add(this.right().scale(0.85));
    }
 
-   private Vec3d headGround(ServerWorld level) {
+   private Vec3 headGround(ServerLevel level) {
       return this.dropped(level, this.mouth());
    }
 
-   private Vec3d dropped(ServerWorld level, Vec3d p) {
-      Vec3d g = DragonFx.groundBelow(level, p);
-      return g != null ? g : new Vec3d(p.x, this.dragon.getY(), p.z);
+   private Vec3 dropped(ServerLevel level, Vec3 p) {
+      Vec3 g = DragonFx.groundBelow(level, p);
+      return g != null ? g : new Vec3(p.x, this.dragon.getY(), p.z);
    }
 
-   static Vec3d predict(ServerPlayerEntity p, double ticks) {
-      Vec3d v = p.getMovement();
-      Vec3d lead = new Vec3d(v.x, 0.0, v.z).multiply(ticks);
+   static Vec3 predict(ServerPlayer p, double ticks) {
+      Vec3 v = p.getKnownMovement();
+      Vec3 lead = new Vec3(v.x, 0.0, v.z).scale(ticks);
       if (lead.length() > 10.0) {
-         lead = lead.normalize().multiply(10.0);
+         lead = lead.normalize().scale(10.0);
       }
 
-      return p.getEntityPos().add(lead);
+      return p.position().add(lead);
    }
 
-   private Vec3d portalTop(ServerWorld level) {
-      BlockPos pos = level.getTopPosition(Type.MOTION_BLOCKING_NO_LEAVES, EndPortalFeature.offsetOrigin(this.dragon.getFightOrigin()));
-      return Vec3d.ofBottomCenter(pos);
+   private Vec3 portalTop(ServerLevel level) {
+      BlockPos origin = this.dragon.getFightOrigin();
+      BlockPos pos = level.getHeightmapPos(Types.MOTION_BLOCKING_NO_LEAVES, origin != null ? origin : BlockPos.ZERO);
+      return Vec3.atBottomCenterOf(pos);
    }
 
-   public List<Spike> emptySpikes(ServerWorld level) {
+   public List<EndSpike> emptySpikes(ServerLevel level) {
       return DragonFx.emptySpikes(level);
    }
 
-   public void forceMove(ServerWorld level, int stateId) {
+   public void forceMove(ServerLevel level, int stateId) {
       switch (stateId) {
          case 0:
             if (!this.blocked() && !this.dying()) {
@@ -3230,22 +3231,22 @@ public class DragonRework {
       }
    }
 
-   public void forceMove(ServerWorld level, String anim) {
+   public void forceMove(ServerLevel level, String anim) {
       DragonMove m = DragonMove.byAnim(anim);
       if (m != null && m.pickable() && !this.blocked() && !this.dying() && !this.grounded()) {
          this.interrupt(level);
-         if (this.portal == Vec3d.ZERO) {
+         if (this.portal == Vec3.ZERO) {
             this.portal = this.portalTop(level);
          }
 
-         ServerPlayerEntity t = this.sense.target();
+         ServerPlayer t = this.sense.target();
          if (t == null) {
-            List<ServerPlayerEntity> near = DragonFx.players(level, this.dragon.getEntityPos(), 160.0);
+            List<ServerPlayer> near = DragonFx.players(level, this.dragon.position(), 160.0);
             t = near.isEmpty() ? null : near.get(0);
          }
 
          if (m.where == DragonMove.Where.PERCH && !this.perched()) {
-            this.dragon.getPhaseManager().setPhase(PhaseType.SITTING_SCANNING);
+            this.dragon.getPhaseManager().setPhase(EnderDragonPhase.SITTING_SCANNING);
             this.takeoffAfter = true;
          }
 
@@ -3253,7 +3254,7 @@ public class DragonRework {
       }
    }
 
-   public void save(WriteView output) {
+   public void save(ValueOutput output) {
       output.putBoolean("MTInit", this.initialized);
       output.putInt("MTFightPhase", this.fightPhase);
       output.putInt("MTPendingPhase", this.pendingPhase);
@@ -3268,30 +3269,30 @@ public class DragonRework {
       output.putFloat("MTSummonFrom", this.summonStartHealth);
    }
 
-   public void load(ReadView input) {
-      this.initialized = input.getBoolean("MTInit", false);
-      this.fightPhase = MathHelper.clamp(input.getInt("MTFightPhase", 0), 0, 3);
-      this.pendingPhase = input.getInt("MTPendingPhase", -1);
+   public void load(ValueInput input) {
+      this.initialized = input.getBooleanOr("MTInit", false);
+      this.fightPhase = Mth.clamp(input.getIntOr("MTFightPhase", 0), 0, 3);
+      this.pendingPhase = input.getIntOr("MTPendingPhase", -1);
       this.transitioning = false;
-      this.aegis = input.getFloat("MTAegis", 0.0F);
-      this.aegisCap = input.getFloat("MTAegisCap", 0.0F);
-      this.poise = input.getFloat("MTPoise", 160.0F);
-      this.poiseImmune = input.getInt("MTPoiseImmune", 0);
-      this.combatTicks = input.getInt("MTCombat", 0);
-      this.lastLight = input.getBoolean("MTLastLight", false);
-      this.landingTimer = input.getInt("MTLanding", 900);
-      this.summonStartHealth = input.getFloat("MTSummonFrom", 1.0F);
+      this.aegis = input.getFloatOr("MTAegis", 0.0F);
+      this.aegisCap = input.getFloatOr("MTAegisCap", 0.0F);
+      this.poise = input.getFloatOr("MTPoise", 160.0F);
+      this.poiseImmune = input.getIntOr("MTPoiseImmune", 0);
+      this.combatTicks = input.getIntOr("MTCombat", 0);
+      this.lastLight = input.getBooleanOr("MTLastLight", false);
+      this.landingTimer = input.getIntOr("MTLanding", 900);
+      this.summonStartHealth = input.getFloatOr("MTSummonFrom", 1.0F);
       if (this.fightPhase >= 3 || this.combatTicks >= 18000) {
          this.hazards.startEdge();
       }
 
-      int summon = input.getInt("MTSummon", 0);
+      int summon = input.getIntOr("MTSummon", 0);
       if (summon > 0) {
          this.setState(1);
          this.stateTicks = summon;
       }
    }
 
-   private record Reflect(ProjectileEntity projectile, @Nullable Entity owner, double speed) {
+   private record Reflect(Projectile projectile, @Nullable Entity owner, double speed) {
    }
 }

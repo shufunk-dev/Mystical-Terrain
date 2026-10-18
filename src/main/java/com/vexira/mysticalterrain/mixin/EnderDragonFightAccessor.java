@@ -1,19 +1,19 @@
 package com.vexira.mysticalterrain.mixin;
 
-import net.minecraft.entity.boss.ServerBossBar;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonFight;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.level.dimension.end.EnderDragonFight;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
 @Mixin(EnderDragonFight.class)
-public interface EndDragonFightAccessor {
-   @Invoker("createDragon")
-   EnderDragonEntity mysticalterrain$createNewDragon();
+public interface EnderDragonFightAccessor {
+   @Invoker("createNewDragon")
+   EnderDragon mysticalterrain$createNewDragon();
 
-   @Invoker("generateEndPortal")
+   @Invoker("spawnExitPortal")
    void mysticalterrain$spawnExitPortal(boolean var1);
 
    @Accessor("dragonKilled")
@@ -22,12 +22,12 @@ public interface EndDragonFightAccessor {
    @Accessor("dragonKilled")
    void mysticalterrain$setDragonKilled(boolean var1);
 
-   @Accessor("exitPortalLocation")
+   @Accessor("portalLocation")
    BlockPos mysticalterrain$portalLocation();
 
    @Accessor("origin")
    BlockPos mysticalterrain$origin();
 
-   @Accessor("bossBar")
-   ServerBossBar mysticalterrain$dragonEvent();
+   @Accessor("dragonEvent")
+   ServerBossEvent mysticalterrain$dragonEvent();
 }

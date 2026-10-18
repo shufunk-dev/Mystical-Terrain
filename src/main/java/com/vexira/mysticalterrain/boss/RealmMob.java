@@ -1,21 +1,21 @@
 package com.vexira.mysticalterrain.boss;
 
 import java.util.List;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.boss.BossBar.Color;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.world.World;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.world.BossEvent.BossBarColor;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.level.Level;
 import org.jspecify.annotations.Nullable;
 
 public class RealmMob extends MysticalBoss {
    private static final float[] NO_PHASES = new float[0];
 
-   public RealmMob(EntityType<? extends HostileEntity> type, World level) {
-      super(type, level, RealmMobs.idOf(type), Color.WHITE);
+   public RealmMob(EntityType<? extends Monster> type, Level level) {
+      super(type, level, RealmMobs.idOf(type), BossBarColor.WHITE);
    }
 
    private RealmMobs.Kind kind() {
@@ -70,21 +70,21 @@ public class RealmMob extends MysticalBoss {
    @Override
    protected String moveAnim() {
       LivingEntity target = this.getTarget();
-      return this.kind().runs() && target != null && this.squaredDistanceTo(target) > 25.0 ? "run" : "walk";
+      return this.kind().runs() && target != null && this.distanceToSqr(target) > 25.0 ? "run" : "walk";
    }
 
    @Override
-   protected void onDeathTick(ServerWorld level, int tick) {
+   protected void onDeathTick(ServerLevel level, int tick) {
       if (tick == this.deathTicks() - 1) {
-         level.spawnParticles(
+         level.sendParticles(
             this.kind().deathParticle(),
             this.getX(),
-            this.getY() + this.getHeight() / 2.0F,
+            this.getY() + this.getBbHeight() / 2.0F,
             this.getZ(),
             16,
-            this.getWidth() / 2.0F,
-            this.getHeight() / 3.0F,
-            this.getWidth() / 2.0F,
+            this.getBbWidth() / 2.0F,
+            this.getBbHeight() / 3.0F,
+            this.getBbWidth() / 2.0F,
             0.02
          );
       }

@@ -1,13 +1,13 @@
 package com.vexira.mysticalterrain.boss.dragon;
 
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonFrameTracker;
-import net.minecraft.entity.boss.dragon.EnderDragonFrameTracker.Frame;
-import net.minecraft.entity.boss.dragon.phase.Phase;
-import net.minecraft.entity.boss.dragon.phase.PhaseType;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.Heightmap.Type;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.boss.enderdragon.DragonFlightHistory;
+import net.minecraft.world.entity.boss.enderdragon.DragonFlightHistory.Sample;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
+import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
+import net.minecraft.world.level.levelgen.Heightmap.Types;
+import net.minecraft.world.phys.Vec3;
 
 public final class DragonPose {
    public static final int NECK = 5;
@@ -43,7 +43,7 @@ public final class DragonPose {
    private DragonPose() {
    }
 
-   private static int state(EnderDragonEntity dragon) {
+   private static int state(EnderDragon dragon) {
       return ((DragonReworkHolder)dragon).mysticalterrain$state() & 0xFF;
    }
 
@@ -54,38 +54,38 @@ public final class DragonPose {
       };
    }
 
-   public static float[] pose(EnderDragonEntity dragon, float partialTick) {
-      Phase phase = dragon.getPhaseManager().getCurrent();
-      PhaseType<?> type = phase.getType();
+   public static float[] pose(EnderDragon dragon, float partialTick) {
+      DragonPhaseInstance phase = dragon.getPhaseManager().getCurrentPhase();
+      EnderDragonPhase<?> type = phase.getPhase();
       int state = state(dragon);
-      boolean dying = dragon.isDead();
-      boolean flat = phase.isSittingOrHovering() || clipAttitude(state);
-      boolean landing = type == PhaseType.LANDING || type == PhaseType.TAKEOFF;
-      float[] out = bends(dragon.frameTracker, dying ? 0.0F : partialTick, flat, landing);
+      boolean dying = dragon.isDeadOrDying();
+      boolean flat = phase.isSitting() || clipAttitude(state);
+      boolean landing = type == EnderDragonPhase.LANDING || type == EnderDragonPhase.TAKEOFF;
+      float[] out = bends(dragon.flightHistory, dying ? 0.0F : partialTick, flat, landing);
       if (!flat) {
-         guard(dragon, out, dragon.getLerpedPos(partialTick), low(state, dying));
+         guard(dragon, out, dragon.getPosition(partialTick), low(state, dying));
       }
 
       return out;
    }
 
-   public static Vec3d mouth(EnderDragonEntity dragon, float partialTick) {
+   public static Vec3 mouth(EnderDragon dragon, float partialTick) {
       float[] out = pose(dragon, partialTick);
       double[] jaw = jaw(dragon, state(dragon));
-      return world(out, dragon.getLerpedPos(partialTick), jaw[0], jaw[1], jaw[2], 1.0F);
+      return world(out, dragon.getPosition(partialTick), jaw[0], jaw[1], jaw[2], 1.0F);
    }
 
-   private static double[] jaw(EnderDragonEntity dragon, int state) {
-      PhaseType<?> p = dragon.getPhaseManager().getCurrent().getType();
+   private static double[] jaw(EnderDragon dragon, int state) {
+      EnderDragonPhase<?> p = dragon.getPhaseManager().getCurrentPhase().getPhase();
 
       return switch (state) {
          case 7, 24, 25, 26 -> JAW_GROUNDED;
-         default -> p == PhaseType.LANDING || p == PhaseType.TAKEOFF
+         default -> p == EnderDragonPhase.LANDING || p == EnderDragonPhase.TAKEOFF
             ? JAW_LAND
             : (
-               p == PhaseType.HOVER
+               p == EnderDragonPhase.HOVERING
                   ? JAW_HOVER
-                  : (p != PhaseType.SITTING_SCANNING && p != PhaseType.SITTING_ATTACKING && p != PhaseType.SITTING_FLAMING ? JAW_FLY : JAW_PERCH)
+                  : (p != EnderDragonPhase.SITTING_SCANNING && p != EnderDragonPhase.SITTING_ATTACKING && p != EnderDragonPhase.SITTING_FLAMING ? JAW_FLY : JAW_PERCH)
             );
          case 9 -> JAW_SPIT;
          case 10 -> JAW_STRAFE;
@@ -105,40 +105,40 @@ public final class DragonPose {
       };
    }
 
-   private static float[] bends(EnderDragonFrameTracker history, float pt, boolean flat, boolean landing) {
+   private static float[] bends(DragonFlightHistory history, float pt, boolean flat, boolean landing) {
       float[] out = new float[39];
-      Frame h5 = history.getLerpedFrame(5, pt);
-      Frame h6 = history.getLerpedFrame(6, pt);
-      Frame h10 = history.getLerpedFrame(10, pt);
-      out[0] = history.getLerpedFrame(7, pt).yRot();
-      out[1] = flat ? 0.0F : MathHelper.clamp((float)(h5.y() - h10.y()) * 10.0F, -45.0F, 45.0F);
-      out[2] = -MathHelper.wrapDegrees(h5.yRot() - h10.yRot()) * 1.5F;
+      Sample h5 = history.get(5, pt);
+      Sample h6 = history.get(6, pt);
+      Sample h10 = history.get(10, pt);
+      out[0] = history.get(7, pt).yRot();
+      out[1] = flat ? 0.0F : Mth.clamp((float)(h5.y() - h10.y()) * 10.0F, -45.0F, 45.0F);
+      out[2] = -Mth.wrapDegrees(h5.yRot() - h10.yRot()) * 1.5F;
 
       for (int n = 0; n < 5; n++) {
-         Frame s = history.getLerpedFrame(5 - n, pt);
-         out[3 + n] = MathHelper.wrapDegrees(s.yRot() - h6.yRot()) * 1.5F;
-         out[8 + n] = !flat && !landing ? MathHelper.clamp((float)(s.y() - h6.y()) * 1.5F * 5.0F, -50.0F, 50.0F) : 0.0F;
+         Sample s = history.get(5 - n, pt);
+         out[3 + n] = Mth.wrapDegrees(s.yRot() - h6.yRot()) * 1.5F;
+         out[8 + n] = !flat && !landing ? Mth.clamp((float)(s.y() - h6.y()) * 1.5F * 5.0F, -50.0F, 50.0F) : 0.0F;
       }
 
-      out[13] = MathHelper.wrapDegrees(history.getLerpedFrame(0, pt).yRot() - h6.yRot());
+      out[13] = Mth.wrapDegrees(history.get(0, pt).yRot() - h6.yRot());
       out[14] = 0.0F;
-      Frame h11 = history.getLerpedFrame(11, pt);
+      Sample h11 = history.get(11, pt);
 
       for (int q = 0; q < 12; q++) {
-         Frame s = history.getLerpedFrame(12 + q, pt);
-         out[15 + q] = MathHelper.wrapDegrees(s.yRot() - h11.yRot()) * 1.5F;
-         out[27 + q] = flat ? 0.0F : MathHelper.clamp((float)(s.y() - h11.y()) * 1.5F * 5.0F, -50.0F, 50.0F);
+         Sample s = history.get(12 + q, pt);
+         out[15 + q] = Mth.wrapDegrees(s.yRot() - h11.yRot()) * 1.5F;
+         out[27 + q] = flat ? 0.0F : Mth.clamp((float)(s.y() - h11.y()) * 1.5F * 5.0F, -50.0F, 50.0F);
       }
 
       return out;
    }
 
-   private static void guard(EnderDragonEntity dragon, float[] out, Vec3d pos, double[] low) {
+   private static void guard(EnderDragon dragon, float[] out, Vec3 pos, double[] low) {
       if (droops(out)) {
          for (int i = 4; i > 0; i--) {
             float s = i / 4.0F;
-            Vec3d p = world(out, pos, low[0], low[1], 0.0, s);
-            int ground = dragon.getEntityWorld().getTopY(Type.MOTION_BLOCKING, MathHelper.floor(p.x), MathHelper.floor(p.z));
+            Vec3 p = world(out, pos, low[0], low[1], 0.0, s);
+            int ground = dragon.level().getHeight(Types.MOTION_BLOCKING, Mth.floor(p.x), Mth.floor(p.z));
             if (ground > pos.y + 1.0 || p.y >= ground + 0.6) {
                droop(out, s);
                return;
@@ -175,7 +175,7 @@ public final class DragonPose {
       return pitch < 0.0F ? pitch * s : pitch;
    }
 
-   private static Vec3d world(float[] out, Vec3d pos, double ahead, double up, double right, float s) {
+   private static Vec3 world(float[] out, Vec3 pos, double ahead, double up, double right, float s) {
       double a = ahead;
       double u = up;
       double r = right;
@@ -195,8 +195,8 @@ public final class DragonPose {
       double b = Math.toRadians(nose(out[1], s));
       double fa = a * Math.cos(b) - u * Math.sin(b);
       double fu = a * Math.sin(b) + u * Math.cos(b);
-      Vec3d f = DragonFx.forward(out[0]);
-      Vec3d rt = DragonFx.right(out[0]);
+      Vec3 f = DragonFx.forward(out[0]);
+      Vec3 rt = DragonFx.right(out[0]);
       return pos.add(f.x * fa + rt.x * r, fu, f.z * fa + rt.z * r);
    }
 }

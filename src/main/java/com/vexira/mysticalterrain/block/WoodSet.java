@@ -1,7 +1,7 @@
 package com.vexira.mysticalterrain.block;
 
 import java.util.List;
-import net.minecraft.block.Block;
+import net.minecraft.world.level.block.Block;
 
 public record WoodSet(
    Block log,

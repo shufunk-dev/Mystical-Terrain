@@ -7,15 +7,15 @@ import com.vexira.mysticalterrain.client.boss.bar.BarStyle;
 import com.vexira.mysticalterrain.client.boss.bar.BarText;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gl.RenderPipelines;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.hud.ClientBossBar;
-import net.minecraft.text.TranslatableTextContent;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.ColorHelper;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.LerpingBossEvent;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
+import net.minecraft.util.Mth;
 import org.joml.Matrix3x2fStack;
 import org.jspecify.annotations.Nullable;
 
@@ -79,15 +79,15 @@ public final class BossBarRenderer {
    private BossBarRenderer() {
    }
 
-   public static boolean isStyled(ClientBossBar event) {
-      return BossBarState.state(event.getUuid()) != null || keyStyle(event) != null;
+   public static boolean isStyled(LerpingBossEvent event) {
+      return BossBarState.state(event.getId()) != null || keyStyle(event) != null;
    }
 
-   private static @Nullable BarStyle keyStyle(ClientBossBar event) {
-      return event.getName().getContent() instanceof TranslatableTextContent t ? BarStyle.byKey(t.getKey()) : null;
+   private static @Nullable BarStyle keyStyle(LerpingBossEvent event) {
+      return event.getName().getContents() instanceof TranslatableContents t ? BarStyle.byKey(t.getKey()) : null;
    }
 
-   private static BarStyle style(ClientBossBar event, @Nullable BossStatePayload st) {
+   private static BarStyle style(LerpingBossEvent event, @Nullable BossStatePayload st) {
       if (st != null) {
          return BarStyle.byId(st.boss());
       }
@@ -120,19 +120,19 @@ public final class BossBarRenderer {
       return phase;
    }
 
-   public static int draw(DrawContext g, ClientBossBar event, int y, boolean compact) {
-      MinecraftClient mc = MinecraftClient.getInstance();
-      BarAnim a = BossBarState.bar(event.getUuid());
+   public static int draw(GuiGraphicsExtractor g, LerpingBossEvent event, int y, boolean compact) {
+      Minecraft mc = Minecraft.getInstance();
+      BarAnim a = BossBarState.bar(event.getId());
       BossStatePayload st = a.state;
       BarStyle style = style(event, st);
       float now = BossBarState.now();
-      float progress = MathHelper.clamp(event.getPercent(), 0.0F, 1.0F);
+      float progress = Mth.clamp(event.getProgress(), 0.0F, 1.0F);
       a.frame(now, progress, phase(st, style, progress), style);
       int w = compact ? 416 : 512;
       int h = compact ? 50 : fullHeight(a);
-      float s = 0.5F * Math.min(1.0F, (g.getScaledWindowWidth() - 8) / (w * 0.5F));
-      int x = Math.round((g.getScaledWindowWidth() - w * s) / 2.0F);
-      Matrix3x2fStack pose = g.getMatrices();
+      float s = 0.5F * Math.min(1.0F, (g.guiWidth() - 8) / (w * 0.5F));
+      int x = Math.round((g.guiWidth() - w * s) / 2.0F);
+      Matrix3x2fStack pose = g.pose();
       pose.pushMatrix();
       pose.translate(x, y);
       pose.scale(s, s);
@@ -143,16 +143,16 @@ public final class BossBarRenderer {
       }
 
       if (compact) {
-         drawCompact(g, mc.textRenderer, event, a, st, style, now);
+         drawCompact(g, mc.font, event, a, st, style, now);
       } else {
-         drawFull(g, mc.textRenderer, event, a, st, style, now, h);
+         drawFull(g, mc.font, event, a, st, style, now, h);
       }
 
       if (open < 1.0F) {
          g.disableScissor();
          int top = compact ? 18 : 42;
          int bottom = compact ? 42 : 86;
-         int seam = ColorHelper.withAlpha(1.0F - open, style.mono ? -1 : ColorHelper.lerp(0.5F, style.accent, -1));
+         int seam = ARGB.color(1.0F - open, style.mono ? -1 : ARGB.srgbLerp(0.5F, style.accent, -1));
          g.fill(w / 2 - half - 3, top, w / 2 - half + 1, bottom, seam);
          g.fill(w / 2 + half - 1, top, w / 2 + half + 3, bottom, seam);
       }
@@ -167,7 +167,7 @@ public final class BossBarRenderer {
    }
 
    private static void drawFull(
-      DrawContext g, TextRenderer font, ClientBossBar event, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now, int h
+      GuiGraphicsExtractor g, Font font, LerpingBossEvent event, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now, int h
    ) {
       int flags = st != null ? st.flags() : 0;
       stretch(g, ATLAS, -24, -8, 560, h + 16, 336, 88, 64, 32, -1);
@@ -175,8 +175,8 @@ public final class BossBarRenderer {
       track(g, a, st, style, now, 80, 56, 400, 20, false);
       trackText(g, font, a, st, style);
       if ((flags & 1) != 0) {
-         float p = 0.55F + 0.45F * MathHelper.sin(now * 0.3F);
-         stretch(g, ATLAS, -20, 4, 124, 124, 80, 0, 48, 48, ColorHelper.withAlpha(0.85F * p, style.tint(16732208)));
+         float p = 0.55F + 0.45F * Mth.sin(now * 0.3F);
+         stretch(g, ATLAS, -20, 4, 124, 124, 80, 0, 48, 48, ARGB.color(0.85F * p, style.tint(16732208)));
       }
 
       sprite(g, style.sheet, 2, 26, 416, 64, 80, 80, -1);
@@ -191,7 +191,7 @@ public final class BossBarRenderer {
    }
 
    private static void header(
-      DrawContext g, TextRenderer font, ClientBossBar event, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now, int flags
+      GuiGraphicsExtractor g, Font font, LerpingBossEvent event, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now, int flags
    ) {
       int count = thresholdCount(st, style) + 1;
       int pipsLeft = 468;
@@ -204,8 +204,8 @@ public final class BossBarRenderer {
          for (int i = 0; i < n; i++) {
             int px = pipsLeft + i * 22;
             if (i == current) {
-               float p = 0.6F + 0.4F * MathHelper.sin(now * 0.2F);
-               stretch(g, ATLAS, px - 9, -5, 36, 36, 80, 0, 48, 48, ColorHelper.withAlpha(0.8F * p, style.accent));
+               float p = 0.6F + 0.4F * Mth.sin(now * 0.2F);
+               stretch(g, ATLAS, px - 9, -5, 36, 36, 80, 0, 48, 48, ARGB.color(0.8F * p, style.accent));
             }
 
             sprite(g, style.sheet, px, 4, i <= phase ? 440 : 458, 168, 18, 18, -1);
@@ -229,7 +229,7 @@ public final class BossBarRenderer {
       }
    }
 
-   private static int chips(DrawContext g, TextRenderer font, BarStyle style, float now, int flags) {
+   private static int chips(GuiGraphicsExtractor g, Font font, BarStyle style, float now, int flags) {
       BarText.Line[] labels = new BarText.Line[3];
       if ((flags & 2) != 0) {
          labels[0] = BarText.ui("gui.mysticalterrain.bossbar.invulnerable", "INVULNERABLE");
@@ -257,7 +257,7 @@ public final class BossBarRenderer {
       }
 
       if (labels[1] != null) {
-         float p = 0.65F + 0.35F * MathHelper.sin(now * 0.5F);
+         float p = 0.65F + 0.35F * Mth.sin(now * 0.5F);
          x = chip(g, font, x, 1, chipLabel(labels, 1, dropped), style.tint(16748608), p);
       }
 
@@ -300,22 +300,22 @@ public final class BossBarRenderer {
       return label != null ? 26 + label.width() * 2 + 6 : 28;
    }
 
-   private static int chip(DrawContext g, TextRenderer font, int right, int icon, BarText.@Nullable Line label, int color, float alpha) {
+   private static int chip(GuiGraphicsExtractor g, Font font, int right, int icon, BarText.@Nullable Line label, int color, float alpha) {
       int w = chipWidth(label);
       int x = right - w;
-      int plate = ColorHelper.withAlpha(alpha, color);
+      int plate = ARGB.color(alpha, color);
       sprite(g, ATLAS, x, 24, 240, 0, 6, 20, plate);
       stretch(g, ATLAS, x + 6, 24, w - 12, 20, 246, 0, 4, 20, plate);
       sprite(g, ATLAS, x + w - 6, 24, 250, 0, 6, 20, plate);
       sprite(g, ATLAS, label != null ? x + 5 : x + 6, 26, 128 + icon * 16, 0, 16, 16, plate);
       if (label != null) {
-         text(g, font, label, x + 24, 26, ColorHelper.withAlpha(alpha, ColorHelper.lerp(0.6F, color, -1)), 1.0F, true);
+         text(g, font, label, x + 24, 26, ARGB.color(alpha, ARGB.srgbLerp(0.6F, color, -1)), 1.0F, true);
       }
 
       return x - 4;
    }
 
-   private static void trackText(DrawContext g, TextRenderer font, BarAnim a, @Nullable BossStatePayload st, BarStyle style) {
+   private static void trackText(GuiGraphicsExtractor g, Font font, BarAnim a, @Nullable BossStatePayload st, BarStyle style) {
       int y = 58;
       BarText.Line pct = a.percent(a.target);
       outlined(g, font, pct, 472 - pct.width() * 2, y, -1, -805306368, 1.0F);
@@ -328,12 +328,12 @@ public final class BossBarRenderer {
             int ward = style.tint(10479359);
             BarText.Line value = a.ward(Math.round(st.shield() * scale));
             sprite(g, ATLAS, 84, 58, 224, 0, 16, 16, ward);
-            outlined(g, font, value, 102, y, ColorHelper.lerp(0.5F, ward, -1), -805306368, 1.0F);
+            outlined(g, font, value, 102, y, ARGB.srgbLerp(0.5F, ward, -1), -805306368, 1.0F);
          }
       }
    }
 
-   private static void poise(DrawContext g, TextRenderer font, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now) {
+   private static void poise(GuiGraphicsExtractor g, Font font, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now) {
       if (!(a.poiseShown < 0.0F) && st != null) {
          sprite(g, ATLAS, 132, 86, 0, 68, 296, 12, -1);
          boolean broken = st.staggered();
@@ -342,14 +342,14 @@ public final class BossBarRenderer {
             color = -1;
          }
 
-         int pw = Math.round(MathHelper.clamp(a.poiseShown, 0.0F, 1.0F) * 288.0F);
+         int pw = Math.round(Mth.clamp(a.poiseShown, 0.0F, 1.0F) * 288.0F);
          if (pw > 0) {
             sprite(g, ATLAS, 136, 89, 0, 80, pw, 6, color);
          }
 
          float flash = 1.0F - (now - a.staggerAt) / 12.0F;
          if (flash > 0.0F) {
-            g.fill(134, 87, 426, 97, ColorHelper.getWhite(0.85F * flash));
+            g.fill(134, 87, 426, 97, ARGB.white(0.85F * flash));
          }
 
          if (broken) {
@@ -362,35 +362,35 @@ public final class BossBarRenderer {
       }
    }
 
-   private static void cast(DrawContext g, TextRenderer font, BarAnim a, BarStyle style, float now, int flags) {
+   private static void cast(GuiGraphicsExtractor g, Font font, BarAnim a, BarStyle style, float now, int flags) {
       BarText.Line name = a.castName;
       float al = a.castAlpha;
       if (!(al <= 0.01F) && name != null) {
          int y = a.poiseShown >= 0.0F ? 102 : 88;
-         sprite(g, ATLAS, 112, y, 0, 88, 336, 28, ColorHelper.getWhite(al));
+         sprite(g, ATLAS, 112, y, 0, 88, 336, 28, ARGB.white(al));
          int fw = Math.round(a.castProgress * 300.0F);
-         int tint = style.mono ? -1 : ColorHelper.lerp(0.35F, style.accent, -1);
+         int tint = style.mono ? -1 : ARGB.srgbLerp(0.35F, style.accent, -1);
          if (fw > 0) {
-            sprite(g, ATLAS, 140, y + 6, 0, 116, fw, 16, ColorHelper.withAlpha(al, tint));
+            sprite(g, ATLAS, 140, y + 6, 0, 116, fw, 16, ARGB.color(al, tint));
             if (fw < 300) {
-               g.fill(140 + Math.max(0, fw - 2), y + 6, 140 + fw, y + 22, ColorHelper.getWhite(0.9F * al));
+               g.fill(140 + Math.max(0, fw - 2), y + 6, 140 + fw, y + 22, ARGB.white(0.9F * al));
             }
          }
 
          boolean telegraph = (flags & 16) != 0;
          if (telegraph) {
-            float p = 0.5F + 0.5F * MathHelper.sin(now * 1.2F);
-            g.fill(140, y + 6, 440, y + 22, ColorHelper.withAlpha(0.3F * p * al, style.tint(16724000)));
-            stretch(g, ATLAS, 106, y - 6, 40, 40, 80, 0, 48, 48, ColorHelper.withAlpha(0.8F * al, style.tint(16760880)));
+            float p = 0.5F + 0.5F * Mth.sin(now * 1.2F);
+            g.fill(140, y + 6, 440, y + 22, ARGB.color(0.3F * p * al, style.tint(16724000)));
+            stretch(g, ATLAS, 106, y - 6, 40, 40, 80, 0, 48, 48, ARGB.color(0.8F * al, style.tint(16760880)));
          }
 
-         float blink = telegraph ? 1.0F : 0.6F + 0.4F * MathHelper.sin(now * 0.6F);
-         sprite(g, ATLAS, 118, y + 6, 192, 0, 16, 16, ColorHelper.withAlpha(al * blink, style.tint(16760880)));
-         outlined(g, font, name, 290 - name.width(), y + 4, ColorHelper.getWhite(al), ColorHelper.withAlpha(0.85F * al, 0), 1.0F);
+         float blink = telegraph ? 1.0F : 0.6F + 0.4F * Mth.sin(now * 0.6F);
+         sprite(g, ATLAS, 118, y + 6, 192, 0, 16, 16, ARGB.color(al * blink, style.tint(16760880)));
+         outlined(g, font, name, 290 - name.width(), y + 4, ARGB.white(al), ARGB.color(0.85F * al, 0), 1.0F);
       }
    }
 
-   private static void banner(DrawContext g, TextRenderer font, BarAnim a, BarStyle style, float now) {
+   private static void banner(GuiGraphicsExtractor g, Font font, BarAnim a, BarStyle style, float now) {
       float t = now - a.bannerAt;
       if (!(t < 0.0F) && !(t > 50.0F)) {
          float alpha;
@@ -410,11 +410,11 @@ public final class BossBarRenderer {
 
          int cx = 280 + Math.round(off);
          int cy = 66;
-         sprite(g, ATLAS, cx - 160, cy - 18, 0, 132, 320, 36, ColorHelper.withAlpha(alpha, style.accent));
+         sprite(g, ATLAS, cx - 160, cy - 18, 0, 132, 320, 36, ARGB.color(alpha, style.accent));
          BarText.Line line = BarText.banner(a.bannerPhase);
          float s = crisp(1.5F);
-         int glow = ColorHelper.withAlpha(0.9F * alpha, ColorHelper.scaleRgb(style.accent, 0.35F));
-         outlined(g, font, line, cx - Math.round(line.width() * s), cy - Math.round(7.0F * s) & -2, ColorHelper.getWhite(alpha), glow, s);
+         int glow = ARGB.color(0.9F * alpha, ARGB.scaleRGB(style.accent, 0.35F));
+         outlined(g, font, line, cx - Math.round(line.width() * s), cy - Math.round(7.0F * s) & -2, ARGB.white(alpha), glow, s);
       }
    }
 
@@ -427,7 +427,7 @@ public final class BossBarRenderer {
       }
    }
 
-   private static void pops(DrawContext g, TextRenderer font, BarAnim a, BarStyle style, float now) {
+   private static void pops(GuiGraphicsExtractor g, Font font, BarAnim a, BarStyle style, float now) {
       float big = crisp(1.5F);
       float under = 1.0F - bannerAlpha(a, now);
       if (!(under <= 0.01F)) {
@@ -451,7 +451,7 @@ public final class BossBarRenderer {
 
                int color = style.tint(p.ward ? 10479359 : (p.big ? 16754744 : 16774360));
                if (punch > 0.0F) {
-                  color = ColorHelper.lerp(punch * 0.8F, color, -1);
+                  color = ARGB.srgbLerp(punch * 0.8F, color, -1);
                }
 
                int halfW = Math.round(line.width() * s) + 4;
@@ -460,15 +460,15 @@ public final class BossBarRenderer {
                x = Math.clamp(x, lo, Math.max(lo, right - halfW));
                int y = 66 - Math.round(rise * 6.0F);
                int th = Math.round(16.0F * s);
-               plate(g, x - halfW - 2, y - th / 2 - 3, 2 * halfW + 4, th + 5, ColorHelper.withAlpha(0.82F * alpha, 2760218));
+               plate(g, x - halfW - 2, y - th / 2 - 3, 2 * halfW + 4, th + 5, ARGB.color(0.82F * alpha, 2760218));
                outlined(
                   g,
                   font,
                   line,
                   x - Math.round(line.width() * s),
                   y - Math.round(8.0F * s),
-                  ColorHelper.withAlpha(alpha, color),
-                  ColorHelper.withAlpha(0.9F * alpha, 0),
+                  ARGB.color(alpha, color),
+                  ARGB.color(0.9F * alpha, 0),
                   s
                );
             }
@@ -476,14 +476,14 @@ public final class BossBarRenderer {
       }
    }
 
-   private static void drawCompact(DrawContext g, TextRenderer font, ClientBossBar event, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now) {
+   private static void drawCompact(GuiGraphicsExtractor g, Font font, LerpingBossEvent event, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now) {
       int flags = st != null ? st.flags() : 0;
       stretch(g, ATLAS, -16, -6, 448, 58, 336, 88, 64, 32, -1);
       sprite(g, style.sheet, 16, 14, 0, 144, 400, 32, -1);
       track(g, a, st, style, now, 36, 24, 352, 12, true);
       if ((flags & 1) != 0) {
-         float p = 0.55F + 0.45F * MathHelper.sin(now * 0.3F);
-         stretch(g, ATLAS, -12, -2, 64, 64, 80, 0, 48, 48, ColorHelper.withAlpha(0.85F * p, style.tint(16732208)));
+         float p = 0.55F + 0.45F * Mth.sin(now * 0.3F);
+         stretch(g, ATLAS, -12, -2, 64, 64, 80, 0, 48, 48, ARGB.color(0.85F * p, style.tint(16732208)));
       }
 
       sprite(g, style.sheet, 0, 10, 400, 144, 40, 40, -1);
@@ -513,7 +513,7 @@ public final class BossBarRenderer {
       text(g, font, name, 44, 0, style.nameColor, 1.0F, true);
    }
 
-   private static int icon(DrawContext g, int right, int flags, int flag, int icon, int color) {
+   private static int icon(GuiGraphicsExtractor g, int right, int flags, int flag, int icon, int color) {
       if ((flags & flag) == 0) {
          return right;
       }
@@ -523,33 +523,33 @@ public final class BossBarRenderer {
    }
 
    private static void track(
-      DrawContext g, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now, int tx, int ty, int tw, int th, boolean compact
+      GuiGraphicsExtractor g, BarAnim a, @Nullable BossStatePayload st, BarStyle style, float now, int tx, int ty, int tw, int th, boolean compact
    ) {
-      int fw = Math.round(MathHelper.clamp(a.shown, 0.0F, 1.0F) * tw);
+      int fw = Math.round(Mth.clamp(a.shown, 0.0F, 1.0F) * tw);
       int phase = Math.clamp(a.fillPhase, 0, 3);
       int prev = Math.clamp(a.prevFillPhase, 0, 3);
-      float mix = MathHelper.clamp((now - a.fillPhaseAt) / 16.0F, 0.0F, 1.0F);
+      float mix = Mth.clamp((now - a.fillPhaseAt) / 16.0F, 0.0F, 1.0F);
       if (fw > 0) {
          if (mix < 1.0F && prev != phase) {
             fillStrip(g, style.sheet, tx, ty, fw, th, tw, prev, -1);
-            fillStrip(g, style.sheet, tx, ty, fw, th, tw, phase, ColorHelper.getWhite(mix));
+            fillStrip(g, style.sheet, tx, ty, fw, th, tw, phase, ARGB.white(mix));
          } else {
             fillStrip(g, style.sheet, tx, ty, fw, th, tw, phase, -1);
          }
       }
 
-      int target = Math.round(MathHelper.clamp(a.target, 0.0F, 1.0F) * tw);
+      int target = Math.round(Mth.clamp(a.target, 0.0F, 1.0F) * tw);
       if (target > fw) {
-         float p = 0.7F + 0.3F * MathHelper.sin(now * 0.8F);
-         g.fill(tx + fw, ty, tx + target, ty + th, ColorHelper.withAlpha(0.75F * p, style.tint(7405456)));
-         g.fill(tx + fw, ty, tx + target, ty + th / 3, ColorHelper.getWhite(0.35F * p));
+         float p = 0.7F + 0.3F * Mth.sin(now * 0.8F);
+         g.fill(tx + fw, ty, tx + target, ty + th, ARGB.color(0.75F * p, style.tint(7405456)));
+         g.fill(tx + fw, ty, tx + target, ty + th / 3, ARGB.white(0.35F * p));
       }
 
-      int cw = Math.round(MathHelper.clamp(a.chip, 0.0F, 1.0F) * tw);
+      int cw = Math.round(Mth.clamp(a.chip, 0.0F, 1.0F) * tw);
       if (cw > fw) {
          float age = now - a.chipAt;
-         int col = age < 3.0F ? -1 : ColorHelper.lerp(MathHelper.clamp((age - 3.0F) / 8.0F, 0.0F, 1.0F), -1, style.chip);
-         g.fill(tx + fw, ty, tx + cw, ty + th, ColorHelper.withAlpha(0.92F, col));
+         int col = age < 3.0F ? -1 : ARGB.srgbLerp(Mth.clamp((age - 3.0F) / 8.0F, 0.0F, 1.0F), -1, style.chip);
+         g.fill(tx + fw, ty, tx + cw, ty + th, ARGB.color(0.92F, col));
          g.fill(tx + fw, ty + th - th / 4, tx + cw, ty + th, 939524096);
       }
 
@@ -559,37 +559,37 @@ public final class BossBarRenderer {
          int l = Math.max(sx, 0);
          int r = Math.min(sx + 64, fw);
          if (r > l) {
-            stretch(g, ATLAS, tx + l, ty, r - l, th, l - sx, 0, r - l, 20, ColorHelper.getWhite(0.85F));
+            stretch(g, ATLAS, tx + l, ty, r - l, th, l - sx, 0, r - l, 20, ARGB.white(0.85F));
          }
       }
 
       if (st != null && st.shield() > 0.0F && st.shieldMax() > 0.0F) {
          int ward = style.tint(10479359);
-         int ww = Math.round(MathHelper.clamp(st.shield() / st.shieldMax(), 0.0F, 1.0F) * tw);
+         int ww = Math.round(Mth.clamp(st.shield() / st.shieldMax(), 0.0F, 1.0F) * tw);
          int scroll = 31 - Math.floorMod((int)(now * 0.8F), 32);
          if (ww > 0) {
-            stretch(g, ATLAS, tx, ty, ww, th, scroll, 48, ww, 20, ColorHelper.withAlpha(0.55F, ward));
-            g.fill(tx + Math.max(0, ww - 2), ty, tx + ww, ty + th, ColorHelper.getWhite(0.9F));
+            stretch(g, ATLAS, tx, ty, ww, th, scroll, 48, ww, 20, ARGB.color(0.55F, ward));
+            g.fill(tx + Math.max(0, ww - 2), ty, tx + ww, ty + th, ARGB.white(0.9F));
          }
 
          float f = 1.0F - (now - a.wardAt) / 10.0F;
          if (f > 0.0F) {
-            g.fill(tx, ty, tx + tw, ty + th, ColorHelper.withAlpha(0.6F * f, ward));
+            g.fill(tx, ty, tx + tw, ty + th, ARGB.color(0.6F * f, ward));
          }
       }
 
       int flags = st != null ? st.flags() : 0;
       if ((flags & 2) != 0) {
-         g.fill(tx, ty, tx + tw, ty + th, ColorHelper.withAlpha(0.45F, style.tint(11056320)));
+         g.fill(tx, ty, tx + tw, ty + th, ARGB.color(0.45F, style.tint(11056320)));
       }
 
       if (a.shown > 0.0F && a.shown < 0.2F) {
-         float p = 0.5F + 0.5F * MathHelper.sin(now * 0.45F);
+         float p = 0.5F + 0.5F * Mth.sin(now * 0.45F);
          if (fw > 0) {
-            g.fill(tx, ty, tx + fw, ty + th, ColorHelper.getWhite(0.22F * p));
+            g.fill(tx, ty, tx + fw, ty + th, ARGB.white(0.22F * p));
          }
 
-         int low = ColorHelper.withAlpha(0.75F * p, style.tint(16724000));
+         int low = ARGB.color(0.75F * p, style.tint(16724000));
          g.fill(tx - 3, ty - 3, tx + tw + 3, ty - 1, low);
          g.fill(tx - 3, ty + th + 1, tx + tw + 3, ty + th + 3, low);
          g.fill(tx - 3, ty - 1, tx - 1, ty + th + 1, low);
@@ -599,11 +599,11 @@ public final class BossBarRenderer {
       stretch(g, ATLAS, tx, ty, tw, th, 64, 0, 4, 20, -1);
       float flash = 1.0F - (now - a.bannerAt) / 12.0F;
       if (flash > 0.0F) {
-         g.fill(tx, ty, tx + tw, ty + th, ColorHelper.getWhite(0.7F * flash));
+         g.fill(tx, ty, tx + tw, ty + th, ARGB.white(0.7F * flash));
       }
 
       int n = thresholdCount(st, style);
-      int lit = style.mono ? -1 : ColorHelper.lerp(0.5F, style.accent, -1);
+      int lit = style.mono ? -1 : ARGB.srgbLerp(0.5F, style.accent, -1);
 
       for (int i = 0; i < n; i++) {
          float t = threshold(st, style, i);
@@ -619,58 +619,58 @@ public final class BossBarRenderer {
       }
    }
 
-   private static void fillStrip(DrawContext g, Identifier sheet, int x, int y, int w, int h, int trackW, int phase, int color) {
+   private static void fillStrip(GuiGraphicsExtractor g, Identifier sheet, int x, int y, int w, int h, int trackW, int phase, int color) {
       int uw = trackW == 400 ? w : Math.max(1, Math.round(w * 400.0F / trackW));
       stretch(g, sheet, x, y, w, h, 0, 64 + phase * 20, uw, 20, color);
    }
 
-   private static void sprite(DrawContext g, Identifier tex, int x, int y, int u, int v, int w, int h, int color) {
+   private static void sprite(GuiGraphicsExtractor g, Identifier tex, int x, int y, int u, int v, int w, int h, int color) {
       if (w > 0 && h > 0) {
-         g.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x, y, u, v, w, h, w, h, 512, 256, color);
+         g.blit(RenderPipelines.GUI_TEXTURED, tex, x, y, u, v, w, h, w, h, 512, 256, color);
       }
    }
 
-   private static void plate(DrawContext g, int x, int y, int w, int h, int color) {
+   private static void plate(GuiGraphicsExtractor g, int x, int y, int w, int h, int color) {
       stretch(g, ATLAS, x, y, 6, h, 240, 0, 6, 20, color);
       stretch(g, ATLAS, x + 6, y, w - 12, h, 246, 0, 4, 20, color);
       stretch(g, ATLAS, x + w - 6, y, 6, h, 250, 0, 6, 20, color);
    }
 
-   private static void stretch(DrawContext g, Identifier tex, int x, int y, int w, int h, int u, int v, int uw, int vh, int color) {
+   private static void stretch(GuiGraphicsExtractor g, Identifier tex, int x, int y, int w, int h, int u, int v, int uw, int vh, int color) {
       if (w > 0 && h > 0) {
-         g.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x, y, u, v, w, h, uw, vh, 512, 256, color);
+         g.blit(RenderPipelines.GUI_TEXTURED, tex, x, y, u, v, w, h, uw, vh, 512, 256, color);
       }
    }
 
-   private static void text(DrawContext g, TextRenderer font, BarText.Line line, int x, int y, int color, float scale, boolean shadow) {
-      Matrix3x2fStack pose = g.getMatrices();
+   private static void text(GuiGraphicsExtractor g, Font font, BarText.Line line, int x, int y, int color, float scale, boolean shadow) {
+      Matrix3x2fStack pose = g.pose();
       pose.pushMatrix();
       pose.translate(x, y);
       pose.scale(2.0F * scale, 2.0F * scale);
-      g.drawText(font, line.text(), 0, 0, color, shadow);
+      g.text(font, line.text(), 0, 0, color, shadow);
       pose.popMatrix();
    }
 
-   private static void outlined(DrawContext g, TextRenderer font, BarText.Line line, int x, int y, int color, int outline, float scale) {
-      Matrix3x2fStack pose = g.getMatrices();
+   private static void outlined(GuiGraphicsExtractor g, Font font, BarText.Line line, int x, int y, int color, int outline, float scale) {
+      Matrix3x2fStack pose = g.pose();
       pose.pushMatrix();
       pose.translate(x, y);
       pose.scale(2.0F * scale, 2.0F * scale);
-      g.drawText(font, line.text(), -1, 0, outline, false);
-      g.drawText(font, line.text(), 1, 0, outline, false);
-      g.drawText(font, line.text(), 0, -1, outline, false);
-      g.drawText(font, line.text(), 0, 1, outline, false);
-      g.drawText(font, line.text(), 0, 0, color, false);
+      g.text(font, line.text(), -1, 0, outline, false);
+      g.text(font, line.text(), 1, 0, outline, false);
+      g.text(font, line.text(), 0, -1, outline, false);
+      g.text(font, line.text(), 0, 1, outline, false);
+      g.text(font, line.text(), 0, 0, color, false);
       pose.popMatrix();
    }
 
    private static float crisp(float target) {
-      int gs = Math.max(1, MinecraftClient.getInstance().getWindow().getScaleFactor());
+      int gs = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
       return (float)Math.max(gs, (int)Math.floor(target * gs)) / gs;
    }
 
    private static float ease(float t) {
-      float k = 1.0F - MathHelper.clamp(t, 0.0F, 1.0F);
+      float k = 1.0F - Mth.clamp(t, 0.0F, 1.0F);
       return 1.0F - k * k * k;
    }
 }

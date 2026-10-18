@@ -4,21 +4,20 @@ import com.vexira.mysticalterrain.MysticalTerrain;
 import io.netty.buffer.ByteBuf;
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.codec.PacketCodecs;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.network.packet.CustomPayload.Id;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.world.phys.Vec3;
 
-public record VfxCastPayload(VfxCastPayload.Effect effect, List<Vec3d> points, float[] args, int core, int glow, int smoke, int debris, int seed)
-   implements CustomPayload {
+public record VfxCastPayload(VfxCastPayload.Effect effect, List<Vec3> points, float[] args, int core, int glow, int smoke, int debris, int seed)
+   implements CustomPacketPayload {
    public static final int MAX_POINTS = 32;
    public static final int MAX_ARGS = 16;
-   public static final Id<VfxCastPayload> TYPE = new Id(MysticalTerrain.id("vfx_cast"));
-   public static final PacketCodec<ByteBuf, VfxCastPayload> CODEC = PacketCodec.ofStatic(VfxCastPayload::write, VfxCastPayload::read);
+   public static final Type<VfxCastPayload> TYPE = new Type(MysticalTerrain.id("vfx_cast"));
+   public static final StreamCodec<ByteBuf, VfxCastPayload> CODEC = StreamCodec.of(VfxCastPayload::write, VfxCastPayload::read);
 
-   public Vec3d point(int i) {
-      return i < this.points.size() ? this.points.get(i) : (this.points.isEmpty() ? Vec3d.ZERO : this.points.get(0));
+   public Vec3 point(int i) {
+      return i < this.points.size() ? this.points.get(i) : (this.points.isEmpty() ? Vec3.ZERO : this.points.get(0));
    }
 
    public float arg(int i) {
@@ -26,13 +25,13 @@ public record VfxCastPayload(VfxCastPayload.Effect effect, List<Vec3d> points, f
    }
 
    private static void write(ByteBuf buf, VfxCastPayload p) {
-      PacketCodecs.VAR_INT.encode(buf, p.effect.ordinal());
+      ByteBufCodecs.VAR_INT.encode(buf, p.effect.ordinal());
       int n = Math.min(32, p.points.size());
-      PacketCodecs.VAR_INT.encode(buf, n);
-      Vec3d o = n > 0 ? p.points.get(0) : Vec3d.ZERO;
+      ByteBufCodecs.VAR_INT.encode(buf, n);
+      Vec3 o = n > 0 ? p.points.get(0) : Vec3.ZERO;
 
       for (int i = 0; i < n; i++) {
-         Vec3d v = p.points.get(i);
+         Vec3 v = p.points.get(i);
          if (i == 0) {
             buf.writeDouble(v.x);
             buf.writeDouble(v.y);
@@ -45,7 +44,7 @@ public record VfxCastPayload(VfxCastPayload.Effect effect, List<Vec3d> points, f
       }
 
       int a = Math.min(16, p.args.length);
-      PacketCodecs.VAR_INT.encode(buf, a);
+      ByteBufCodecs.VAR_INT.encode(buf, a);
 
       for (int i = 0; i < a; i++) {
          buf.writeFloat(p.args[i]);
@@ -60,22 +59,22 @@ public record VfxCastPayload(VfxCastPayload.Effect effect, List<Vec3d> points, f
 
    private static VfxCastPayload read(ByteBuf buf) {
       VfxCastPayload.Effect[] all = VfxCastPayload.Effect.values();
-      int e = (Integer)PacketCodecs.VAR_INT.decode(buf);
+      int e = (Integer)ByteBufCodecs.VAR_INT.decode(buf);
       VfxCastPayload.Effect effect = all[Math.floorMod(e, all.length)];
-      int n = Math.min(32, (Integer)PacketCodecs.VAR_INT.decode(buf));
-      List<Vec3d> points = new ArrayList<>(n);
-      Vec3d o = Vec3d.ZERO;
+      int n = Math.min(32, (Integer)ByteBufCodecs.VAR_INT.decode(buf));
+      List<Vec3> points = new ArrayList<>(n);
+      Vec3 o = Vec3.ZERO;
 
       for (int i = 0; i < n; i++) {
          if (i == 0) {
-            o = new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble());
+            o = new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble());
             points.add(o);
          } else {
             points.add(o.add(buf.readFloat(), buf.readFloat(), buf.readFloat()));
          }
       }
 
-      int a = Math.min(16, (Integer)PacketCodecs.VAR_INT.decode(buf));
+      int a = Math.min(16, (Integer)ByteBufCodecs.VAR_INT.decode(buf));
       float[] args = new float[a];
 
       for (int i = 0; i < a; i++) {
@@ -85,7 +84,7 @@ public record VfxCastPayload(VfxCastPayload.Effect effect, List<Vec3d> points, f
       return new VfxCastPayload(effect, points, args, buf.readInt(), buf.readInt(), buf.readInt(), buf.readByte(), buf.readInt());
    }
 
-   public Id<? extends CustomPayload> getId() {
+   public Type<? extends CustomPacketPayload> type() {
       return TYPE;
    }
 

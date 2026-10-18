@@ -1,40 +1,40 @@
 package com.vexira.mysticalterrain.feature;
 
 import com.vexira.mysticalterrain.tree.*;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.structure.StructureContext;
-import net.minecraft.structure.StructurePiece;
-import net.minecraft.structure.StructurePieceType;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockBox;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.StructureWorldAccess;
-import net.minecraft.world.gen.StructureAccessor;
-import net.minecraft.world.gen.chunk.ChunkGenerator;
-import net.minecraft.world.gen.feature.ConfiguredFeature;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.feature.Feature;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.StructurePiece;
+import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSerializationContext;
+import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 
 public class GrandTreePiece extends StructurePiece {
    public static final StructurePieceType TYPE = GrandTreePiece::new;
-   private final RegistryKey<ConfiguredFeature<?, ?>> key;
+   private final ResourceKey<Feature> key;
    private final GrandTreeConfiguration config;
    private final BlockPos base;
    private final TreeParams params;
    private volatile Tree tree;
 
-   public GrandTreePiece(RegistryKey<ConfiguredFeature<?, ?>> key, GrandTreeConfiguration config, BlockPos base, TreeParams params) {
+   public GrandTreePiece(ResourceKey<Feature> key, GrandTreeConfiguration config, BlockPos base, TreeParams params) {
       this(key, config, base, params, TreeBuilder.build(params));
    }
 
-   private GrandTreePiece(RegistryKey<ConfiguredFeature<?, ?>> key, GrandTreeConfiguration config, BlockPos base, TreeParams params, Tree tree) {
+   private GrandTreePiece(ResourceKey<Feature> key, GrandTreeConfiguration config, BlockPos base, TreeParams params, Tree tree) {
       super(
          TYPE,
          0,
-         new BlockBox(
+         new BoundingBox(
             base.getX() + tree.minX(),
             base.getY() + tree.minY(),
             base.getZ() + tree.minZ(),
@@ -50,41 +50,41 @@ public class GrandTreePiece extends StructurePiece {
       this.tree = tree;
    }
 
-   public GrandTreePiece(StructureContext context, NbtCompound tag) {
+   public GrandTreePiece(StructurePieceSerializationContext context, CompoundTag tag) {
       super(TYPE, tag);
-      this.key = RegistryKey.of(RegistryKeys.CONFIGURED_FEATURE, Identifier.of(tag.getString("tree", "")));
-      this.config = context.registryManager()
-         .getOrThrow(RegistryKeys.CONFIGURED_FEATURE)
-         .getOptional(this.key)
-         .map(RegistryEntry::value)
-         .map(ConfiguredFeature::config)
-         .filter(GrandTreeConfiguration.class::isInstance)
-         .map(GrandTreeConfiguration.class::cast)
+      this.key = ResourceKey.create(Registries.FEATURE, Identifier.parse(tag.getStringOr("tree", "")));
+      this.config = context.registryAccess()
+         .lookupOrThrow(Registries.FEATURE)
+         .get(this.key)
+         .map(Holder::value)
+         .filter(GrandTreeFeature.class::isInstance)
+         .map(GrandTreeFeature.class::cast)
+         .map(GrandTreeFeature::config)
          .orElse(null);
-      this.base = new BlockPos(tag.getInt("x", 0), tag.getInt("y", 0), tag.getInt("z", 0));
+      this.base = new BlockPos(tag.getIntOr("x", 0), tag.getIntOr("y", 0), tag.getIntOr("z", 0));
       this.params = new TreeParams(
-         TreeStyle.valueOf(tag.getString("style", "BROADLEAF")),
-         tag.getInt("height", 20),
-         tag.getDouble("radius", 2.0),
-         tag.getDouble("crown", 8.0),
-         tag.getDouble("lean", 0.0),
-         tag.getDouble("gnarl", 0.0),
-         tag.getInt("roots", -1),
-         tag.getInt("branches", -1),
-         tag.getDouble("droop", 0.0),
-         tag.getDouble("shape", 0.5),
-         tag.getDouble("density", 0.85),
-         tag.getInt("veins", 0),
-         tag.getInt("reach", 14),
-         tag.getInt("ceiling", 100),
-         tag.getLong("seed", 0L),
+         TreeStyle.valueOf(tag.getStringOr("style", "BROADLEAF")),
+         tag.getIntOr("height", 20),
+         tag.getDoubleOr("radius", 2.0),
+         tag.getDoubleOr("crown", 8.0),
+         tag.getDoubleOr("lean", 0.0),
+         tag.getDoubleOr("gnarl", 0.0),
+         tag.getIntOr("roots", -1),
+         tag.getIntOr("branches", -1),
+         tag.getDoubleOr("droop", 0.0),
+         tag.getDoubleOr("shape", 0.5),
+         tag.getDoubleOr("density", 0.85),
+         tag.getIntOr("veins", 0),
+         tag.getIntOr("reach", 14),
+         tag.getIntOr("ceiling", 100),
+         tag.getLongOr("seed", 0L),
          this.config == null ? Growth.DEFAULT : this.config.growth()
       );
    }
 
    @Override
-   protected void writeNbt(StructureContext context, NbtCompound tag) {
-      tag.putString("tree", this.key.getValue().toString());
+   protected void addAdditionalSaveData(StructurePieceSerializationContext context, CompoundTag tag) {
+      tag.putString("tree", this.key.identifier().toString());
       tag.putInt("x", this.base.getX());
       tag.putInt("y", this.base.getY());
       tag.putInt("z", this.base.getZ());
@@ -106,8 +106,8 @@ public class GrandTreePiece extends StructurePiece {
    }
 
    @Override
-   public void generate(
-      StructureWorldAccess level, StructureAccessor structures, ChunkGenerator generator, Random random, BlockBox box, ChunkPos chunk, BlockPos pivot
+   public void postProcess(
+      WorldGenLevel level, StructureManager structures, ChunkGenerator generator, RandomSource random, BoundingBox box, ChunkPos chunk, BlockPos pivot
    ) {
       if (this.config != null) {
          if (this.tree == null) {

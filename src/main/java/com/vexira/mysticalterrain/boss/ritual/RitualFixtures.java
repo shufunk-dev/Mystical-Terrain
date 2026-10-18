@@ -1,12 +1,12 @@
 package com.vexira.mysticalterrain.boss.ritual;
 
 import com.vexira.mysticalterrain.boss.MysticalBosses;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.state.property.BooleanProperty;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import org.jspecify.annotations.Nullable;
 
 public final class RitualFixtures {
@@ -15,12 +15,12 @@ public final class RitualFixtures {
    private RitualFixtures() {
    }
 
-   public static int count(ServerWorld level, BlockPos altar, Block block, BooleanProperty on) {
+   public static int count(ServerLevel level, BlockPos altar, Block block, BooleanProperty on) {
       int n = 0;
 
-      for (BlockPos p : BlockPos.iterate(altar.add(-24, -6, -24), altar.add(24, 10, 24))) {
+      for (BlockPos p : BlockPos.betweenClosed(altar.offset(-24, -6, -24), altar.offset(24, 10, 24))) {
          BlockState s = level.getBlockState(p);
-         if (s.isOf(block) && (Boolean)s.get(on)) {
+         if (s.is(block) && (Boolean)s.getValue(on)) {
             n++;
          }
       }
@@ -28,19 +28,19 @@ public final class RitualFixtures {
       return n;
    }
 
-   static void resetAll(ServerWorld level, BlockPos altar) {
-      for (BlockPos p : BlockPos.iterate(altar.add(-24, -6, -24), altar.add(24, 10, 24))) {
+   static void resetAll(ServerLevel level, BlockPos altar) {
+      for (BlockPos p : BlockPos.betweenClosed(altar.offset(-24, -6, -24), altar.offset(24, 10, 24))) {
          BlockState s = level.getBlockState(p);
-         if (s.isOf(MysticalBosses.GLOOM_BRAZIER) && (Boolean)s.get(GloomBrazierBlock.LIT)) {
-            level.setBlockState(p, (BlockState)s.with(GloomBrazierBlock.LIT, false), 3);
-         } else if (s.isOf(MysticalBosses.RUNE_PILLAR) && (Boolean)s.get(RunePillarBlock.CHARGED)) {
-            level.setBlockState(p, (BlockState)s.with(RunePillarBlock.CHARGED, false), 3);
+         if (s.is(MysticalBosses.GLOOM_BRAZIER) && (Boolean)s.getValue(GloomBrazierBlock.LIT)) {
+            level.setBlock(p, (BlockState)s.setValue(GloomBrazierBlock.LIT, false), 3);
+         } else if (s.is(MysticalBosses.RUNE_PILLAR) && (Boolean)s.getValue(RunePillarBlock.CHARGED)) {
+            level.setBlock(p, (BlockState)s.setValue(RunePillarBlock.CHARGED, false), 3);
          }
       }
    }
 
-   public static @Nullable RitualAltarBlockEntity findAltar(ServerWorld level, BlockPos near, Ritual ritual, int reach) {
-      for (BlockPos p : BlockPos.iterate(near.add(-reach, -reach / 2, -reach), near.add(reach, reach / 2, reach))) {
+   public static @Nullable RitualAltarBlockEntity findAltar(ServerLevel level, BlockPos near, Ritual ritual, int reach) {
+      for (BlockPos p : BlockPos.betweenClosed(near.offset(-reach, -reach / 2, -reach), near.offset(reach, reach / 2, reach))) {
          if (level.getBlockState(p).getBlock() instanceof RitualAltarBlock altar
             && altar.ritual() == ritual
             && level.getBlockEntity(p) instanceof RitualAltarBlockEntity be) {
@@ -52,22 +52,22 @@ public final class RitualFixtures {
    }
 
    public static void itemTick(ItemEntity item) {
-      if (item.getEntityWorld() instanceof ServerWorld level && item.age % 10 == 0) {
+      if (item.level() instanceof ServerLevel level && item.tickCount % 10 == 0) {
          Ritual ritual;
-         if (item.getStack().isOf(MysticalBosses.CINDER_HEART) && item.isInLava()) {
+         if (item.getItem().is(MysticalBosses.CINDER_HEART) && item.isInLava()) {
             ritual = Ritual.PYRAXIS;
          } else {
-            if (!item.getStack().isOf(MysticalBosses.DROWNED_IDOL) || !item.isTouchingWater()) {
+            if (!item.getItem().is(MysticalBosses.DROWNED_IDOL) || !item.isInWater()) {
                return;
             }
 
             ritual = Ritual.BOGROT;
          }
 
-         RitualAltarBlockEntity altar = findAltar(level, item.getBlockPos(), ritual, 8);
+         RitualAltarBlockEntity altar = findAltar(level, item.blockPosition(), ritual, 8);
          if (altar != null && altar.acceptThrown(level)) {
-            item.getStack().decrement(1);
-            if (item.getStack().isEmpty()) {
+            item.getItem().shrink(1);
+            if (item.getItem().isEmpty()) {
                item.discard();
             }
          }

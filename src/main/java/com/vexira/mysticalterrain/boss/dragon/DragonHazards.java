@@ -7,20 +7,20 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.decoration.EndCrystalEntity;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.random.Random;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.phys.Vec3;
 
 final class DragonHazards {
    private final DragonRework rework;
-   private List<EndCrystalEntity> crystals = List.of();
+   private List<EndCrystal> crystals = List.of();
    private final List<DragonHazards.Pulse> pulses = new ArrayList<>();
    private final List<DragonHazards.Rift> rifts = new ArrayList<>();
    private final List<DragonHazards.Meteor> meteors = new ArrayList<>();
@@ -34,11 +34,11 @@ final class DragonHazards {
       this.rework = rework;
    }
 
-   List<EndCrystalEntity> crystals() {
+   List<EndCrystal> crystals() {
       return this.crystals;
    }
 
-   void refreshCrystals(ServerWorld level) {
+   void refreshCrystals(ServerLevel level) {
       this.crystals = DragonFx.spikeCrystals(level);
    }
 
@@ -46,9 +46,9 @@ final class DragonHazards {
       return this.edge;
    }
 
-   void tick(ServerWorld level, Vec3d portal, boolean active) {
-      EnderDragonEntity dragon = this.rework.dragon();
-      int now = dragon.age;
+   void tick(ServerLevel level, Vec3 portal, boolean active) {
+      EnderDragon dragon = this.rework.dragon();
+      int now = dragon.tickCount;
       if (now % 20 == 0) {
          this.refreshCrystals(level);
       }
@@ -73,7 +73,7 @@ final class DragonHazards {
 
    void clear() {
       for (DragonHazards.Shroud s : this.shrouds) {
-         s.crystal().setInvulnerable(false);
+         s.crystal().setPermanentlyInvulnerable(false);
       }
 
       this.shrouds.clear();
@@ -83,18 +83,18 @@ final class DragonHazards {
       this.edge = false;
    }
 
-   private void startPulses(ServerWorld level, int now) {
+   private void startPulses(ServerLevel level, int now) {
       for (int i = 0; i < this.crystals.size(); i++) {
-         EndCrystalEntity c = this.crystals.get(i);
+         EndCrystal c = this.crystals.get(i);
          if (!c.isRemoved() && (now + i * 16) % 160 == 0) {
-            Vfx.gather(level, c.getEntityPos().add(0.0, 1.0, 0.0), DragonFx.V, 6.0, 16);
-            Vfx.telegraphCircle(level, c.getEntityPos(), 6.0, 20, DragonFx.V);
+            Vfx.gather(level, c.position().add(0.0, 1.0, 0.0), DragonFx.V, 6.0, 16);
+            Vfx.telegraphCircle(level, c.position(), 6.0, 20, DragonFx.V);
             this.pulses.add(new DragonHazards.Pulse(c, now + 20));
          }
       }
    }
 
-   private void tickPulses(ServerWorld level, int now) {
+   private void tickPulses(ServerLevel level, int now) {
       Iterator<DragonHazards.Pulse> it = this.pulses.iterator();
 
       while (it.hasNext()) {
@@ -102,36 +102,36 @@ final class DragonHazards {
          if (now >= p.at()) {
             it.remove();
             if (!p.crystal().isRemoved()) {
-               Vec3d at = p.crystal().getEntityPos();
+               Vec3 at = p.crystal().position();
                Vfx.nova(level, at.add(0.0, 1.0, 0.0), DragonFx.V, 6.0);
 
-               for (ServerPlayerEntity player : DragonFx.players(level, at, 6.0)) {
+               for (ServerPlayer player : DragonFx.players(level, at, 6.0)) {
                   DragonFx.hurt(level, this.rework.dragon(), player, this.rework.dmg(4.0F), true);
-                  Vec3d out = DragonFx.away(at, player.getEntityPos());
-                  DragonFx.launch(player, new Vec3d(out.x, 0.35, out.z));
+                  Vec3 out = DragonFx.away(at, player.position());
+                  DragonFx.launch(player, new Vec3(out.x, 0.35, out.z));
                }
             }
          }
       }
    }
 
-   void openRifts(ServerWorld level, Vec3d portal) {
-      Random r = this.rework.dragon().getRandom();
+   void openRifts(ServerLevel level, Vec3 portal) {
+      RandomSource r = this.rework.dragon().getRandom();
       this.nextRifts = 400 + r.nextInt(81);
-      List<ServerPlayerEntity> engaged = this.rework.engaged();
+      List<ServerPlayer> engaged = this.rework.engaged();
       int n = Math.min(5, 2 + Math.max(0, engaged.size() - 1));
-      List<Vec3d> spots = new ArrayList<>();
+      List<Vec3> spots = new ArrayList<>();
 
       for (int i = 0; i < n * 4 && spots.size() < n; i++) {
-         Vec3d base;
+         Vec3 base;
          if (!engaged.isEmpty()) {
-            ServerPlayerEntity p = engaged.get(i % engaged.size());
+            ServerPlayer p = engaged.get(i % engaged.size());
             if (i < engaged.size()) {
                base = DragonRework.predict(p, 30.0);
             } else {
                double a = r.nextDouble() * Math.PI * 2.0;
                double d = 6.0 + r.nextDouble() * 8.0;
-               base = p.getEntityPos().add(Math.cos(a) * d, 0.0, Math.sin(a) * d);
+               base = p.position().add(Math.cos(a) * d, 0.0, Math.sin(a) * d);
             }
          } else {
             double a = r.nextDouble() * Math.PI * 2.0;
@@ -139,11 +139,11 @@ final class DragonHazards {
             base = portal.add(Math.cos(a) * d, 0.0, Math.sin(a) * d);
          }
 
-         Vec3d g = DragonFx.groundBelow(level, base.add(0.0, 3.0, 0.0));
+         Vec3 g = DragonFx.groundBelow(level, base.add(0.0, 3.0, 0.0));
          if (g != null && !(DragonFx.flatDist(g, portal) > 120.0)) {
             boolean crowded = false;
 
-            for (Vec3d s : spots) {
+            for (Vec3 s : spots) {
                if (s.distanceTo(g) < 8.0) {
                   crowded = true;
                   break;
@@ -156,15 +156,15 @@ final class DragonHazards {
          }
       }
 
-      int now = this.rework.dragon().age;
+      int now = this.rework.dragon().tickCount;
 
-      for (Vec3d g : spots) {
+      for (Vec3 g : spots) {
          Vfx.telegraphCircle(level, g, 3.0, 30, DragonFx.V);
          this.rifts.add(new DragonHazards.Rift(g, now + 30, now + 170));
       }
    }
 
-   private void tickRifts(ServerWorld level, int now) {
+   private void tickRifts(ServerLevel level, int now) {
       Iterator<DragonHazards.Rift> it = this.rifts.iterator();
 
       while (it.hasNext()) {
@@ -178,12 +178,12 @@ final class DragonHazards {
          if (rift.opened) {
             boolean burn = (now - rift.open) % 20 == 0;
 
-            for (ServerPlayerEntity p : DragonFx.players(level, rift.center, 5.0)) {
+            for (ServerPlayer p : DragonFx.players(level, rift.center, 5.0)) {
                double dy = p.getY() - rift.center.y;
-               if (!(DragonFx.flatDist(p.getEntityPos(), rift.center) > 3.5) && !(dy < -1.0) && !(dy > 5.0)) {
-                  Vec3d in = DragonFx.flat(rift.center.subtract(p.getEntityPos()));
-                  if (in.lengthSquared() > 0.04) {
-                     DragonFx.nudge(p, in.normalize().multiply(0.05));
+               if (!(DragonFx.flatDist(p.position(), rift.center) > 3.5) && !(dy < -1.0) && !(dy > 5.0)) {
+                  Vec3 in = DragonFx.flat(rift.center.subtract(p.position()));
+                  if (in.lengthSqr() > 0.04) {
+                     DragonFx.nudge(p, in.normalize().scale(0.05));
                   }
 
                   if (burn) {
@@ -216,7 +216,7 @@ final class DragonHazards {
       return this.edgeTicks >= 1200 ? 30.0 : 50.0 - 20.0 * this.edgeTicks / 1200.0;
    }
 
-   private void tickEdge(ServerWorld level, Vec3d portal) {
+   private void tickEdge(ServerLevel level, Vec3 portal) {
       this.edgeTicks++;
       double radius = this.edgeRadius();
       if (this.edgeTicks % 10 == 0) {
@@ -226,26 +226,26 @@ final class DragonHazards {
             double a = i / 48.0 * Math.PI * 2.0;
             double x = portal.x + Math.cos(a) * radius;
             double z = portal.z + Math.sin(a) * radius;
-            Vec3d g = DragonFx.ground(level, x, z);
+            Vec3 g = DragonFx.ground(level, x, z);
             double y = g != null ? g.y : portal.y;
-            Vfx.smoke(level, new Vec3d(x, y + 0.6, z), 657930, 3, 0.5, 2.4);
+            Vfx.smoke(level, new Vec3(x, y + 0.6, z), 657930, 3, 0.5, 2.4);
             if (i % 3 == 0) {
-               level.spawnParticles(ParticleTypes.END_ROD, x, y + 0.8, z, 2, 0.3, 1.2, 0.3, 0.02);
+               level.sendParticles(ParticleTypes.END_ROD, x, y + 0.8, z, 2, 0.3, 1.2, 0.3, 0.02);
             }
          }
       }
 
       if (this.edgeTicks % 20 == 0) {
-         EnderDragonEntity dragon = this.rework.dragon();
+         EnderDragon dragon = this.rework.dragon();
 
-         for (ServerPlayerEntity p : level.getPlayers()) {
+         for (ServerPlayer p : level.players()) {
             if (p.isAlive() && !p.isSpectator() && !p.isCreative()) {
-               double d = DragonFx.flatDist(p.getEntityPos(), portal);
+               double d = DragonFx.flatDist(p.position(), portal);
                if (!(d <= radius) && !(d > 200.0)) {
                   DragonFx.hurt(level, dragon, p, this.rework.dmg(3.0F), true);
-                  p.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 40, 0, false, false), dragon);
-                  if (this.warned.add(p.getUuid())) {
-                     p.sendMessage(Text.translatableWithFallback("message.mysticalterrain.dragon.edge", "The void closes in"), true);
+                  p.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 40, 0, false, false), dragon);
+                  if (this.warned.add(p.getUUID())) {
+                     p.sendOverlayMessage(Component.translatableWithFallback("message.mysticalterrain.dragon.edge", "The void closes in"));
                   }
                }
             }
@@ -253,21 +253,21 @@ final class DragonHazards {
       }
    }
 
-   void meteor(ServerWorld level, Vec3d at, boolean big) {
-      Random r = this.rework.dragon().getRandom();
-      Vec3d from = at.add((r.nextDouble() * 2.0 - 1.0) * 6.0, 30.0, (r.nextDouble() * 2.0 - 1.0) * 6.0);
+   void meteor(ServerLevel level, Vec3 at, boolean big) {
+      RandomSource r = this.rework.dragon().getRandom();
+      Vec3 from = at.add((r.nextDouble() * 2.0 - 1.0) * 6.0, 30.0, (r.nextDouble() * 2.0 - 1.0) * 6.0);
       Vfx.telegraphCircle(level, at, big ? 5.0 : 3.5, 20, DragonFx.V);
       this.meteors.add(new DragonHazards.Meteor(from, at, big));
    }
 
-   private void tickMeteors(ServerWorld level) {
+   private void tickMeteors(ServerLevel level) {
       Iterator<DragonHazards.Meteor> it = this.meteors.iterator();
 
       while (it.hasNext()) {
          DragonHazards.Meteor m = it.next();
          m.age++;
-         Vec3d velocity = m.to.subtract(m.from).multiply(0.05);
-         Vec3d at = m.from.add(velocity.multiply(m.age));
+         Vec3 velocity = m.to.subtract(m.from).scale(0.05);
+         Vec3 at = m.from.add(velocity.scale(m.age));
          Vfx.meteorTrail(level, at, velocity, DragonFx.V);
          if (m.age % 3 == 0) {
             Vfx.flare(level, at, 16777215, m.big ? 2.4 : 1.6, 4);
@@ -280,18 +280,18 @@ final class DragonHazards {
       }
    }
 
-   private void impact(ServerWorld level, DragonHazards.Meteor m) {
+   private void impact(ServerLevel level, DragonHazards.Meteor m) {
       double radius = m.big ? 5.0 : 3.5;
       float base = m.big ? 18.0F : 12.0F;
-      EnderDragonEntity dragon = this.rework.dragon();
+      EnderDragon dragon = this.rework.dragon();
       Vfx.heavyImpact(level, m.to, DragonFx.V, m.big ? 1.8 : 1.2);
 
-      for (ServerPlayerEntity p : DragonFx.players(level, m.to, radius + 2.0)) {
-         double d = DragonFx.flatDist(p.getEntityPos(), m.to);
+      for (ServerPlayer p : DragonFx.players(level, m.to, radius + 2.0)) {
+         double d = DragonFx.flatDist(p.position(), m.to);
          if (!(d > radius) && !(Math.abs(p.getY() - m.to.y) > 4.0)) {
             DragonFx.hurt(level, dragon, p, this.rework.dmg(base) * (float)(1.0 - 0.5 * d / radius), false);
-            Vec3d out = DragonFx.away(m.to, p.getEntityPos());
-            DragonFx.launch(p, new Vec3d(out.x * 0.8, 0.4, out.z * 0.8));
+            Vec3 out = DragonFx.away(m.to, p.position());
+            DragonFx.launch(p, new Vec3(out.x * 0.8, 0.4, out.z * 0.8));
          }
       }
 
@@ -302,21 +302,21 @@ final class DragonHazards {
       DragonFx.sound(level, m.to, m.big ? "slam.hit" : "fireball.hit", m.big ? 6.0F : 3.0F, 0.85F + dragon.getRandom().nextFloat() * 0.3F);
    }
 
-   void shroud(ServerWorld level, EndCrystalEntity crystal, int ticks) {
-      crystal.setInvulnerable(true);
-      Vfx.shieldBubble(level, crystal.getEntityPos().add(0.0, 1.0, 0.0), 1.8, DragonFx.V, ticks);
-      this.shrouds.add(new DragonHazards.Shroud(crystal, this.rework.dragon().age + ticks));
+   void shroud(ServerLevel level, EndCrystal crystal, int ticks) {
+      crystal.setPermanentlyInvulnerable(true);
+      Vfx.shieldBubble(level, crystal.position().add(0.0, 1.0, 0.0), 1.8, DragonFx.V, ticks);
+      this.shrouds.add(new DragonHazards.Shroud(crystal, this.rework.dragon().tickCount + ticks));
    }
 
-   private void tickShrouds(ServerWorld level, int now) {
+   private void tickShrouds(ServerLevel level, int now) {
       Iterator<DragonHazards.Shroud> it = this.shrouds.iterator();
 
       while (it.hasNext()) {
          DragonHazards.Shroud s = it.next();
          if (now >= s.until() || s.crystal().isRemoved()) {
-            s.crystal().setInvulnerable(false);
+            s.crystal().setPermanentlyInvulnerable(false);
             if (!s.crystal().isRemoved()) {
-               Vfx.shards(level, s.crystal().getEntityPos().add(0.0, 1.0, 0.0), 16777215, 12, 0.4);
+               Vfx.shards(level, s.crystal().position().add(0.0, 1.0, 0.0), 16777215, 12, 0.4);
             }
 
             it.remove();
@@ -325,34 +325,34 @@ final class DragonHazards {
    }
 
    private static final class Meteor {
-      final Vec3d from;
-      final Vec3d to;
+      final Vec3 from;
+      final Vec3 to;
       final boolean big;
       int age;
 
-      Meteor(Vec3d from, Vec3d to, boolean big) {
+      Meteor(Vec3 from, Vec3 to, boolean big) {
          this.from = from;
          this.to = to;
          this.big = big;
       }
    }
 
-   private record Pulse(EndCrystalEntity crystal, int at) {
+   private record Pulse(EndCrystal crystal, int at) {
    }
 
    private static final class Rift {
-      final Vec3d center;
+      final Vec3 center;
       final int open;
       final int close;
       boolean opened;
 
-      Rift(Vec3d center, int open, int close) {
+      Rift(Vec3 center, int open, int close) {
          this.center = center;
          this.open = open;
          this.close = close;
       }
    }
 
-   private record Shroud(EndCrystalEntity crystal, int until) {
+   private record Shroud(EndCrystal crystal, int until) {
    }
 }

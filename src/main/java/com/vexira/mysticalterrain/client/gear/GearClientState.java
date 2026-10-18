@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 @Environment(EnvType.CLIENT)
 public final class GearClientState {
@@ -17,8 +17,8 @@ public final class GearClientState {
    private GearClientState() {
    }
 
-   static void tick(MinecraftClient client) {
-      if (client.world != null && !client.isPaused()) {
+   static void tick(Minecraft client) {
+      if (client.level != null && !client.isPaused()) {
          ticks++;
       }
    }

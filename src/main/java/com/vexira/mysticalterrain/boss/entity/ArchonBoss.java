@@ -18,46 +18,46 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.ProjectileDeflection;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.attribute.DefaultAttributeContainer.Builder;
-import net.minecraft.entity.boss.BossBar.Color;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.ProjectileEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.consume.UseAction;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.storage.ReadView;
-import net.minecraft.storage.WriteView;
-import net.minecraft.util.hit.HitResult.Type;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.BlockPos.Mutable;
-import net.minecraft.util.math.Direction.Axis;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.World;
-import net.minecraft.world.RaycastContext.FluidHandling;
-import net.minecraft.world.RaycastContext.ShapeType;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.BlockPos.MutableBlockPos;
+import net.minecraft.core.Direction.Axis;
+import net.minecraft.core.Holder;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.util.Mth;
+import net.minecraft.world.BossEvent.BossBarColor;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier.Builder;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.ProjectileDeflection;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.ClipContext.Block;
+import net.minecraft.world.level.ClipContext.Fluid;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult.Type;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
-import software.bernie.geckolib.animation.object.PlayState;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.animation.object.PlayState;
 
 public class ArchonBoss extends MysticalBoss {
    private static final BossSounds SOUNDS = BossSounds.of("archon");
@@ -70,7 +70,7 @@ public class ArchonBoss extends MysticalBoss {
    public static final float WIDTH = 2.2F;
    public static final float HEIGHT = 5.0F;
    public static final boolean FIRE_IMMUNE = false;
-   private @Nullable Vec3d anchorAt;
+   private @Nullable Vec3 anchorAt;
    private final List<ArchonBoss.Node> pillars = new ArrayList<>();
    private int epoch;
    private int lonely;
@@ -83,25 +83,25 @@ public class ArchonBoss extends MysticalBoss {
    private int formShown = -1;
    private int formWant = -1;
    private int formAt;
-   private @Nullable Vec3d slamAt;
-   private @Nullable Vec3d beamDir;
-   private Vec3d beamEnd = Vec3d.ZERO;
-   private final Vec3d[] sideEnds = new Vec3d[2];
-   private Vec3d lanceFrom = Vec3d.ZERO;
-   private @Nullable Vec3d lanceEnd;
-   private @Nullable Vec3d wellAt;
+   private @Nullable Vec3 slamAt;
+   private @Nullable Vec3 beamDir;
+   private Vec3 beamEnd = Vec3.ZERO;
+   private final Vec3[] sideEnds = new Vec3[2];
+   private Vec3 lanceFrom = Vec3.ZERO;
+   private @Nullable Vec3 lanceEnd;
+   private @Nullable Vec3 wellAt;
    private double wellR = 4.0;
-   private @Nullable Vec3d stepDest;
+   private @Nullable Vec3 stepDest;
    private boolean stepAmbush;
-   private @Nullable Vec3d cageAt;
-   private Vec3d driveDir = Vec3d.ZERO;
-   private Vec3d driveAim = Vec3d.ZERO;
-   private Vec3d drivePrev = Vec3d.ZERO;
+   private @Nullable Vec3 cageAt;
+   private Vec3 driveDir = Vec3.ZERO;
+   private Vec3 driveAim = Vec3.ZERO;
+   private Vec3 drivePrev = Vec3.ZERO;
    private double driveTravel;
    private boolean driveStopped;
    private final Set<Integer> driveHit = new HashSet<>();
-   private Vec3d prismFrom = Vec3d.ZERO;
-   private final List<Vec3d> prismEnds = new ArrayList<>();
+   private Vec3 prismFrom = Vec3.ZERO;
+   private final List<Vec3> prismEnds = new ArrayList<>();
    private float prismYaw;
    private float prismPitch;
    private float prismStep;
@@ -110,16 +110,16 @@ public class ArchonBoss extends MysticalBoss {
    private ArchonBoss.@Nullable Lattice lattice;
    private int latticeUntil;
    private final List<ArchonBoss.Prison> prisons = new ArrayList<>();
-   private Vec3d rendG0 = Vec3d.ZERO;
-   private Vec3d rendDir = Vec3d.ZERO;
-   private Vec3d thrustDir = Vec3d.ZERO;
-   private Vec3d overloadAt = Vec3d.ZERO;
-   private final Vec3d[] monoliths = new Vec3d[4];
-   private Vec3d sigilC = Vec3d.ZERO;
+   private Vec3 rendG0 = Vec3.ZERO;
+   private Vec3 rendDir = Vec3.ZERO;
+   private Vec3 thrustDir = Vec3.ZERO;
+   private Vec3 overloadAt = Vec3.ZERO;
+   private final Vec3[] monoliths = new Vec3[4];
+   private Vec3 sigilC = Vec3.ZERO;
    private List<ArchonBoss.Node> sigilNodes = List.of();
-   private final List<Vec3d> golemSpots = new ArrayList<>();
-   private final List<Vec3d> eyeSpots = new ArrayList<>();
-   private Vec3d collapseC = Vec3d.ZERO;
+   private final List<Vec3> golemSpots = new ArrayList<>();
+   private final List<Vec3> eyeSpots = new ArrayList<>();
+   private Vec3 collapseC = Vec3.ZERO;
    private float collapseStart;
    private boolean collapsePending;
    private boolean fractured;
@@ -129,8 +129,8 @@ public class ArchonBoss extends MysticalBoss {
       return MysticalBoss.bossAttributes(960.0, 12.0, 0.25, 8.0);
    }
 
-   public ArchonBoss(EntityType<? extends HostileEntity> type, World level) {
-      super(type, level, "archon", Color.BLUE);
+   public ArchonBoss(EntityType<? extends Monster> type, Level level) {
+      super(type, level, "archon", BossBarColor.BLUE);
    }
 
    @Override
@@ -220,8 +220,8 @@ public class ArchonBoss extends MysticalBoss {
       super.registerControllers(controllers);
       controllers.add(new AnimationController("form", 6, test -> test.setAndContinue(FORMS[this.form()])));
       controllers.add(new AnimationController("spin", 0, test -> {
-         if (!this.isDead() && !this.inIntro()) {
-            test.setControllerSpeed(this.getVelocity().horizontalLengthSquared() > 0.002 ? 2.0F : 1.0F);
+         if (!this.isDeadOrDying() && !this.inIntro()) {
+            test.setControllerSpeed(this.getDeltaMovement().horizontalDistanceSqr() > 0.002 ? 2.0F : 1.0F);
             return test.setAndContinue(SPIN);
          } else {
             return PlayState.STOP;
@@ -230,16 +230,16 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    private int form() {
-      int want = MathHelper.clamp(this.phase(), 0, 3);
+      int want = Mth.clamp(this.phase(), 0, 3);
       if (this.formShown < 0 || this.inIntro()) {
          this.formShown = want;
       } else if (want != this.formShown) {
          if (want != this.formWant) {
             this.formWant = want;
-            this.formAt = this.age + 28;
+            this.formAt = this.tickCount + 28;
          }
 
-         if (this.age >= this.formAt) {
+         if (this.tickCount >= this.formAt) {
             this.formShown = want;
          }
       }
@@ -286,24 +286,24 @@ public class ArchonBoss extends MysticalBoss {
          .advance(0.1, 0.35, 0.25)
          .combo("gauntlet_crush", 0.3F)
          .utility((b, t, c) -> c.dist < 4.0 ? 1.5F : 1.0F)
-         .start((b, level, t, i) -> Vfx.telegraphCone(level, this.floor(level, this.getEntityPos()), this.getYaw(), 45.0F, 5.5, 8, P))
+         .start((b, level, t, i) -> Vfx.telegraphCone(level, this.floor(level, this.position()), this.getYRot(), 45.0F, 5.5, 8, P))
          .tick((b, level, t, tick) -> {
             if (tick <= 15) {
                this.descend(t, 0.5);
             }
 
             if (tick == 8) {
-               Vfx.telegraphCone(level, this.floor(level, this.getEntityPos()), this.getYaw(), 55.0F, 5.5, 7, P);
+               Vfx.telegraphCone(level, this.floor(level, this.position()), this.getYRot(), 55.0F, 5.5, 7, P);
             }
          })
          .hit((b, level, t, i) -> {
-            float yaw = this.getYaw();
+            float yaw = this.getYRot();
             if (i == 0) {
                Vfx.slashArc(level, this.local(-0.6, 1.8, 0.4), yaw, 0.0F, -30.0F, 4.5, P, -100.0F);
 
                for (LivingEntity e : this.inArc(level, 5.0, 40.0F, yaw)) {
                   if (this.phys(level, e, 16.0F)) {
-                     shoveFrom(e, this.getEntityPos(), 0.6, 0.2);
+                     shoveFrom(e, this.position(), 0.6, 0.2);
                      hitFx(level, e, 0.6);
                   }
                }
@@ -312,8 +312,8 @@ public class ArchonBoss extends MysticalBoss {
 
                for (LivingEntity e : this.inArc(level, 5.5, 55.0F, yaw)) {
                   if (this.phys(level, e, 18.0F)) {
-                     shoveFrom(e, this.getEntityPos(), 1.1, 0.25);
-                     this.afflict(e, StatusEffects.SLOWNESS, 20, 0);
+                     shoveFrom(e, this.position(), 1.1, 0.25);
+                     this.afflict(e, MobEffects.SLOWNESS, 20, 0);
                      hitFx(level, e, 0.7);
                   }
                }
@@ -345,14 +345,14 @@ public class ArchonBoss extends MysticalBoss {
             }
 
             if (tick == 7) {
-               Vec3d at = this.floor(level, this.getEntityPos().add(this.facing().multiply(4.2)));
+               Vec3 at = this.floor(level, this.position().add(this.facing().scale(4.2)));
                this.slamAt = at;
                Vfx.telegraphCircle(level, at, 3.8, 14, P);
                Vfx.runeCircle(level, at, 3.8, P, 14, 0.06F, Vfx.Rune.GLYPH);
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d at = this.slamAt != null ? this.slamAt : this.floor(level, this.getEntityPos().add(this.facing().multiply(1.9)));
+            Vec3 at = this.slamAt != null ? this.slamAt : this.floor(level, this.position().add(this.facing().scale(1.9)));
 
             for (LivingEntity e : this.inCircle(level, at, 3.8)) {
                this.guardBreak(level, e, 100);
@@ -379,8 +379,8 @@ public class ArchonBoss extends MysticalBoss {
          .telegraph(0.0, 0.5)
          .utility((b, t, c) -> c.surroundCount >= 2 ? 3.0F : 1.0F)
          .start((b, level, t, i) -> {
-            Vec3d g = this.floor(level, this.getEntityPos());
-            Vfx.telegraphCone(level, g, this.getYaw() + 180.0F, 80.0F, 7.0, 10, P);
+            Vec3 g = this.floor(level, this.position());
+            Vfx.telegraphCone(level, g, this.getYRot() + 180.0F, 80.0F, 7.0, 10, P);
             Vfx.telegraphCircle(level, g, 2.5, 10, P);
          })
          .tick((b, level, t, tick) -> {
@@ -389,22 +389,22 @@ public class ArchonBoss extends MysticalBoss {
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d g = this.floor(level, this.getEntityPos());
-            Vec3d f = this.facing();
+            Vec3 g = this.floor(level, this.position());
+            Vec3 f = this.facing();
 
             for (LivingEntity e : this.inCircle(level, g, 7.0)) {
-               Vec3d to = new Vec3d(e.getX() - this.getX(), 0.0, e.getZ() - this.getZ());
+               Vec3 to = new Vec3(e.getX() - this.getX(), 0.0, e.getZ() - this.getZ());
                double d = to.length();
-               boolean behind = d > 0.001 && Math.toDegrees(Math.acos(MathHelper.clamp(to.dotProduct(f) / d, -1.0, 1.0))) > 100.0;
-               if (behind || !(d > 2.5 + e.getWidth() * 0.5)) {
+               boolean behind = d > 0.001 && Math.toDegrees(Math.acos(Mth.clamp(to.dot(f) / d, -1.0, 1.0))) > 100.0;
+               if (behind || !(d > 2.5 + e.getBbWidth() * 0.5)) {
                   this.magic(level, e, 14.0F);
-                  shoveFrom(e, this.getEntityPos(), 2.0, 0.5);
-                  this.afflict(e, StatusEffects.SLOWNESS, 40, 1);
+                  shoveFrom(e, this.position(), 2.0, 0.5);
+                  this.afflict(e, MobEffects.SLOWNESS, 40, 1);
                }
             }
 
             Vfx.nova(level, this.local(0.0, 2.5, -0.6), P, 3.0);
-            Vfx.streaks(level, this.heart(), f.multiply(-1.0), P, 12);
+            Vfx.streaks(level, this.heart(), f.scale(-1.0), P, 12);
             Vfx.shockwave(level, g, P, 7.0);
          });
    }
@@ -426,15 +426,15 @@ public class ArchonBoss extends MysticalBoss {
             (b, level, t, i) -> {
                if (t != null && t.isAlive()) {
                   int side = i == 1 ? 1 : -1;
-                  Vec3d from = this.local(0.95 * side, 3.05, 2.1);
-                  double dist = from.distanceTo(t.getEntityPos());
-                  Vec3d aim = this.predict(t, dist / 0.75).add(0.0, t.getHeight() * 0.6, 0.0);
-                  Vec3d dir = aim.subtract(from).normalize();
+                  Vec3 from = this.local(0.95 * side, 3.05, 2.1);
+                  double dist = from.distanceTo(t.position());
+                  Vec3 aim = this.predict(t, dist / 0.75).add(0.0, t.getBbHeight() * 0.6, 0.0);
+                  Vec3 dir = aim.subtract(from).normalize();
                   int n = (this.phase() >= 1 ? 2 : 1) + (this.enraged() ? 1 : 0);
 
                   for (int k = 0; k < n; k++) {
                      float off = n == 1 ? 0.0F : -7.0F + 14.0F * k / (n - 1);
-                     BossBolt.shoot(level, this, BossBolt.Style.RUNE, from, dir.rotateY(off * (float) (Math.PI / 180.0)).multiply(0.75), this.dmg(9.0F))
+                     BossBolt.shoot(level, this, BossBolt.Style.RUNE, from, dir.yRot(off * (float) (Math.PI / 180.0)).scale(0.75), this.dmg(9.0F))
                         .homing(t, 0.04)
                         .life(90);
                   }
@@ -442,12 +442,12 @@ public class ArchonBoss extends MysticalBoss {
                   Vfx.flare(level, from, P.glow(), 1.8, 6);
                   Vfx.sparks(level, from, P.core(), 8, 0.25, 0.18);
                   if (this.phase() >= 3 && i == 2) {
-                     Vec3d h = this.heart();
-                     Vec3d d0 = aim.subtract(h).normalize();
+                     Vec3 h = this.heart();
+                     Vec3 d0 = aim.subtract(h).normalize();
 
                      for (int k = 0; k < 5; k++) {
                         BossBolt.shoot(
-                              level, this, BossBolt.Style.RUNE, h, d0.rotateY((-20 + 10 * k) * (float) (Math.PI / 180.0)).multiply(0.7), this.dmg(7.0F)
+                              level, this, BossBolt.Style.RUNE, h, d0.yRot((-20 + 10 * k) * (float) (Math.PI / 180.0)).scale(0.7), this.dmg(7.0F)
                            )
                            .life(60);
                      }
@@ -468,8 +468,8 @@ public class ArchonBoss extends MysticalBoss {
          .telegraph(0.0, 1.0)
          .utility((b, t, c) -> c.dist < 6.0 ? 0.0F : (c.kitingTicks > 40 ? 2.0F : 1.0F))
          .start((b, level, t, i) -> {
-            Vec3d h = this.heart();
-            Vec3d aim = t != null ? this.predict(t, 20.0).add(0.0, t.getStandingEyeHeight(), 0.0) : h.add(this.facing().multiply(10.0)).add(0.0, -2.0, 0.0);
+            Vec3 h = this.heart();
+            Vec3 aim = t != null ? this.predict(t, 20.0).add(0.0, t.getEyeHeight(), 0.0) : h.add(this.facing().scale(10.0)).add(0.0, -2.0, 0.0);
             this.beamDir = aim.subtract(h).normalize();
             this.beamEnd = h;
             this.sideEnds[0] = null;
@@ -478,15 +478,15 @@ public class ArchonBoss extends MysticalBoss {
             Vfx.telegraphLine(level, this.floor(level, h), this.flat(this.beamDir), 24.0, 1.6, 20, P);
          })
          .tick((b, level, t, tick) -> {
-            Vec3d h = this.heart();
+            Vec3 h = this.heart();
             if (tick < 20) {
                if (tick % 2 == 0) {
                   Vfx.gather(level, h, P, 3.5, 8);
                }
             } else if (tick <= 62) {
-               Vec3d dir = this.beamDir != null ? this.beamDir : this.facing();
+               Vec3 dir = this.beamDir != null ? this.beamDir : this.facing();
                if (t != null && t.isAlive()) {
-                  Vec3d want = t.getEyePos().subtract(h).normalize();
+                  Vec3 want = t.getEyePosition().subtract(h).normalize();
                   double k = (this.phase() >= 2 ? 0.13 : 0.1) + (this.enraged() ? 0.03 : 0.0);
                   dir = dir.lerp(want, k).normalize();
                }
@@ -508,11 +508,11 @@ public class ArchonBoss extends MysticalBoss {
                }
 
                if (this.phase() >= 3) {
-                  double prog = MathHelper.clamp((tick - 20) / 42.0, 0.0, 1.0);
+                  double prog = Mth.clamp((tick - 20) / 42.0, 0.0, 1.0);
                   float ang = (float)((20.0 + 40.0 * prog) * (float) (Math.PI / 180.0));
 
                   for (int s = 0; s < 2; s++) {
-                     this.sideEnds[s] = this.rayEnd(level, h, dir.rotateY(s == 0 ? ang : -ang), 26.0);
+                     this.sideEnds[s] = this.rayEnd(level, h, dir.yRot(s == 0 ? ang : -ang), 26.0);
                      if (tick % 2 == 0) {
                         Vfx.beam(level, h, this.sideEnds[s], P, 0.5, 3);
                      }
@@ -521,15 +521,15 @@ public class ArchonBoss extends MysticalBoss {
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d h = this.heart();
+            Vec3 h = this.heart();
 
             for (LivingEntity e : this.onLine(level, h, this.beamEnd, 1.2)) {
                this.magic(level, e, 9.0F);
-               this.afflict(e, StatusEffects.SLOWNESS, 20, 0);
+               this.afflict(e, MobEffects.SLOWNESS, 20, 0);
             }
 
             if (this.phase() >= 3) {
-               for (Vec3d end : this.sideEnds) {
+               for (Vec3 end : this.sideEnds) {
                   if (end != null) {
                      for (LivingEntity e : this.onLine(level, h, end, 0.5)) {
                         this.magic(level, e, 7.0F);
@@ -549,7 +549,7 @@ public class ArchonBoss extends MysticalBoss {
          .anyTarget()
          .tags("ranged aoe")
          .telegraph(0.3, 1.0)
-         .utility((b, t, c) -> c.targetVelocity.horizontalLength() < 0.05 ? 1.5F : (c.engagedPlayers >= 2 ? 1.3F : 1.0F))
+         .utility((b, t, c) -> c.targetVelocity.horizontalDistance() < 0.05 ? 1.5F : (c.engagedPlayers >= 2 ? 1.3F : 1.0F))
          .tick((b, level, t, tick) -> {
             if (tick >= 6 && tick <= 16 && tick % 2 == 0) {
                double a = tick * 0.9;
@@ -557,8 +557,8 @@ public class ArchonBoss extends MysticalBoss {
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d center = this.floor(level, t != null ? this.predict(t, 30.0) : this.getEntityPos());
-            List<Vec3d> pts = new ArrayList<>();
+            Vec3 center = this.floor(level, t != null ? this.predict(t, 30.0) : this.position());
+            List<Vec3> pts = new ArrayList<>();
             pts.add(center);
             int p = this.phase();
 
@@ -569,23 +569,23 @@ public class ArchonBoss extends MysticalBoss {
             if (p >= 2) {
                int others = 0;
 
-               for (ServerPlayerEntity pl : this.engaged()) {
+               for (ServerPlayer pl : this.engaged()) {
                   if (pl != t && others < 3) {
                      others++;
                      pts.add(this.floor(level, this.predict(pl, 30.0)));
 
                      for (int k = 0; k < p; k++) {
-                        pts.add(BossFx.around(level, this, pl.getEntityPos(), 1.5, 4.5));
+                        pts.add(BossFx.around(level, this, pl.position(), 1.5, 4.5));
                      }
                   }
                }
             }
 
-            List<Vec3d> early = new ArrayList<>();
-            List<Vec3d> late = new ArrayList<>();
+            List<Vec3> early = new ArrayList<>();
+            List<Vec3> late = new ArrayList<>();
 
             for (int k = 0; k < pts.size(); k++) {
-               Vec3d at = pts.get(k);
+               Vec3 at = pts.get(k);
                int delay = 30 + (p >= 2 && k % 2 == 1 ? 12 : 0);
                Vfx.telegraphCircle(level, at, 2.6, delay, P);
                Vfx.runeCircle(level, at, 2.6, P, delay, 0.06F, Vfx.Rune.ARCANE);
@@ -595,8 +595,8 @@ public class ArchonBoss extends MysticalBoss {
 
                   for (LivingEntity e : this.inCircle(level, at, 2.6)) {
                      this.magic(level, e, 16.0F);
-                     e.addVelocity(0.0, 0.7, 0.0);
-                     e.knockedBack = true;
+                     e.push(0.0, 0.7, 0.0);
+                     e.syncVelocity = true;
                   }
 
                   if (p >= 2) {
@@ -609,11 +609,11 @@ public class ArchonBoss extends MysticalBoss {
             }
 
             if (!early.isEmpty()) {
-               this.later(30, () -> this.scars(level, early, 2.2, 100, 3.0F, StatusEffects.SLOWNESS, 30, 0));
+               this.later(30, () -> this.scars(level, early, 2.2, 100, 3.0F, MobEffects.SLOWNESS, 30, 0));
             }
 
             if (!late.isEmpty()) {
-               this.later(42, () -> this.scars(level, late, 2.2, 100, 3.0F, StatusEffects.SLOWNESS, 30, 0));
+               this.later(42, () -> this.scars(level, late, 2.2, 100, 3.0F, MobEffects.SLOWNESS, 30, 0));
             }
          });
    }
@@ -637,9 +637,9 @@ public class ArchonBoss extends MysticalBoss {
          })
          .start((b, level, t, i) -> this.planStep(level, t))
          .hit((b, level, t, i) -> {
-            Vec3d dest = this.stepDest;
+            Vec3 dest = this.stepDest;
             if (dest != null) {
-               Vec3d was = this.heart();
+               Vec3 was = this.heart();
                if (this.blinkTo(dest)) {
                   if (t != null) {
                      this.faceTarget(t, 180.0F);
@@ -648,11 +648,11 @@ public class ArchonBoss extends MysticalBoss {
                   Vfx.dashTrail(level, was, this.heart(), P);
                   Vfx.lightning(level, was, this.heart(), P, 2);
                   if (this.stepAmbush) {
-                     Vec3d g = this.floor(level, this.getEntityPos());
+                     Vec3 g = this.floor(level, this.position());
 
                      for (LivingEntity e : this.inCircle(level, g, 2.0)) {
                         this.magic(level, e, 10.0F);
-                        shoveFrom(e, this.getEntityPos(), 0.8, 0.3);
+                        shoveFrom(e, this.position(), 0.8, 0.3);
                      }
 
                      Vfx.nova(level, this.heart(), P, 2.5);
@@ -668,15 +668,15 @@ public class ArchonBoss extends MysticalBoss {
          });
    }
 
-   private void planStep(ServerWorld level, @Nullable LivingEntity t) {
+   private void planStep(ServerLevel level, @Nullable LivingEntity t) {
       BossContext c = this.ctx();
       boolean escape = t == null || c.surroundCount >= 2 || c.dist < 3.5 && c.ticksSinceHurt < 20;
-      Vec3d dest;
+      Vec3 dest;
       if (!escape) {
-         Vec3d tp = t.getEntityPos();
-         dest = tp.add(this.flat(this.getEntityPos().subtract(tp)).multiply(4.0));
+         Vec3 tp = t.position();
+         dest = tp.add(this.flat(this.position().subtract(tp)).scale(4.0));
          if (this.phase() >= 1) {
-            Vec3d behind = tp.subtract(this.flat(Vec3d.fromPolar(0.0F, t.getYaw())).multiply(2.8));
+            Vec3 behind = tp.subtract(this.flat(Vec3.directionFromRotation(0.0F, t.getYRot())).scale(2.8));
             if (BossFx.safeGround(level, behind, 3.0)) {
                dest = behind;
             }
@@ -684,16 +684,16 @@ public class ArchonBoss extends MysticalBoss {
 
          dest = dest.add(0.0, 0.8, 0.0);
       } else {
-         Vec3d base = t == null ? this.anchor(level) : this.anchorOrTarget(level, t);
-         Vec3d best = null;
+         Vec3 base = t == null ? this.anchor(level) : this.anchorOrTarget(level, t);
+         Vec3 best = null;
          double bestScore = -1.0;
 
          for (int k = 0; k < 6; k++) {
-            Vec3d at = BossFx.around(level, this, base, 8.0, 12.0);
+            Vec3 at = BossFx.around(level, this, base, 8.0, 12.0);
             double near = Double.MAX_VALUE;
 
-            for (ServerPlayerEntity p : this.engaged()) {
-               near = Math.min(near, p.getEntityPos().squaredDistanceTo(at));
+            for (ServerPlayer p : this.engaged()) {
+               near = Math.min(near, p.position().distanceToSqr(at));
             }
 
             if (best == null || near > bestScore) {
@@ -707,7 +707,7 @@ public class ArchonBoss extends MysticalBoss {
 
       this.stepAmbush = !escape;
       this.stepDest = dest;
-      Vec3d g = this.floor(level, dest);
+      Vec3 g = this.floor(level, dest);
       Vfx.telegraphCircle(level, g, 1.8, 9, P);
       Vfx.runeCircle(level, g, 1.6, P, 12, 0.1F, Vfx.Rune.ARCANE);
       Vfx.gather(level, this.heart(), P, 3.0, 10);
@@ -724,7 +724,7 @@ public class ArchonBoss extends MysticalBoss {
          .utility((b, t, c) -> this.shield() > 0.0F ? 0.0F : (c.targetAiming ? 2.0F : 1.0F))
          .hit((b, level, t, i) -> {
             this.shield(this.getMaxHealth() * (0.1F + 0.03F * this.phase()), 200);
-            Vec3d g = this.floor(level, this.getEntityPos());
+            Vec3 g = this.floor(level, this.position());
             Vfx.shieldBubble(level, this.local(0.0, 2.5, 0.0), 3.4, P, 36);
             Vfx.ward(level, g, 3.0, P, 40);
             Vfx.runeCircle(level, g, 3.2, P, 40, 0.04F, Vfx.Rune.GLYPH);
@@ -750,9 +750,9 @@ public class ArchonBoss extends MysticalBoss {
                this.faceTarget(t, 180.0F);
             }
 
-            Vec3d h = this.heart();
-            Vec3d aim = t != null ? this.predict(t, 12.0).add(0.0, t.getHeight() * 0.6, 0.0) : h.add(this.facing().multiply(20.0)).add(0.0, -3.0, 0.0);
-            Vec3d dir = aim.subtract(h).normalize();
+            Vec3 h = this.heart();
+            Vec3 aim = t != null ? this.predict(t, 12.0).add(0.0, t.getBbHeight() * 0.6, 0.0) : h.add(this.facing().scale(20.0)).add(0.0, -3.0, 0.0);
+            Vec3 dir = aim.subtract(h).normalize();
             this.lanceFrom = h;
             this.lanceEnd = this.rayEnd(level, h, dir, 40.0);
             double len = Math.max(2.0, hd(h, this.lanceEnd));
@@ -760,15 +760,15 @@ public class ArchonBoss extends MysticalBoss {
             Vfx.beam(level, h, this.lanceEnd, P, 0.12, 12);
          })
          .hit((b, level, t, i) -> {
-            Vec3d end = this.lanceEnd;
+            Vec3 end = this.lanceEnd;
             if (end != null) {
-               Vec3d from = this.lanceFrom;
+               Vec3 from = this.lanceFrom;
 
                for (LivingEntity e : this.onLine(level, from, end, 1.0)) {
                   boolean using = e.isUsingItem();
                   if (using) {
-                     e.clearActiveItem();
-                     Vfx.shards(level, e.getEyePos(), P.core(), 10, 0.4);
+                     e.stopUsingItem();
+                     Vfx.shards(level, e.getEyePosition(), P.core(), 10, 0.4);
                   }
 
                   this.magic(level, e, using ? 24.0F : 18.0F);
@@ -790,10 +790,10 @@ public class ArchonBoss extends MysticalBoss {
          .weight(5)
          .tags("ranged anti_air")
          .telegraph(0.0, 1.2)
-         .utility((b, t, c) -> t != null && t.isGliding() ? 2.0F : (c.targetUnreachable ? 1.5F : (!c.targetFlying && !c.targetAirborne ? 0.6F : 1.0F)))
+         .utility((b, t, c) -> t != null && t.isFallFlying() ? 2.0F : (c.targetUnreachable ? 1.5F : (!c.targetFlying && !c.targetAirborne ? 0.6F : 1.0F)))
          .start((b, level, t, i) -> {
             double r = this.phase() >= 2 ? 5.0 : 4.0;
-            Vec3d at = this.floor(level, t != null ? this.predict(t, 24.0) : this.getEntityPos());
+            Vec3 at = this.floor(level, t != null ? this.predict(t, 24.0) : this.position());
             this.wellR = r;
             this.wellAt = at;
             Vfx.telegraphCircle(level, at, r, 24, P);
@@ -801,38 +801,38 @@ public class ArchonBoss extends MysticalBoss {
             Vfx.runeCircle(level, at, r, P, 24, -0.08F, Vfx.Rune.GLYPH);
          })
          .tick((b, level, t, tick) -> {
-            Vec3d at = this.wellAt;
+            Vec3 at = this.wellAt;
             if (at != null && tick >= 12 && tick <= 23) {
                for (LivingEntity e : this.inCircle(level, at, this.wellR + 2.0, 1.0, 16.0)) {
-                  Vec3d to = new Vec3d(at.x - e.getX(), 0.0, at.z - e.getZ());
+                  Vec3 to = new Vec3(at.x - e.getX(), 0.0, at.z - e.getZ());
                   double d = to.length();
-                  Vec3d pull = d > 0.3 ? to.multiply(0.12 / d) : Vec3d.ZERO;
-                  e.addVelocity(pull.x, -0.08, pull.z);
-                  e.knockedBack = true;
+                  Vec3 pull = d > 0.3 ? to.scale(0.12 / d) : Vec3.ZERO;
+                  e.push(pull.x, -0.08, pull.z);
+                  e.syncVelocity = true;
                }
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d at = this.wellAt;
+            Vec3 at = this.wellAt;
             if (at != null) {
                double r = this.wellR;
 
                for (LivingEntity e : this.inCircle(level, at, r, 1.0, 16.0)) {
-                  if (!e.isOnGround()) {
-                     e.stopGliding();
-                     e.setVelocity(0.0, -2.4, 0.0);
-                     e.knockedBack = true;
+                  if (!e.onGround()) {
+                     e.stopFallFlying();
+                     e.setDeltaMovement(0.0, -2.4, 0.0);
+                     e.syncVelocity = true;
                   }
 
                   this.magic(level, e, 16.0F);
-                  this.afflict(e, StatusEffects.SLOWNESS, 60, 1);
+                  this.afflict(e, MobEffects.SLOWNESS, 60, 1);
                }
 
                Vfx.nova(level, at, P, r);
                Vfx.pillar(level, at, P, 12.0, 1.4);
                Vfx.shake(level, at, 20.0, 0.5, 8);
                if (this.phase() >= 2) {
-                  this.scars(level, List.of(at), r - 1.0, 80, 0.0F, StatusEffects.SLOWNESS, 30, 2);
+                  this.scars(level, List.of(at), r - 1.0, 80, 0.0F, MobEffects.SLOWNESS, 30, 2);
                }
 
                this.wellAt = null;
@@ -859,7 +859,7 @@ public class ArchonBoss extends MysticalBoss {
          })
          .start((b, level, t, i) -> {
             Vfx.chargeUp(level, this.heart(), P, 20);
-            Vfx.runeCircle(level, this.floor(level, this.getEntityPos()), 20.0, P, 20, 0.05F, Vfx.Rune.GLYPH);
+            Vfx.runeCircle(level, this.floor(level, this.position()), 20.0, P, 20, 0.05F, Vfx.Rune.GLYPH);
          })
          .tick((b, level, t, tick) -> {
             if (tick >= 4 && tick < 20 && tick % 3 == 0) {
@@ -867,16 +867,16 @@ public class ArchonBoss extends MysticalBoss {
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d h = this.heart();
+            Vec3 h = this.heart();
             int shown = 0;
 
             for (LivingEntity e : BossFx.victims(level, this, h, 20.0)) {
-               if (this.los(level, h, e.getEyePos())) {
+               if (this.los(level, h, e.getEyePosition())) {
                   int stripped = 0;
 
-                  for (StatusEffectInstance inst : new ArrayList<StatusEffectInstance>(e.getStatusEffects())) {
-                     if (((StatusEffect)inst.getEffectType().value()).isBeneficial() && !inst.isAmbient()) {
-                        e.removeStatusEffect(inst.getEffectType());
+                  for (MobEffectInstance inst : new ArrayList<MobEffectInstance>(e.getActiveEffects())) {
+                     if (((MobEffect)inst.getEffect().value()).isBeneficial() && !inst.isAmbient()) {
+                        e.removeEffect(inst.getEffect());
                         stripped++;
                      }
                   }
@@ -884,13 +884,13 @@ public class ArchonBoss extends MysticalBoss {
                   float base = 6 + Math.min(20, 5 * stripped);
                   if (eatingOrDrinking(e)) {
                      base += 8.0F;
-                     e.clearActiveItem();
+                     e.stopUsingItem();
                   }
 
                   this.magic(level, e, base);
-                  this.afflict(e, StatusEffects.HUNGER, 160, 1);
+                  this.afflict(e, MobEffects.HUNGER, 160, 1);
                   if (shown++ < 8) {
-                     Vfx.lightning(level, h, e.getEyePos(), P, 2);
+                     Vfx.lightning(level, h, e.getEyePosition(), P, 2);
                   }
                }
             }
@@ -916,33 +916,33 @@ public class ArchonBoss extends MysticalBoss {
          .start((b, level, t, i) -> {
             this.golemSpots.clear();
             this.eyeSpots.clear();
-            Vec3d near = t != null ? t.getEntityPos() : this.getEntityPos();
+            Vec3 near = t != null ? t.position() : this.position();
 
             for (int k = 0; k < (this.phase() >= 2 ? 2 : 1); k++) {
                this.golemSpots.add(this.clearSpot(level, near, 2.0, 5.0, 2.0));
             }
 
             for (int k = 0; k < 1 + this.phase(); k++) {
-               this.eyeSpots.add(this.clearSpot(level, this.getEntityPos(), 3.0, 7.0, 4.0));
+               this.eyeSpots.add(this.clearSpot(level, this.position(), 3.0, 7.0, 4.0));
             }
 
-            for (Vec3d p : this.golemSpots) {
+            for (Vec3 p : this.golemSpots) {
                Vfx.runeCircle(level, p, 1.5, P, 28, 0.1F, Vfx.Rune.GLYPH);
                Vfx.telegraphCircle(level, p, 1.2, 28, P);
             }
 
-            for (Vec3d p : this.eyeSpots) {
+            for (Vec3 p : this.eyeSpots) {
                Vfx.runeCircle(level, p, 1.5, P, 28, 0.1F, Vfx.Rune.GLYPH);
                Vfx.telegraphCircle(level, p, 1.2, 28, P);
             }
          })
          .hit((b, level, t, i) -> {
-            for (Vec3d p : this.golemSpots) {
+            for (Vec3 p : this.golemSpots) {
                this.spawnConstruct(level, "rune_golem", playerNear(level, p, 2.0) ? this.clearSpot(level, p, 2.0, 4.0, 2.0) : p, 0.0, t);
             }
 
-            for (Vec3d p : this.eyeSpots) {
-               this.spawnConstruct(level, "arcane_eye", playerNear(level, p, 4.0) ? this.clearSpot(level, this.getEntityPos(), 3.0, 7.0, 4.0) : p, 1.5, t);
+            for (Vec3 p : this.eyeSpots) {
+               this.spawnConstruct(level, "arcane_eye", playerNear(level, p, 4.0) ? this.clearSpot(level, this.position(), 3.0, 7.0, 4.0) : p, 1.5, t);
             }
 
             this.golemSpots.clear();
@@ -964,10 +964,10 @@ public class ArchonBoss extends MysticalBoss {
          .start((b, level, t, i) -> this.prismEnds.clear())
          .tick((b, level, t, tick) -> {
             if (tick == 8) {
-               Vec3d h = this.heart();
+               Vec3 h = this.heart();
                this.prismFrom = h;
-               Vec3d aim = t != null ? this.predict(t, 16.0).add(0.0, t.getHeight() * 0.6, 0.0) : h.add(this.facing().multiply(12.0)).add(0.0, -3.0, 0.0);
-               Vec3d to = aim.subtract(h);
+               Vec3 aim = t != null ? this.predict(t, 16.0).add(0.0, t.getBbHeight() * 0.6, 0.0) : h.add(this.facing().scale(12.0)).add(0.0, -3.0, 0.0);
+               Vec3 to = aim.subtract(h);
                this.prismYaw = yawOf(to);
                this.prismPitch = pitchOf(to);
                this.prismCount = this.phase() >= 3 ? 5 : 3;
@@ -976,8 +976,8 @@ public class ArchonBoss extends MysticalBoss {
 
                for (int k = 0; k < this.prismCount; k++) {
                   float yaw = this.prismYaw + (k - (this.prismCount - 1) / 2.0F) * this.prismStep;
-                  Vec3d dir = Vec3d.fromPolar(this.prismPitch, yaw);
-                  Vec3d end = this.rayEnd(level, h, dir, 24.0);
+                  Vec3 dir = Vec3.directionFromRotation(this.prismPitch, yaw);
+                  Vec3 end = this.rayEnd(level, h, dir, 24.0);
                   this.prismEnds.add(end);
                   Vfx.telegraphLine(level, this.floor(level, h), this.flat(dir), Math.min(24.0, hd(h, end) + 1.0), 1.4, 16, P);
                }
@@ -988,15 +988,15 @@ public class ArchonBoss extends MysticalBoss {
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d h = this.prismFrom;
+            Vec3 h = this.prismFrom;
             this.fireBeams(level, h, this.prismEnds, 16.0F);
             if (this.phase() >= 2 && this.prismCount > 0) {
-               List<Vec3d> ends = new ArrayList<>();
+               List<Vec3> ends = new ArrayList<>();
 
                for (int k = 0; k <= this.prismCount; k++) {
                   float yaw = this.prismYaw + (k - this.prismCount / 2.0F) * this.prismStep;
-                  Vec3d dir = Vec3d.fromPolar(this.prismPitch, yaw);
-                  Vec3d end = this.rayEnd(level, h, dir, 24.0);
+                  Vec3 dir = Vec3.directionFromRotation(this.prismPitch, yaw);
+                  Vec3 end = this.rayEnd(level, h, dir, 24.0);
                   ends.add(end);
                   Vfx.telegraphLine(level, this.floor(level, h), this.flat(dir), Math.min(24.0, hd(h, end) + 1.0), 1.4, 10, P);
                }
@@ -1006,10 +1006,10 @@ public class ArchonBoss extends MysticalBoss {
          });
    }
 
-   private void fireBeams(ServerWorld level, Vec3d from, List<Vec3d> ends, float base) {
+   private void fireBeams(ServerLevel level, Vec3 from, List<Vec3> ends, float base) {
       Set<Integer> hit = new HashSet<>();
 
-      for (Vec3d end : ends) {
+      for (Vec3 end : ends) {
          for (LivingEntity e : this.onLine(level, from, end, 1.2)) {
             if (hit.add(e.getId())) {
                this.magic(level, e, base);
@@ -1036,13 +1036,13 @@ public class ArchonBoss extends MysticalBoss {
          .combo("heart_beam", 0.2F)
          .utility((b, t, c) -> c.kitingTicks > 60 ? 2.5F : (c.targetAiming ? 1.5F : 1.0F))
          .start((b, level, t, i) -> {
-            Vec3d at = this.floor(level, t != null ? this.predict(t, 20.0) : this.getEntityPos());
+            Vec3 at = this.floor(level, t != null ? this.predict(t, 20.0) : this.position());
             this.cageAt = at;
             Vfx.telegraphCircle(level, at, 3.2, 20, P);
             Vfx.runeCircle(level, at, 3.2, P, 20, 0.1F, Vfx.Rune.GLYPH);
          })
          .hit((b, level, t, i) -> {
-            Vec3d at = this.cageAt;
+            Vec3 at = this.cageAt;
             if (at != null) {
                int dur = this.phase() >= 3 ? 90 : 70;
                List<LivingEntity> caught = this.inCircle(level, at, 3.2);
@@ -1054,12 +1054,12 @@ public class ArchonBoss extends MysticalBoss {
                }
 
                for (LivingEntity e : caught) {
-                  this.afflict(e, StatusEffects.SLOWNESS, dur, 1);
+                  this.afflict(e, MobEffects.SLOWNESS, dur, 1);
                }
 
                Vfx.flare(level, at.add(0.0, 1.2, 0.0), P.core(), 3.5, 8);
                if (!caught.isEmpty()) {
-                  this.prisons.add(new ArchonBoss.Prison(at, caught, this.age + dur, this.epoch));
+                  this.prisons.add(new ArchonBoss.Prison(at, caught, this.tickCount + dur, this.epoch));
                } else {
                   this.later(dur, () -> Vfx.nova(level, at, P, 3.2));
                }
@@ -1090,7 +1090,7 @@ public class ArchonBoss extends MysticalBoss {
             this.driveHit.clear();
             this.driveStopped = false;
             this.driveDir = this.facing();
-            this.driveAim = this.getEntityPos().add(this.facing().multiply(8.0));
+            this.driveAim = this.position().add(this.facing().scale(8.0));
             this.driveTravel = 0.0;
             Vfx.gather(level, this.heart(), P, 3.0, 12);
          })
@@ -1100,12 +1100,12 @@ public class ArchonBoss extends MysticalBoss {
             }
 
             if (tick == 7) {
-               Vec3d aim = t != null ? this.predict(t, 10.0) : this.getEntityPos().add(this.facing().multiply(8.0));
+               Vec3 aim = t != null ? this.predict(t, 10.0) : this.position().add(this.facing().scale(8.0));
                this.driveAim = aim;
-               this.driveDir = this.flat(aim.subtract(this.getEntityPos()));
+               this.driveDir = this.flat(aim.subtract(this.position()));
                this.face(aim);
-               this.driveTravel = MathHelper.clamp(hd(this.getEntityPos(), aim) - 1.5, 0.0, 20.0);
-               Vfx.telegraphLine(level, this.floor(level, this.getEntityPos()), this.driveDir, this.driveTravel + 3.0, 2.6, 10, P);
+               this.driveTravel = Mth.clamp(hd(this.position(), aim) - 1.5, 0.0, 20.0);
+               Vfx.telegraphLine(level, this.floor(level, this.position()), this.driveDir, this.driveTravel + 3.0, 2.6, 10, P);
             }
 
             if (tick >= 10 && tick <= 16) {
@@ -1115,37 +1115,37 @@ public class ArchonBoss extends MysticalBoss {
 
                if (this.driveStopped || tick > 10 && this.horizontalCollision) {
                   this.driveStopped = true;
-                  this.setVelocity(0.0, this.getVelocity().y * 0.5, 0.0);
+                  this.setDeltaMovement(0.0, this.getDeltaMovement().y * 0.5, 0.0);
                   return;
                }
 
                double sp = this.driveTravel / 7.0;
-               double vy = MathHelper.clamp((this.driveAim.y + 0.5 - this.getY()) * 0.3, -0.6, 0.6);
-               Vec3d v = new Vec3d(this.driveDir.x * sp, vy, this.driveDir.z * sp);
-               this.setVelocity(v);
-               Vec3d h = this.heart();
+               double vy = Mth.clamp((this.driveAim.y + 0.5 - this.getY()) * 0.3, -0.6, 0.6);
+               Vec3 v = new Vec3(this.driveDir.x * sp, vy, this.driveDir.z * sp);
+               this.setDeltaMovement(v);
+               Vec3 h = this.heart();
                if (tick > 10) {
                   Vfx.dashTrail(level, this.drivePrev, h, P);
                }
 
                Vfx.meteorTrail(level, h, v, P);
                this.drivePrev = h;
-               Vec3d side = new Vec3d(-this.driveDir.z, 0.0, this.driveDir.x);
+               Vec3 side = new Vec3(-this.driveDir.z, 0.0, this.driveDir.x);
 
-               for (LivingEntity e : this.inCircle(level, this.getEntityPos(), 1.8 + this.getWidth() * 0.5, 3.0, 5.0)) {
+               for (LivingEntity e : this.inCircle(level, this.position(), 1.8 + this.getBbWidth() * 0.5, 3.0, 5.0)) {
                   if (this.driveHit.add(e.getId()) && this.phys(level, e, 20.0F)) {
                      double s = (e.getX() - this.getX()) * side.x + (e.getZ() - this.getZ()) * side.z;
-                     Vec3d push = side.multiply(s >= 0.0 ? 1.2 : -1.2);
-                     e.addVelocity(push.x, 0.35, push.z);
-                     e.knockedBack = true;
+                     Vec3 push = side.scale(s >= 0.0 ? 1.2 : -1.2);
+                     e.push(push.x, 0.35, push.z);
+                     e.syncVelocity = true;
                      hitFx(level, e, 0.7);
                   }
                }
             }
          })
          .hit((b, level, t, i) -> {
-            this.setVelocity(0.0, this.getVelocity().y * 0.3, 0.0);
-            Vec3d g = this.floor(level, this.getEntityPos().add(this.facing().multiply(2.4)));
+            this.setDeltaMovement(0.0, this.getDeltaMovement().y * 0.3, 0.0);
+            Vec3 g = this.floor(level, this.position().add(this.facing().scale(2.4)));
 
             for (LivingEntity e : this.inCircle(level, g, 3.5)) {
                if (this.phys(level, e, 26.0F)) {
@@ -1159,7 +1159,7 @@ public class ArchonBoss extends MysticalBoss {
          })
          .end((b, level, t, i) -> {
             if (i == -2) {
-               this.setVelocity(Vec3d.ZERO);
+               this.setDeltaMovement(Vec3.ZERO);
             }
          });
    }
@@ -1174,7 +1174,7 @@ public class ArchonBoss extends MysticalBoss {
          .tags("ranged aoe")
          .superArmor()
          .telegraph(0.3, 1.3)
-         .utility((b, t, c) -> this.latticeUntil > this.age ? 0.0F : 1.0F)
+         .utility((b, t, c) -> this.latticeUntil > this.tickCount ? 0.0F : 1.0F)
          .start((b, level, t, i) -> {
             this.latticeNodes = this.latticePoints(level, t);
 
@@ -1188,8 +1188,8 @@ public class ArchonBoss extends MysticalBoss {
                List<ArchonBoss.Node> n = this.latticeNodes;
 
                for (int k = 0; k < n.size(); k++) {
-                  Vec3d a = n.get(k).ground();
-                  Vec3d c = n.get((k + 2) % n.size()).ground();
+                  Vec3 a = n.get(k).ground();
+                  Vec3 c = n.get((k + 2) % n.size()).ground();
                   Vfx.telegraphLine(level, a, c.subtract(a), hd(a, c), 1.4, 20, P);
                }
             }
@@ -1197,8 +1197,8 @@ public class ArchonBoss extends MysticalBoss {
          .hit((b, level, t, i) -> {
             List<ArchonBoss.Node> nodes = this.latticeNodes;
             if (nodes.size() >= 3) {
-               List<Vec3d> ground = new ArrayList<>();
-               List<Vec3d> chain = new ArrayList<>();
+               List<Vec3> ground = new ArrayList<>();
+               List<Vec3> chain = new ArrayList<>();
                double cx = 0.0;
                double cz = 0.0;
                double cy = 0.0;
@@ -1211,12 +1211,12 @@ public class ArchonBoss extends MysticalBoss {
                   cz += n.ground().z;
                }
 
-               Vec3d center = new Vec3d(cx / nodes.size(), cy / nodes.size(), cz / nodes.size());
+               Vec3 center = new Vec3(cx / nodes.size(), cy / nodes.size(), cz / nodes.size());
                boolean outer = this.phase() >= 2;
                boolean rotate = this.phase() >= 3;
-               ArchonBoss.Lattice l = new ArchonBoss.Lattice(center, List.copyOf(ground), this.age, this.epoch, outer, rotate);
+               ArchonBoss.Lattice l = new ArchonBoss.Lattice(center, List.copyOf(ground), this.tickCount, this.epoch, outer, rotate);
                this.lattice = l;
-               this.latticeUntil = this.age + 80;
+               this.latticeUntil = this.tickCount + 80;
                int s = ground.size();
                if (!rotate) {
                   for (int k = 0; k < s; k++) {
@@ -1225,11 +1225,11 @@ public class ArchonBoss extends MysticalBoss {
                }
 
                if (outer) {
-                  List<Vec3d> at = latticeAt(l, 20);
+                  List<Vec3> at = latticeAt(l, 20);
 
                   for (int k = 0; k < s; k++) {
-                     Vec3d a = at.get(k);
-                     Vec3d c = at.get((k + 1) % s);
+                     Vec3 a = at.get(k);
+                     Vec3 c = at.get((k + 1) % s);
                      Vfx.telegraphLine(level, a, c.subtract(a), hd(a, c), 1.4, 20, P);
                   }
                }
@@ -1250,20 +1250,20 @@ public class ArchonBoss extends MysticalBoss {
          .telegraph(0.0, 0.7)
          .combo("runeblade_rend", 0.35F)
          .combo("false_edge", 0.25F)
-         .start((b, level, t, i) -> Vfx.telegraphCone(level, this.floor(level, this.getEntityPos()), this.getYaw(), 100.0F, 6.0, 14, P))
+         .start((b, level, t, i) -> Vfx.telegraphCone(level, this.floor(level, this.position()), this.getYRot(), 100.0F, 6.0, 14, P))
          .tick((b, level, t, tick) -> {
             if (tick <= 14) {
                this.descend(t, 0.5);
             }
          })
          .hit((b, level, t, i) -> {
-            float yaw = this.getYaw();
-            Vec3d left = Vec3d.fromPolar(0.0F, yaw - 90.0F);
+            float yaw = this.getYRot();
+            Vec3 left = Vec3.directionFromRotation(0.0F, yaw - 90.0F);
 
             for (LivingEntity e : this.inArc(level, 6.0, 100.0F, yaw)) {
                this.physMagic(level, e, 26.0F, 6.0F);
-               e.addVelocity(left.x * 1.3, 0.3, left.z * 1.3);
-               e.knockedBack = true;
+               e.push(left.x * 1.3, 0.3, left.z * 1.3);
+               e.syncVelocity = true;
                hitFx(level, e, 0.8);
             }
 
@@ -1289,7 +1289,7 @@ public class ArchonBoss extends MysticalBoss {
             }
 
             this.rendDir = this.facing();
-            this.rendG0 = this.floor(level, this.getEntityPos());
+            this.rendG0 = this.floor(level, this.position());
             Vfx.telegraphLine(level, this.rendG0, this.rendDir, 8.0, 2.2, 13, P);
          })
          .tick((b, level, t, tick) -> {
@@ -1298,35 +1298,35 @@ public class ArchonBoss extends MysticalBoss {
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d g0 = this.rendG0;
-            Vec3d dir = this.rendDir;
+            Vec3 g0 = this.rendG0;
+            Vec3 dir = this.rendDir;
             if (i == 0) {
-               for (LivingEntity e : this.onStrip(level, g0, g0.add(dir.multiply(8.0)), 1.1, 1.0, 3.5)) {
+               for (LivingEntity e : this.onStrip(level, g0, g0.add(dir.scale(8.0)), 1.1, 1.0, 3.5)) {
                   this.guardBreak(level, e, 100);
                   if (this.phys(level, e, 30.0F)) {
-                     Vec3d v = e.getVelocity();
-                     e.setVelocity(v.x, -0.6, v.z);
-                     e.knockedBack = true;
+                     Vec3 v = e.getDeltaMovement();
+                     e.setDeltaMovement(v.x, -0.6, v.z);
+                     e.syncVelocity = true;
                      hitFx(level, e, 0.9);
                   }
                }
 
-               Vfx.slashArc(level, this.local(0.0, 3.0, 0.5), this.getYaw(), 0.0F, 90.0F, 7.0, P, 160.0F);
-               Vec3d chop = this.floor(level, g0.add(dir.multiply(5.0)));
+               Vfx.slashArc(level, this.local(0.0, 3.0, 0.5), this.getYRot(), 0.0F, 90.0F, 7.0, P, 160.0F);
+               Vec3 chop = this.floor(level, g0.add(dir.scale(5.0)));
                Vfx.heavyImpact(level, chop, P, 1.2);
                Vfx.groundCrack(level, chop, 2.5, P);
                Vfx.telegraphLine(level, chop, dir, 10.0, 2.0, 11, P);
             } else {
-               Vec3d a = g0.add(dir.multiply(5.0));
+               Vec3 a = g0.add(dir.scale(5.0));
 
-               for (LivingEntity e : this.onStrip(level, a, g0.add(dir.multiply(15.0)), 1.0, 1.0, 3.5)) {
+               for (LivingEntity e : this.onStrip(level, a, g0.add(dir.scale(15.0)), 1.0, 1.0, 3.5)) {
                   this.magic(level, e, 16.0F);
-                  e.addVelocity(0.0, 0.9, 0.0);
-                  e.knockedBack = true;
+                  e.push(0.0, 0.9, 0.0);
+                  e.syncVelocity = true;
                }
 
                for (int s = 5; s <= 15; s += 2) {
-                  Vec3d p = this.floor(level, g0.add(dir.multiply(s)).add(0.0, 1.0, 0.0));
+                  Vec3 p = this.floor(level, g0.add(dir.scale(s)).add(0.0, 1.0, 0.0));
                   Vfx.pillar(level, p, P, 4.0, 0.8);
                   if (s == 9 || s == 13) {
                      Vfx.groundCrack(level, p, 2.0, P);
@@ -1354,7 +1354,7 @@ public class ArchonBoss extends MysticalBoss {
             }
 
             this.rendDir = this.facing();
-            this.rendG0 = this.floor(level, this.getEntityPos());
+            this.rendG0 = this.floor(level, this.position());
             Vfx.telegraphLine(level, this.rendG0, this.rendDir, 8.0, 2.2, 13, P);
          })
          .tick((b, level, t, tick) -> {
@@ -1364,24 +1364,24 @@ public class ArchonBoss extends MysticalBoss {
 
             if (tick == 13) {
                for (int s = 1; s <= 7; s += 2) {
-                  Vec3d p = this.rendG0.add(this.rendDir.multiply(s)).add(0.0, 0.3, 0.0);
+                  Vec3 p = this.rendG0.add(this.rendDir.scale(s)).add(0.0, 0.3, 0.0);
                   Vfx.smoke(level, p, P.smoke(), 3, 0.5, 0.8);
                   Vfx.sparks(level, p, P.glow(), 3, 0.12, 0.12);
                }
             }
 
             if (tick == 14) {
-               Vec3d aim = t != null ? this.predict(t, 12.0) : this.getEntityPos().add(this.facing().multiply(6.0));
+               Vec3 aim = t != null ? this.predict(t, 12.0) : this.position().add(this.facing().scale(6.0));
                this.face(aim);
                this.thrustDir = this.facing();
-               Vfx.telegraphLine(level, this.floor(level, this.getEntityPos()), this.thrustDir, 12.0, 1.6, 12, P);
+               Vfx.telegraphLine(level, this.floor(level, this.position()), this.thrustDir, 12.0, 1.6, 12, P);
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d g = this.floor(level, this.getEntityPos());
-            Vec3d dir = this.thrustDir;
+            Vec3 g = this.floor(level, this.position());
+            Vec3 dir = this.thrustDir;
 
-            for (LivingEntity e : this.onStrip(level, g, g.add(dir.multiply(9.0)), 0.8, 1.0, 3.5)) {
+            for (LivingEntity e : this.onStrip(level, g, g.add(dir.scale(9.0)), 0.8, 1.0, 3.5)) {
                if (this.phys(level, e, 28.0F)) {
                   hitFx(level, e, 0.9);
                }
@@ -1390,15 +1390,15 @@ public class ArchonBoss extends MysticalBoss {
                   this.later(20 * k, () -> {
                      if (e.isAlive()) {
                         this.magic(level, e, 3.0F);
-                        Vfx.sparks(level, e.getEntityPos().add(0.0, e.getHeight() * 0.6, 0.0), P.glow(), 5, 0.15, 0.12);
+                        Vfx.sparks(level, e.position().add(0.0, e.getBbHeight() * 0.6, 0.0), P.glow(), 5, 0.15, 0.12);
                      }
                   });
                }
             }
 
             Vfx.streaks(level, this.local(0.0, 2.0, 1.0), dir, P, 12);
-            Vfx.slashArc(level, this.local(0.0, 2.0, 0.0), this.getYaw(), 0.0F, 0.0F, 7.0, P, 60.0F);
-            Vfx.impact(level, this.getEntityPos().add(dir.multiply(7.0)).add(0.0, 1.6, 0.0), P, 0.9);
+            Vfx.slashArc(level, this.local(0.0, 2.0, 0.0), this.getYRot(), 0.0F, 0.0F, 7.0, P, 60.0F);
+            Vfx.impact(level, this.position().add(dir.scale(7.0)).add(0.0, 1.6, 0.0), P, 0.9);
          });
    }
 
@@ -1412,36 +1412,36 @@ public class ArchonBoss extends MysticalBoss {
          .superArmor()
          .telegraph(0.0, 1.2)
          .utility((b, t, c) -> c.surroundCount >= 2 ? 2.0F : 1.0F)
-         .start((b, level, t, i) -> Vfx.telegraphCircle(level, this.floor(level, this.getEntityPos()), 6.5, 14, P))
+         .start((b, level, t, i) -> Vfx.telegraphCircle(level, this.floor(level, this.position()), 6.5, 14, P))
          .tick((b, level, t, tick) -> {
             if (tick <= 24) {
                this.descend(t, 0.5);
             }
 
             if (tick == 14) {
-               Vfx.telegraphCircle(level, this.floor(level, this.getEntityPos()), 7.5, 10, P);
+               Vfx.telegraphCircle(level, this.floor(level, this.position()), 7.5, 10, P);
             }
          })
          .hit((b, level, t, i) -> {
-            float yaw = this.getYaw();
+            float yaw = this.getYRot();
             if (i == 0) {
-               for (LivingEntity e : this.inCircle(level, this.getEntityPos(), 6.5, 3.0, 5.0)) {
+               for (LivingEntity e : this.inCircle(level, this.position(), 6.5, 3.0, 5.0)) {
                   if (this.phys(level, e, 22.0F)) {
-                     shoveFrom(e, this.getEntityPos(), 1.0, 0.3);
+                     shoveFrom(e, this.position(), 1.0, 0.3);
                      hitFx(level, e, 0.7);
                   }
                }
 
                Vfx.slashArc(level, this.local(0.0, 2.2, 0.0), yaw, 0.0F, 0.0F, 6.5, P, -360.0F);
             } else {
-               for (LivingEntity e : this.inCircle(level, this.getEntityPos(), 7.5, 3.0, 5.0)) {
+               for (LivingEntity e : this.inCircle(level, this.position(), 7.5, 3.0, 5.0)) {
                   this.physMagic(level, e, 24.0F, 8.0F);
-                  shoveFrom(e, this.getEntityPos(), 1.5, 0.4);
+                  shoveFrom(e, this.position(), 1.5, 0.4);
                   hitFx(level, e, 0.9);
                }
 
                Vfx.slashArc(level, this.local(0.0, 2.4, 0.0), yaw, 0.0F, 15.0F, 7.5, P, -360.0F);
-               Vfx.shockwave(level, this.floor(level, this.getEntityPos()), P, 7.5);
+               Vfx.shockwave(level, this.floor(level, this.position()), P, 7.5);
             }
          });
    }
@@ -1458,7 +1458,7 @@ public class ArchonBoss extends MysticalBoss {
          .telegraph(0.0, 2.6)
          .utility((b, t, c) -> this.noUltimates ? 0.0F : (c.engagedPlayers >= 2 ? 1.3F : 1.0F))
          .start((b, level, t, i) -> {
-            Vec3d g = this.floor(level, this.getEntityPos());
+            Vec3 g = this.floor(level, this.position());
             this.overloadAt = g;
             Vfx.telegraphCircle(level, g, 13.0, 52, P);
             Vfx.runeCircle(level, g, 13.0, P, 52, 0.05F, Vfx.Rune.ARCANE);
@@ -1467,41 +1467,41 @@ public class ArchonBoss extends MysticalBoss {
 
             for (ArchonBoss.Node n : this.latticePoints(level, t)) {
                if (n.real()) {
-                  Vec3d away = this.flat(n.ground().subtract(g));
-                  Vfx.ward(level, this.floor(level, n.ground().add(away.multiply(1.5)).add(0.0, 1.0, 0.0)), 1.2, P, 52);
+                  Vec3 away = this.flat(n.ground().subtract(g));
+                  Vfx.ward(level, this.floor(level, n.ground().add(away.scale(1.5)).add(0.0, 1.0, 0.0)), 1.2, P, 52);
                }
             }
          })
          .tick((b, level, t, tick) -> {
             if (tick < 50) {
-               Vec3d h = this.heart();
+               Vec3 h = this.heart();
                if (tick % 2 == 0) {
                   Vfx.gather(level, h, P, 8.0 - tick * 0.12, 12);
                   this.drawIn(h, 16.0, 0.06);
                }
 
                if (tick % 10 == 0) {
-                  Vec3d d = new Vec3d(this.getRandom().nextDouble() - 0.5, this.getRandom().nextDouble() - 0.5, this.getRandom().nextDouble() - 0.5);
-                  if (d.lengthSquared() < 0.001) {
-                     d = new Vec3d(1.0, 0.0, 0.0);
+                  Vec3 d = new Vec3(this.getRandom().nextDouble() - 0.5, this.getRandom().nextDouble() - 0.5, this.getRandom().nextDouble() - 0.5);
+                  if (d.lengthSqr() < 0.001) {
+                     d = new Vec3(1.0, 0.0, 0.0);
                   }
 
-                  Vfx.lightning(level, h, h.add(d.normalize().multiply(3.0 + this.getRandom().nextDouble() * 3.0)), P, 1);
+                  Vfx.lightning(level, h, h.add(d.normalize().scale(3.0 + this.getRandom().nextDouble() * 3.0)), P, 1);
                }
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d g = this.overloadAt;
-            Vec3d h = this.heart();
+            Vec3 g = this.overloadAt;
+            Vec3 h = this.heart();
             boolean last = this.phase() >= 3;
 
             for (LivingEntity e : this.inCircle(level, g, 13.0)) {
-               if (!this.los(level, h, e.getEntityPos().add(0.0, e.getHeight() * 0.6, 0.0))) {
-                  Vfx.glint(level, e.getEyePos(), P.core(), 0.8);
+               if (!this.los(level, h, e.position().add(0.0, e.getBbHeight() * 0.6, 0.0))) {
+                  Vfx.glint(level, e.getEyePosition(), P.core(), 0.8);
                } else {
                   this.magic(level, e, last ? 44.0F : 40.0F);
                   shoveFrom(e, h, 2.2, 0.5);
-                  this.afflict(e, StatusEffects.SLOWNESS, 60, 1);
+                  this.afflict(e, MobEffects.SLOWNESS, 60, 1);
                }
             }
 
@@ -1510,7 +1510,7 @@ public class ArchonBoss extends MysticalBoss {
             for (int k = 0; k < n; k++) {
                double a = k * Math.PI * 2.0 / n;
                double dy = k % 2 == 0 ? -0.05 : -0.15;
-               BossBolt.shoot(level, this, BossBolt.Style.RUNE, h, new Vec3d(Math.cos(a) * 0.6, dy, Math.sin(a) * 0.6), this.dmg(8.0F)).life(40);
+               BossBolt.shoot(level, this, BossBolt.Style.RUNE, h, new Vec3(Math.cos(a) * 0.6, dy, Math.sin(a) * 0.6), this.dmg(8.0F)).life(40);
             }
 
             Vfx.impactFrame(level, h, 40.0, P.glow(), 0.8F);
@@ -1540,29 +1540,29 @@ public class ArchonBoss extends MysticalBoss {
                int hit = 20 + 8 * k;
                if (tick == hit - 16) {
                   LivingEntity v = this.monolithVictim(k, t);
-                  Vec3d p = this.floor(level, v != null ? this.predict(v, 16.0) : this.getEntityPos());
+                  Vec3 p = this.floor(level, v != null ? this.predict(v, 16.0) : this.position());
                   this.monoliths[k] = p;
                   Vfx.telegraphCircle(level, p, 3.0, 16, P);
                   Vfx.runeCircle(level, p, 3.0, P, 16, 0.12F, Vfx.Rune.GLYPH);
                }
 
-               Vec3d p = this.monoliths[k];
+               Vec3 p = this.monoliths[k];
                if (p != null && tick >= hit - 8 && tick <= hit) {
-                  Vfx.meteorTrail(level, p.add(0.0, 16.0 * (hit - tick) / 8.0, 0.0), new Vec3d(0.0, -2.0, 0.0), P);
+                  Vfx.meteorTrail(level, p.add(0.0, 16.0 * (hit - tick) / 8.0, 0.0), new Vec3(0.0, -2.0, 0.0), P);
                }
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d p = this.monoliths[i];
+            Vec3 p = this.monoliths[i];
             if (p != null) {
                for (LivingEntity e : this.inCircle(level, p, 3.0, 1.0, 14.0)) {
                   boolean high = e.getY() > p.y + 3.0;
                   this.phys(level, e, 34.0F);
                   if (high) {
-                     e.stopGliding();
-                     Vec3d v = e.getVelocity();
-                     e.setVelocity(v.x, -2.0, v.z);
-                     e.knockedBack = true;
+                     e.stopFallFlying();
+                     Vec3 v = e.getDeltaMovement();
+                     e.setDeltaMovement(v.x, -2.0, v.z);
+                     e.syncVelocity = true;
                   } else {
                      shoveFrom(e, p, 1.2, 0.4);
                   }
@@ -1577,11 +1577,11 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    private @Nullable LivingEntity monolithVictim(int k, @Nullable LivingEntity target) {
-      List<ServerPlayerEntity> e = this.engaged();
+      List<ServerPlayer> e = this.engaged();
       if (k % 2 == 1 && e.size() >= 2) {
-         List<ServerPlayerEntity> others = new ArrayList<>();
+         List<ServerPlayer> others = new ArrayList<>();
 
-         for (ServerPlayerEntity p : e) {
+         for (ServerPlayer p : e) {
             if (p != target) {
                others.add(p);
             }
@@ -1607,14 +1607,14 @@ public class ArchonBoss extends MysticalBoss {
          .telegraph(0.0, 4.2)
          .utility((b, t, c) -> this.noUltimates ? 0.0F : 1.0F)
          .start((b, level, t, i) -> {
-            Vec3d c = this.arenaCenter(level, t);
+            Vec3 c = this.arenaCenter(level, t);
             this.sigilC = c;
             this.sigilNodes = this.nodesAround(level, c);
             Vfx.telegraphCircle(level, c, 6.0, 36, P);
             Vfx.runeCircle(level, c, 12.0, P, 36, 0.03F, Vfx.Rune.GLYPH);
          })
          .tick((b, level, t, tick) -> {
-            Vec3d c = this.sigilC;
+            Vec3 c = this.sigilC;
             if (tick == 2) {
                this.blinkTo(c.add(0.0, this.hoverHeight() + 2.0, 0.0));
             }
@@ -1637,19 +1637,19 @@ public class ArchonBoss extends MysticalBoss {
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d c = this.sigilC;
+            Vec3 c = this.sigilC;
             switch (i) {
                case 0:
                   for (LivingEntity e : this.inCircle(level, c, 6.0, 1.0, 4.0)) {
                      this.magic(level, e, 30.0F);
-                     this.afflict(e, StatusEffects.SLOWNESS, 40, 1);
+                     this.afflict(e, MobEffects.SLOWNESS, 40, 1);
                   }
 
                   Vfx.nova(level, c, P, 6.0);
                   break;
                case 1:
                   for (LivingEntity e : this.inCircle(level, c, 15.0, 1.0, 4.0)) {
-                     if (hd(e.getEntityPos(), c) > 6.0) {
+                     if (hd(e.position(), c) > 6.0) {
                         this.magic(level, e, 30.0F);
                      }
                   }
@@ -1673,7 +1673,7 @@ public class ArchonBoss extends MysticalBoss {
                      boolean safe = false;
 
                      for (ArchonBoss.Node n : this.sigilNodes) {
-                        if (hd(e.getEntityPos(), n.ground()) <= 2.2) {
+                        if (hd(e.position(), n.ground()) <= 2.2) {
                            safe = true;
                            break;
                         }
@@ -1704,7 +1704,7 @@ public class ArchonBoss extends MysticalBoss {
          .utility((b, t, c) -> 0.0F)
          .start((b, level, t, i) -> {
             this.collapseStart = this.getHealth();
-            Vec3d c = this.arenaCenter(level, t);
+            Vec3 c = this.arenaCenter(level, t);
             this.collapseC = c;
             this.blinkTo(c.add(0.0, 2.0, 0.0));
             Vfx.telegraphCircle(level, c, 16.0, 92, P);
@@ -1715,7 +1715,7 @@ public class ArchonBoss extends MysticalBoss {
          })
          .tick((b, level, t, tick) -> {
             if (tick <= 88) {
-               Vec3d h = this.heart();
+               Vec3 h = this.heart();
                if (tick % 2 == 0) {
                   this.drawIn(h, 20.0, 0.09);
                }
@@ -1733,12 +1733,12 @@ public class ArchonBoss extends MysticalBoss {
             }
          })
          .hit((b, level, t, i) -> {
-            Vec3d h = this.heart();
+            Vec3 h = this.heart();
 
             for (LivingEntity e : BossFx.victims(level, this, h, 16.0)) {
                this.magic(level, e, 48.0F);
                shoveFrom(e, h, 3.0, 0.6);
-               this.afflict(e, StatusEffects.WEAKNESS, 200, 0);
+               this.afflict(e, MobEffects.WEAKNESS, 200, 0);
             }
 
             Vfx.impactFrame(level, h, 64.0, P.core(), 1.0F);
@@ -1753,7 +1753,7 @@ public class ArchonBoss extends MysticalBoss {
          });
    }
 
-   private void fracture(ServerWorld level, boolean cancel) {
+   private void fracture(ServerLevel level, boolean cancel) {
       if (!this.fractured) {
          this.fractured = true;
          this.noUltimates = true;
@@ -1764,7 +1764,7 @@ public class ArchonBoss extends MysticalBoss {
 
          BossFx.staggerBurst(level, this);
          BossFx.wardShatter(level, this);
-         Vec3d h = this.heart();
+         Vec3 h = this.heart();
 
          for (LivingEntity e : BossFx.victims(level, this, h, 8.0)) {
             this.magic(level, e, 14.0F);
@@ -1778,10 +1778,10 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    @Override
-   protected void mobTick(ServerWorld world) {
+   protected void customServerAiStep(ServerLevel world) {
       this.ensureArena(world);
-      super.mobTick(world);
-      if (!this.isDead() && !this.inIntro()) {
+      super.customServerAiStep(world);
+      if (!this.isDeadOrDying() && !this.inIntro()) {
          BossFx.current(this);
          LivingEntity target = this.getTarget();
          if (target == null) {
@@ -1805,13 +1805,13 @@ public class ArchonBoss extends MysticalBoss {
 
          this.tickLattice(world);
          this.tickPrisons(world);
-         if (this.age % 20 == 0) {
+         if (this.tickCount % 20 == 0) {
             this.tether(world);
          }
 
-         if (this.warded() && this.age % 10 == 0) {
-            Vfx.ring(world, this.floor(world, this.getEntityPos()), P.glow(), 3.0, 12);
-            if (this.age % 20 == 0) {
+         if (this.warded() && this.tickCount % 10 == 0) {
+            Vfx.ring(world, this.floor(world, this.position()), P.glow(), 3.0, 12);
+            if (this.tickCount % 20 == 0) {
                Vfx.shieldBubble(world, this.local(0.0, 2.5, 0.0), 3.4, P, 22);
             } else {
                Vfx.flare(world, this.heart(), P.glow(), 3.2, 10);
@@ -1825,7 +1825,7 @@ public class ArchonBoss extends MysticalBoss {
       }
    }
 
-   private void hazards(ServerWorld level, LivingEntity target) {
+   private void hazards(ServerLevel level, LivingEntity target) {
       int p = this.phase();
       boolean free = !this.invulnerableNow();
       if (p >= 1) {
@@ -1853,33 +1853,33 @@ public class ArchonBoss extends MysticalBoss {
       }
    }
 
-   private void sentries(ServerWorld level, LivingEntity target, int count) {
+   private void sentries(ServerLevel level, LivingEntity target, int count) {
       List<ArchonBoss.Node> nodes = new ArrayList<>();
 
       for (ArchonBoss.Node n : this.latticePoints(level, target)) {
-         if (hd(n.ground(), target.getEntityPos()) >= 4.0) {
+         if (hd(n.ground(), target.position()) >= 4.0) {
             nodes.add(n);
          }
       }
 
-      nodes.sort(Comparator.comparingDouble(nx -> hd(nx.ground(), target.getEntityPos())));
+      nodes.sort(Comparator.comparingDouble(nx -> hd(nx.ground(), target.position())));
 
       for (int k = 0; k < Math.min(count, nodes.size()); k++) {
          ArchonBoss.Node n = nodes.get(k);
-         Vec3d top = n.top();
-         Vec3d aim = this.predict(target, 30.0).add(0.0, 1.0, 0.0);
-         Vec3d dir = aim.subtract(top);
-         if (!(dir.lengthSquared() < 0.001)) {
+         Vec3 top = n.top();
+         Vec3 aim = this.predict(target, 30.0).add(0.0, 1.0, 0.0);
+         Vec3 dir = aim.subtract(top);
+         if (!(dir.lengthSqr() < 0.001)) {
             Vfx.chargeUp(level, top, P, 30);
-            Vfx.telegraphLine(level, n.ground(), this.flat(dir), dir.horizontalLength() + 6.0, 1.2, 30, P);
-            Vec3d nd = dir.normalize();
+            Vfx.telegraphLine(level, n.ground(), this.flat(dir), dir.horizontalDistance() + 6.0, 1.2, 30, P);
+            Vec3 nd = dir.normalize();
             double len = dir.length() + 6.0;
             this.later(30, () -> {
-               Vec3d end = this.rayEnd(level, top, nd, len);
+               Vec3 end = this.rayEnd(level, top, nd, len);
 
                for (LivingEntity e : this.onLine(level, top, end, 1.0)) {
                   this.magic(level, e, 12.0F);
-                  this.afflict(e, StatusEffects.SLOWNESS, 20, 0);
+                  this.afflict(e, MobEffects.SLOWNESS, 20, 0);
                }
 
                Vfx.beam(level, top, end, P, 0.6, 6);
@@ -1891,40 +1891,40 @@ public class ArchonBoss extends MysticalBoss {
       }
    }
 
-   private void gravityPulse(ServerWorld level) {
+   private void gravityPulse(ServerLevel level) {
       Vfx.gather(level, this.heart(), P, 14.0, 20);
-      Vfx.runeCircle(level, this.floor(level, this.getEntityPos()), 14.0, P, 20, -0.1F, Vfx.Rune.GLYPH);
+      Vfx.runeCircle(level, this.floor(level, this.position()), 14.0, P, 20, -0.1F, Vfx.Rune.GLYPH);
       this.later(20, () -> {
          BossFx.current(this);
-         BossFx.pull(level, this, this.floor(level, this.getEntityPos()), 14.0, 0.7);
+         BossFx.pull(level, this, this.floor(level, this.position()), 14.0, 0.7);
       });
    }
 
-   private void tether(ServerWorld level) {
-      List<RealmMob> eyes = level.getEntitiesByClass(
-         RealmMob.class, this.getBoundingBox().expand(16.0), mx -> mx.isAlive() && "arcane_eye".equals(mx.bossId()) && mx.squaredDistanceTo(this) <= 256.0
+   private void tether(ServerLevel level) {
+      List<RealmMob> eyes = level.getEntitiesOfClass(
+         RealmMob.class, this.getBoundingBox().inflate(16.0), mx -> mx.isAlive() && "arcane_eye".equals(mx.bossId()) && mx.distanceToSqr(this) <= 256.0
       );
       this.linkedEyes = eyes.size();
-      Vec3d h = this.heart();
+      Vec3 h = this.heart();
 
       for (int k = 0; k < Math.min(4, eyes.size()); k++) {
          RealmMob m = eyes.get(k);
-         Vfx.beam(level, m.getEntityPos().add(0.0, m.getHeight() * 0.5, 0.0), h, P, 0.2, 16);
+         Vfx.beam(level, m.position().add(0.0, m.getBbHeight() * 0.5, 0.0), h, P, 0.2, 16);
       }
    }
 
    private int constructsNear() {
-      if (this.age - this.constructsAt >= 20) {
-         this.constructsAt = this.age;
-         this.constructs = this.getEntityWorld().getEntitiesByClass(RealmMob.class, this.getBoundingBox().expand(24.0), LivingEntity::isAlive).size();
+      if (this.tickCount - this.constructsAt >= 20) {
+         this.constructsAt = this.tickCount;
+         this.constructs = this.level().getEntitiesOfClass(RealmMob.class, this.getBoundingBox().inflate(24.0), LivingEntity::isAlive).size();
       }
 
       return this.constructs;
    }
 
-   private void ambient(ServerWorld level) {
+   private void ambient(ServerLevel level) {
       int p = this.phase();
-      int t = this.age;
+      int t = this.tickCount;
       if (p >= 1 && t % 20 == 0) {
          Vfx.flare(level, this.heart(), P.glow(), 1.6, 8);
       }
@@ -1949,20 +1949,20 @@ public class ArchonBoss extends MysticalBoss {
          }
 
          if (t % 60 == 0) {
-            Vfx.runeCircle(level, this.floor(level, this.getEntityPos()), 3.0, P, 60, 0.03F, Vfx.Rune.GLYPH);
+            Vfx.runeCircle(level, this.floor(level, this.position()), 3.0, P, 60, 0.03F, Vfx.Rune.GLYPH);
          }
       }
    }
 
-   private void tickLattice(ServerWorld level) {
+   private void tickLattice(ServerLevel level) {
       ArchonBoss.Lattice l = this.lattice;
       if (l != null) {
-         int age = this.age - l.start();
+         int age = this.tickCount - l.start();
          if (l.epoch() == this.epoch && age <= 80) {
             int s = l.ground().size();
             boolean outerLive = l.outer() && age >= 20;
             if (l.rotate() && age % 5 == 0) {
-               List<Vec3d> pts = latticeAt(l, age);
+               List<Vec3> pts = latticeAt(l, age);
 
                for (int k = 0; k < s; k++) {
                   Vfx.beam(level, pts.get(k).add(0.0, 1.0, 0.0), pts.get((k + 2) % s).add(0.0, 1.0, 0.0), P, 0.6, 6);
@@ -1971,7 +1971,7 @@ public class ArchonBoss extends MysticalBoss {
                   }
                }
             } else if (!l.rotate() && l.outer() && age == 20) {
-               List<Vec3d> pts = l.ground();
+               List<Vec3> pts = l.ground();
 
                for (int k = 0; k < s; k++) {
                   Vfx.beam(level, pts.get(k).add(0.0, 1.0, 0.0), pts.get((k + 1) % s).add(0.0, 1.0, 0.0), P, 0.45, 60);
@@ -1979,7 +1979,7 @@ public class ArchonBoss extends MysticalBoss {
             }
 
             if (age > 0 && age % 10 == 0) {
-               List<Vec3d> pts = latticeAt(l, age);
+               List<Vec3> pts = latticeAt(l, age);
                double minX = Double.MAX_VALUE;
                double minY = Double.MAX_VALUE;
                double minZ = Double.MAX_VALUE;
@@ -1987,7 +1987,7 @@ public class ArchonBoss extends MysticalBoss {
                double maxY = -Double.MAX_VALUE;
                double maxZ = -Double.MAX_VALUE;
 
-               for (Vec3d v : pts) {
+               for (Vec3 v : pts) {
                   minX = Math.min(minX, v.x);
                   minY = Math.min(minY, v.y);
                   minZ = Math.min(minZ, v.z);
@@ -1996,9 +1996,9 @@ public class ArchonBoss extends MysticalBoss {
                   maxZ = Math.max(maxZ, v.z);
                }
 
-               Box box = new Box(minX - 2.0, minY - 1.0, minZ - 2.0, maxX + 2.0, maxY + 3.0, maxZ + 2.0);
+               AABB box = new AABB(minX - 2.0, minY - 1.0, minZ - 2.0, maxX + 2.0, maxY + 3.0, maxZ + 2.0);
 
-               for (LivingEntity e : level.getEntitiesByClass(LivingEntity.class, box, this::victim)) {
+               for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, box, this::victim)) {
                   boolean hit = false;
 
                   for (int k = 0; k < s && !hit; k++) {
@@ -2007,8 +2007,8 @@ public class ArchonBoss extends MysticalBoss {
 
                   if (hit) {
                      this.magic(level, e, 8.0F);
-                     this.afflict(e, StatusEffects.SLOWNESS, 20, 0);
-                     Vfx.sparks(level, e.getEntityPos().add(0.0, 1.0, 0.0), P.core(), 6, 0.2, 0.14);
+                     this.afflict(e, MobEffects.SLOWNESS, 20, 0);
+                     Vfx.sparks(level, e.position().add(0.0, 1.0, 0.0), P.core(), 6, 0.2, 0.14);
                   }
                }
             }
@@ -2018,29 +2018,29 @@ public class ArchonBoss extends MysticalBoss {
       }
    }
 
-   private static boolean onEdge(LivingEntity e, Vec3d a, Vec3d b) {
+   private static boolean onEdge(LivingEntity e, Vec3 a, Vec3 b) {
       double lo = Math.min(a.y, b.y);
       double hi = Math.max(a.y, b.y);
       return !(e.getY() < lo - 0.5) && !(e.getY() > hi + 2.5) ? segDistH(e.getX(), e.getZ(), a, b) <= 1.2 : false;
    }
 
-   private static List<Vec3d> latticeAt(ArchonBoss.Lattice l, int age) {
+   private static List<Vec3> latticeAt(ArchonBoss.Lattice l, int age) {
       if (!l.rotate()) {
          return l.ground();
       }
 
-      float ang = 36.0F * MathHelper.clamp(age, 0, 80) / 80.0F * (float) (Math.PI / 180.0);
-      List<Vec3d> out = new ArrayList<>(l.ground().size());
+      float ang = 36.0F * Mth.clamp(age, 0, 80) / 80.0F * (float) (Math.PI / 180.0);
+      List<Vec3> out = new ArrayList<>(l.ground().size());
 
-      for (Vec3d g : l.ground()) {
-         Vec3d off = new Vec3d(g.x - l.center().x, 0.0, g.z - l.center().z).rotateY(ang);
-         out.add(new Vec3d(l.center().x + off.x, g.y, l.center().z + off.z));
+      for (Vec3 g : l.ground()) {
+         Vec3 off = new Vec3(g.x - l.center().x, 0.0, g.z - l.center().z).yRot(ang);
+         out.add(new Vec3(l.center().x + off.x, g.y, l.center().z + off.z));
       }
 
       return out;
    }
 
-   private void tickPrisons(ServerWorld level) {
+   private void tickPrisons(ServerLevel level) {
       if (!this.prisons.isEmpty()) {
          Iterator<ArchonBoss.Prison> it = this.prisons.iterator();
 
@@ -2048,22 +2048,22 @@ public class ArchonBoss extends MysticalBoss {
             ArchonBoss.Prison p = it.next();
             if (p.epoch != this.epoch) {
                it.remove();
-            } else if (this.age < p.end) {
-               if ((p.end - this.age) % 4 == 0) {
+            } else if (this.tickCount < p.end) {
+               if ((p.end - this.tickCount) % 4 == 0) {
                   for (LivingEntity e : p.caught) {
-                     if (e.isAlive() && !p.broken.contains(e.getId()) && hd(e.getEntityPos(), p.at) > 3.3) {
+                     if (e.isAlive() && !p.broken.contains(e.getId()) && hd(e.position(), p.at) > 3.3) {
                         p.broken.add(e.getId());
                         this.magic(level, e, 14.0F);
-                        this.afflict(e, StatusEffects.SLOWNESS, 60, 3);
-                        Vfx.explosion(level, e.getEntityPos().add(0.0, 1.0, 0.0), P, 1.4);
+                        this.afflict(e, MobEffects.SLOWNESS, 60, 3);
+                        Vfx.explosion(level, e.position().add(0.0, 1.0, 0.0), P, 1.4);
                      }
                   }
                }
             } else {
                for (LivingEntity e : p.caught) {
-                  if (e.isAlive() && !p.broken.contains(e.getId()) && hd(e.getEntityPos(), p.at) <= 3.3) {
+                  if (e.isAlive() && !p.broken.contains(e.getId()) && hd(e.position(), p.at) <= 3.3) {
                      this.magic(level, e, 6.0F);
-                     this.afflict(e, StatusEffects.LEVITATION, 10, 0);
+                     this.afflict(e, MobEffects.LEVITATION, 10, 0);
                   }
                }
 
@@ -2075,7 +2075,7 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onPhaseChange(ServerWorld level, int phase) {
+   protected void onPhaseChange(ServerLevel level, int phase) {
       this.epoch++;
       this.latticeUntil = 0;
       this.lattice = null;
@@ -2101,12 +2101,12 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    @Override
-   protected void phaseBurst(ServerWorld level, int phase) {
-      Vec3d g = this.floor(level, this.getEntityPos());
-      Vec3d h = this.heart();
+   protected void phaseBurst(ServerLevel level, int phase) {
+      Vec3 g = this.floor(level, this.position());
+      Vec3 h = this.heart();
       BossFx.slam(level, this, g, 7.0, 6.0F, 1.6);
       BossFx.knockback(level, this, g, 9.0, 1.2);
-      Vfx.shake(level, this.getEntityPos(), 40.0, 1.0, 18);
+      Vfx.shake(level, this.position(), 40.0, 1.0, 18);
       if (phase <= 1) {
          Vfx.shards(level, h, P.core(), 30, 0.7);
          Vfx.nova(level, h, P, 7.0);
@@ -2115,7 +2115,7 @@ public class ArchonBoss extends MysticalBoss {
          this.summon(level, "arcane_eye", 2);
       } else if (phase == 2) {
          Vfx.radialFlash(level, h, 40.0, P.glow(), 0.5F);
-         Vfx.slashArc(level, this.local(0.0, 2.2, 0.0), this.getYaw(), 0.0F, 0.0F, 6.0, P, -360.0F);
+         Vfx.slashArc(level, this.local(0.0, 2.2, 0.0), this.getYRot(), 0.0F, 0.0F, 6.0, P, -360.0F);
          Vfx.glint(level, this.eyePos().add(0.0, 1.0, 0.0), P.core(), 2.5);
          this.summon(level, "arcane_eye", 2);
          this.summon(level, "rune_golem", 1);
@@ -2129,20 +2129,20 @@ public class ArchonBoss extends MysticalBoss {
       }
    }
 
-   private void summon(ServerWorld level, String kind, int count) {
+   private void summon(ServerLevel level, String kind, int count) {
       boolean eye = "arcane_eye".equals(kind);
 
       for (int k = 0; k < count; k++) {
-         this.spawnConstruct(level, kind, this.clearSpot(level, this.getEntityPos(), 2.0, 6.0, eye ? 4.0 : 2.0), eye ? 1.5 : 0.0, this.getTarget());
+         this.spawnConstruct(level, kind, this.clearSpot(level, this.position(), 2.0, 6.0, eye ? 4.0 : 2.0), eye ? 1.5 : 0.0, this.getTarget());
       }
    }
 
-   private Vec3d clearSpot(ServerWorld level, Vec3d center, double minR, double maxR, double clear) {
-      Vec3d best = center;
+   private Vec3 clearSpot(ServerLevel level, Vec3 center, double minR, double maxR, double clear) {
+      Vec3 best = center;
       double bestD = -1.0;
 
       for (int k = 0; k < 8; k++) {
-         Vec3d p = BossFx.around(level, this, center, minR, maxR);
+         Vec3 p = BossFx.around(level, this, center, minR, maxR);
          double d = nearestPlayer(level, p);
          if (d >= clear) {
             return p;
@@ -2157,16 +2157,16 @@ public class ArchonBoss extends MysticalBoss {
       return best;
    }
 
-   private static boolean playerNear(ServerWorld level, Vec3d p, double clear) {
+   private static boolean playerNear(ServerLevel level, Vec3 p, double clear) {
       return nearestPlayer(level, p) < clear;
    }
 
-   private static double nearestPlayer(ServerWorld level, Vec3d p) {
+   private static double nearestPlayer(ServerLevel level, Vec3 p) {
       double best = Double.MAX_VALUE;
 
-      for (PlayerEntity pl : level.getPlayers()) {
+      for (Player pl : level.players()) {
          if (!pl.isSpectator() && Math.abs(pl.getY() - p.y) < 4.0) {
-            best = Math.min(best, hd(pl.getEntityPos(), p));
+            best = Math.min(best, hd(pl.position(), p));
          }
       }
 
@@ -2174,23 +2174,23 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onStagger(ServerWorld level) {
+   protected void onStagger(ServerLevel level) {
       this.epoch++;
       this.latticeUntil = 0;
       this.lattice = null;
-      Vec3d h = this.heart();
+      Vec3 h = this.heart();
 
       for (int k = 0; k < 3; k++) {
-         Vfx.lightning(level, h, BossFx.around(level, this, this.getEntityPos(), 2.0, 4.0), P, 2);
+         Vfx.lightning(level, h, BossFx.around(level, this, this.position(), 2.0, 4.0), P, 2);
       }
 
       Vfx.shards(level, h, P.core(), 20, 0.6);
    }
 
    @Override
-   protected void onEnrage(ServerWorld level) {
-      Vfx.auraRing(level, this.floor(level, this.getEntityPos()), P, 4.0);
-      List<Vec3d> tops = new ArrayList<>();
+   protected void onEnrage(ServerLevel level) {
+      Vfx.auraRing(level, this.floor(level, this.position()), P, 4.0);
+      List<Vec3> tops = new ArrayList<>();
 
       for (ArchonBoss.Node n : this.latticePoints(level, this.getTarget())) {
          tops.add(n.top());
@@ -2201,35 +2201,35 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    @Override
-   protected void desperation(ServerWorld level) {
+   protected void desperation(ServerLevel level) {
       this.collapsePending = true;
    }
 
    @Override
-   public boolean damage(ServerWorld world, DamageSource source, float amount) {
+   public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
       if (this.linkedEyes > 0 && this.isAlive()) {
          amount *= 1.0F - 0.06F * Math.min(3, this.linkedEyes);
       }
 
-      return super.damage(world, source, amount);
+      return super.hurtServer(world, source, amount);
    }
 
-   public ProjectileDeflection getProjectileDeflection(ProjectileEntity projectile) {
+   public ProjectileDeflection deflection(Projectile projectile) {
       if (this.warded() && this.isAlive()) {
-         if (this.getEntityWorld() instanceof ServerWorld level) {
-            Vfx.glint(level, projectile.getEntityPos(), P.core(), 1.2);
-            Vfx.sparks(level, projectile.getEntityPos(), P.glow(), 6, 0.25, 0.14);
+         if (this.level() instanceof ServerLevel level) {
+            Vfx.glint(level, projectile.position(), P.core(), 1.2);
+            Vfx.sparks(level, projectile.position(), P.glow(), 6, 0.25, 0.14);
          }
 
-         return ProjectileDeflection.SIMPLE;
+         return ProjectileDeflection.REVERSE;
       } else {
-         return super.getProjectileDeflection(projectile);
+         return super.deflection(projectile);
       }
    }
 
    @Override
-   public void onDeath(DamageSource damageSource) {
-      super.onDeath(damageSource);
+   public void die(DamageSource damageSource) {
+      super.die(damageSource);
       this.epoch++;
       this.lattice = null;
       this.latticeUntil = 0;
@@ -2240,8 +2240,8 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    @Override
-   protected void writeCustomData(WriteView view) {
-      super.writeCustomData(view);
+   protected void addAdditionalSaveData(ValueOutput view) {
+      super.addAdditionalSaveData(view);
       BossAction m = this.currentMove();
       boolean collapsing = m != null && "heartcore_collapse".equals(m.anim()) && !this.fractured;
       view.putBoolean("ArchonCollapse", this.collapsePending || collapsing);
@@ -2249,34 +2249,34 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    @Override
-   protected void readCustomData(ReadView view) {
-      super.readCustomData(view);
-      this.collapsePending = view.getBoolean("ArchonCollapse", false);
-      this.fractured = view.getBoolean("ArchonFractured", false);
+   protected void readAdditionalSaveData(ValueInput view) {
+      super.readAdditionalSaveData(view);
+      this.collapsePending = view.getBooleanOr("ArchonCollapse", false);
+      this.fractured = view.getBooleanOr("ArchonFractured", false);
       this.noUltimates = this.fractured;
       this.phaseSeen = this.phase();
    }
 
    @Override
-   protected void onIntroTick(ServerWorld level, int ticksLeft) {
+   protected void onIntroTick(ServerLevel level, int ticksLeft) {
       int t = this.introTicks() - ticksLeft;
-      Vec3d below = this.groundBelow(level, this.getEntityPos(), 6);
-      Vec3d a = this.anchorAt;
-      if (a != null && hd(a, this.getEntityPos()) < 3.0 && a.y <= this.getY() + 0.5) {
-         below = new Vec3d(this.getX(), a.y, this.getZ());
+      Vec3 below = this.groundBelow(level, this.position(), 6);
+      Vec3 a = this.anchorAt;
+      if (a != null && hd(a, this.position()) < 3.0 && a.y <= this.getY() + 0.5) {
+         below = new Vec3(this.getX(), a.y, this.getZ());
       }
 
       if (below != null && t < 40) {
-         this.setVelocity(0.0, MathHelper.clamp((below.y + 2.1 - this.getY()) * 0.2, -0.12, 0.12), 0.0);
+         this.setDeltaMovement(0.0, Mth.clamp((below.y + 2.1 - this.getY()) * 0.2, -0.12, 0.12), 0.0);
       }
 
-      Vec3d g = below != null ? below : this.getEntityPos();
+      Vec3 g = below != null ? below : this.position();
       if (t == 1) {
          Vfx.runeCircle(level, this.anchor(level), 6.0, P, 139, 0.02F, Vfx.Rune.GLYPH);
       }
 
       if (t >= 2 && t <= 30 && t % 4 == 2) {
-         Vec3d h = this.heart();
+         Vec3 h = this.heart();
 
          for (ArchonBoss.Node n : this.pillars) {
             Vfx.beam(level, n.top(), h, P, 0.35, 5);
@@ -2289,7 +2289,7 @@ public class ArchonBoss extends MysticalBoss {
             break;
          case 60:
             Vfx.heavyImpact(level, g, P, 0.8);
-            Vfx.shake(level, this.getEntityPos(), 20.0, 0.4, 8);
+            Vfx.shake(level, this.position(), 20.0, 0.4, 8);
             break;
          case 64:
             Vfx.flare(level, this.local(-1.2, 3.2, 0.0), P.glow(), 1.6, 8);
@@ -2313,7 +2313,7 @@ public class ArchonBoss extends MysticalBoss {
             break;
          case 118:
             Vfx.flare(level, this.eyePos(), 16777215, 2.2, 8);
-            Vfx.shake(level, this.getEntityPos(), 32.0, 0.6, 14);
+            Vfx.shake(level, this.position(), 32.0, 0.6, 14);
             Vfx.runeCircle(level, g, 9.0, P, 22, 0.08F, Vfx.Rune.ARCANE);
             break;
          case 130:
@@ -2322,14 +2322,14 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onDeathTick(ServerWorld level, int tick) {
-      Vec3d below = this.groundBelow(level, this.getEntityPos(), 8);
+   protected void onDeathTick(ServerLevel level, int tick) {
+      Vec3 below = this.groundBelow(level, this.position(), 8);
       if (below != null && tick <= 60) {
-         this.setVelocity(0.0, MathHelper.clamp((below.y + 2.4 - this.getY()) * 0.2, -0.2, 0.2), 0.0);
+         this.setDeltaMovement(0.0, Mth.clamp((below.y + 2.4 - this.getY()) * 0.2, -0.2, 0.2), 0.0);
       }
 
-      Vec3d g = below != null ? below : this.getEntityPos();
-      Vec3d h = this.heart();
+      Vec3 g = below != null ? below : this.position();
+      Vec3 h = this.heart();
       if (tick <= 12 && (tick == 1 || tick % 6 == 0)) {
          Vfx.lightning(level, h, this.floor(level, g.add(this.getRandom().nextGaussian() * 2.5, 0.5, this.getRandom().nextGaussian() * 2.5)), P, 2);
       }
@@ -2349,7 +2349,7 @@ public class ArchonBoss extends MysticalBoss {
       }
 
       if (tick == 46 && this.phase() >= 2) {
-         Vec3d stab = this.floor(level, this.local(2.1, 0.5, 0.0));
+         Vec3 stab = this.floor(level, this.local(2.1, 0.5, 0.0));
          Vfx.heavyImpact(level, stab, P, 0.6);
          Vfx.groundCrack(level, stab, 1.5, P);
       }
@@ -2359,7 +2359,7 @@ public class ArchonBoss extends MysticalBoss {
       }
 
       if (tick == 76 || tick == 82) {
-         Vec3d s = this.local(tick == 76 ? -1.22 : 1.22, 2.0, 0.0);
+         Vec3 s = this.local(tick == 76 ? -1.22 : 1.22, 2.0, 0.0);
          Vfx.impact(level, this.floor(level, s), P, 0.7);
          Vfx.shards(level, s, P.core(), 8, 0.35);
       }
@@ -2395,29 +2395,29 @@ public class ArchonBoss extends MysticalBoss {
       }
    }
 
-   private void ensureArena(ServerWorld level) {
+   private void ensureArena(ServerLevel level) {
       if (this.anchorAt == null) {
          BlockPos home = this.home();
-         Vec3d base = home != null ? Vec3d.ofBottomCenter(home) : this.floor(level, this.getEntityPos());
+         Vec3 base = home != null ? Vec3.atBottomCenterOf(home) : this.floor(level, this.position());
          this.anchorAt = base;
-         BlockPos c = home != null ? home : BlockPos.ofFloored(base);
+         BlockPos c = home != null ? home : BlockPos.containing(base);
          Map<Long, BlockPos> columns = new HashMap<>();
 
-         for (BlockPos p : BlockPos.iterate(c.add(-12, -4, -12), c.add(12, 6, 12))) {
-            if (level.getBlockState(p).isOf(MysticalBosses.RUNE_PILLAR)) {
-               double d = hd(Vec3d.ofBottomCenter(p), base);
+         for (BlockPos p : BlockPos.betweenClosed(c.offset(-12, -4, -12), c.offset(12, 6, 12))) {
+            if (level.getBlockState(p).is(MysticalBosses.RUNE_PILLAR)) {
+               double d = hd(Vec3.atBottomCenterOf(p), base);
                if (d >= 4.0 && d <= 14.0) {
                   long key = BlockPos.asLong(p.getX(), 0, p.getZ());
                   BlockPos had = columns.get(key);
                   if (had == null || p.getY() > had.getY()) {
-                     columns.put(key, p.toImmutable());
+                     columns.put(key, p.immutable());
                   }
                }
             }
          }
 
          List<BlockPos> found = new ArrayList<>(columns.values());
-         found.sort(Comparator.comparingDouble(px -> Math.abs(hd(Vec3d.ofBottomCenter(px), base) - 9.0)));
+         found.sort(Comparator.comparingDouble(px -> Math.abs(hd(Vec3.atBottomCenterOf(px), base) - 9.0)));
          this.pillars.clear();
          if (found.size() >= 5) {
             List<BlockPos> five = new ArrayList<>(found.subList(0, 5));
@@ -2431,11 +2431,11 @@ public class ArchonBoss extends MysticalBoss {
 
             for (int k = 0; k < 5; k++) {
                double a = a0 + k * Math.PI * 2.0 / 5.0;
-               Vec3d v = new Vec3d(base.x + Math.cos(a) * 9.0, base.y, base.z + Math.sin(a) * 9.0);
+               Vec3 v = new Vec3(base.x + Math.cos(a) * 9.0, base.y, base.z + Math.sin(a) * 9.0);
                BlockPos near = null;
 
                for (BlockPos p : found) {
-                  if (hd(Vec3d.ofBottomCenter(p), v) < 3.0) {
+                  if (hd(Vec3.atBottomCenterOf(p), v) < 3.0) {
                      near = p;
                   }
                }
@@ -2446,63 +2446,63 @@ public class ArchonBoss extends MysticalBoss {
       }
    }
 
-   private ArchonBoss.Node realNode(ServerWorld level, BlockPos p, Vec3d base) {
+   private ArchonBoss.Node realNode(ServerLevel level, BlockPos p, Vec3 base) {
       BlockPos q = p;
 
-      for (int i = 0; i < 3 && !level.getBlockState(q.up()).isAir(); i++) {
-         q = q.up();
+      for (int i = 0; i < 3 && !level.getBlockState(q.above()).isAir(); i++) {
+         q = q.above();
       }
 
-      Vec3d top = Vec3d.ofBottomCenter(q.up()).add(0.0, 0.5, 0.0);
+      Vec3 top = Vec3.atBottomCenterOf(q.above()).add(0.0, 0.5, 0.0);
       double px = p.getX() + 0.5;
       double pz = p.getZ() + 0.5;
-      Vec3d toward = this.flat(new Vec3d(base.x - px, 0.0, base.z - pz));
-      Vec3d g = this.groundBelow(level, new Vec3d(px + toward.x * 1.4, p.getY() + 0.5, pz + toward.z * 1.4), 8);
-      return new ArchonBoss.Node(new Vec3d(px, g != null ? g.y : base.y, pz), top, true);
+      Vec3 toward = this.flat(new Vec3(base.x - px, 0.0, base.z - pz));
+      Vec3 g = this.groundBelow(level, new Vec3(px + toward.x * 1.4, p.getY() + 0.5, pz + toward.z * 1.4), 8);
+      return new ArchonBoss.Node(new Vec3(px, g != null ? g.y : base.y, pz), top, true);
    }
 
-   private ArchonBoss.Node virtualNode(ServerWorld level, Vec3d at) {
-      Vec3d g = this.floor(level, at.add(0.0, 1.0, 0.0));
+   private ArchonBoss.Node virtualNode(ServerLevel level, Vec3 at) {
+      Vec3 g = this.floor(level, at.add(0.0, 1.0, 0.0));
       return new ArchonBoss.Node(g, g.add(0.0, 2.5, 0.0), false);
    }
 
-   private Vec3d anchor(ServerWorld level) {
+   private Vec3 anchor(ServerLevel level) {
       this.ensureArena(level);
-      return this.anchorAt != null ? this.anchorAt : this.getEntityPos();
+      return this.anchorAt != null ? this.anchorAt : this.position();
    }
 
-   private Vec3d anchorOrTarget(ServerWorld level, LivingEntity t) {
-      Vec3d a = this.anchor(level);
-      return hd(t.getEntityPos(), a) <= 16.0 ? a : t.getEntityPos();
+   private Vec3 anchorOrTarget(ServerLevel level, LivingEntity t) {
+      Vec3 a = this.anchor(level);
+      return hd(t.position(), a) <= 16.0 ? a : t.position();
    }
 
-   private List<ArchonBoss.Node> latticePoints(ServerWorld level, @Nullable LivingEntity target) {
-      Vec3d a = this.anchor(level);
-      return target != null && !(hd(target.getEntityPos(), a) <= 16.0) ? this.pentagon(level, this.floor(level, target.getEntityPos())) : this.pillars;
+   private List<ArchonBoss.Node> latticePoints(ServerLevel level, @Nullable LivingEntity target) {
+      Vec3 a = this.anchor(level);
+      return target != null && !(hd(target.position(), a) <= 16.0) ? this.pentagon(level, this.floor(level, target.position())) : this.pillars;
    }
 
-   private List<ArchonBoss.Node> nodesAround(ServerWorld level, Vec3d center) {
+   private List<ArchonBoss.Node> nodesAround(ServerLevel level, Vec3 center) {
       return hd(center, this.anchor(level)) < 3.0 ? this.pillars : this.pentagon(level, center);
    }
 
-   private List<ArchonBoss.Node> pentagon(ServerWorld level, Vec3d c) {
+   private List<ArchonBoss.Node> pentagon(ServerLevel level, Vec3 c) {
       List<ArchonBoss.Node> out = new ArrayList<>(5);
 
       for (int k = 0; k < 5; k++) {
          double a = k * Math.PI * 2.0 / 5.0 - (Math.PI / 2);
-         out.add(this.virtualNode(level, new Vec3d(c.x + Math.cos(a) * 9.0, c.y, c.z + Math.sin(a) * 9.0)));
+         out.add(this.virtualNode(level, new Vec3(c.x + Math.cos(a) * 9.0, c.y, c.z + Math.sin(a) * 9.0)));
       }
 
       return out;
    }
 
-   private Vec3d arenaCenter(ServerWorld level, @Nullable LivingEntity t) {
-      Vec3d a = this.anchor(level);
-      return t != null && !(hd(t.getEntityPos(), a) <= 20.0) ? this.floor(level, this.getEntityPos()) : a;
+   private Vec3 arenaCenter(ServerLevel level, @Nullable LivingEntity t) {
+      Vec3 a = this.anchor(level);
+      return t != null && !(hd(t.position(), a) <= 20.0) ? this.floor(level, this.position()) : a;
    }
 
-   private List<Vec3d> chainPoints(ServerWorld level) {
-      List<Vec3d> out = new ArrayList<>();
+   private List<Vec3> chainPoints(ServerLevel level) {
+      List<Vec3> out = new ArrayList<>();
       out.add(this.heart());
 
       for (ArchonBoss.Node n : this.latticePoints(level, this.getTarget())) {
@@ -2512,52 +2512,52 @@ public class ArchonBoss extends MysticalBoss {
       return out;
    }
 
-   private Vec3d local(double right, double up, double fwd) {
-      double yaw = this.getYaw() * (float) (Math.PI / 180.0);
+   private Vec3 local(double right, double up, double fwd) {
+      double yaw = this.getYRot() * (float) (Math.PI / 180.0);
       double sin = Math.sin(yaw);
       double cos = Math.cos(yaw);
-      return new Vec3d(this.getX() - sin * fwd - cos * right, this.getY() + up, this.getZ() + cos * fwd - sin * right);
+      return new Vec3(this.getX() - sin * fwd - cos * right, this.getY() + up, this.getZ() + cos * fwd - sin * right);
    }
 
-   private Vec3d heart() {
+   private Vec3 heart() {
       return this.local(0.0, 2.75, 0.49);
    }
 
-   private Vec3d eyePos() {
+   private Vec3 eyePos() {
       return this.local(0.0, 3.9, 0.4);
    }
 
-   private Vec3d palm(int side) {
+   private Vec3 palm(int side) {
       return this.local(1.63 * side, 2.1, 0.12);
    }
 
-   private Vec3d facing() {
-      return Vec3d.fromPolar(0.0F, this.getYaw());
+   private Vec3 facing() {
+      return Vec3.directionFromRotation(0.0F, this.getYRot());
    }
 
-   private Vec3d flat(Vec3d v) {
-      Vec3d h = new Vec3d(v.x, 0.0, v.z);
-      return h.lengthSquared() < 1.0E-6 ? this.facing() : h.normalize();
+   private Vec3 flat(Vec3 v) {
+      Vec3 h = new Vec3(v.x, 0.0, v.z);
+      return h.lengthSqr() < 1.0E-6 ? this.facing() : h.normalize();
    }
 
-   private static float yawOf(Vec3d d) {
-      return (float)(MathHelper.atan2(d.z, d.x) * 180.0F / (float)Math.PI) - 90.0F;
+   private static float yawOf(Vec3 d) {
+      return (float)(Mth.atan2(d.z, d.x) * 180.0F / (float)Math.PI) - 90.0F;
    }
 
-   private static float pitchOf(Vec3d d) {
-      return (float)(-MathHelper.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)) * 180.0F / (float)Math.PI);
+   private static float pitchOf(Vec3 d) {
+      return (float)(-Mth.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)) * 180.0F / (float)Math.PI);
    }
 
-   private void face(Vec3d at) {
-      if (!(hd(at, this.getEntityPos()) < 0.05)) {
-         float yaw = yawOf(at.subtract(this.getEntityPos()));
-         this.setYaw(yaw);
-         this.setBodyYaw(yaw);
-         this.setHeadYaw(yaw);
+   private void face(Vec3 at) {
+      if (!(hd(at, this.position()) < 0.05)) {
+         float yaw = yawOf(at.subtract(this.position()));
+         this.setYRot(yaw);
+         this.setYBodyRot(yaw);
+         this.setYHeadRot(yaw);
       }
    }
 
-   private static double hd(Vec3d a, Vec3d b) {
+   private static double hd(Vec3 a, Vec3 b) {
       double dx = a.x - b.x;
       double dz = a.z - b.z;
       return Math.sqrt(dx * dx + dz * dz);
@@ -2567,20 +2567,20 @@ public class ArchonBoss extends MysticalBoss {
       return this.enraged() ? Math.round(ticks * 0.7F) : ticks;
    }
 
-   private Vec3d floor(ServerWorld level, Vec3d at) {
-      Vec3d g = this.groundBelow(level, at, 24);
+   private Vec3 floor(ServerLevel level, Vec3 at) {
+      Vec3 g = this.groundBelow(level, at, 24);
       return g != null ? g : at;
    }
 
-   private @Nullable Vec3d groundBelow(ServerWorld level, Vec3d at, int depth) {
-      Mutable p = BlockPos.ofFloored(at.x, at.y + 0.6, at.z).mutableCopy();
+   private @Nullable Vec3 groundBelow(ServerLevel level, Vec3 at, int depth) {
+      MutableBlockPos p = BlockPos.containing(at.x, at.y + 0.6, at.z).mutable();
 
       for (int i = 0; i <= depth; i++) {
          BlockState s = level.getBlockState(p);
          VoxelShape shape = s.getCollisionShape(level, p);
          if (!shape.isEmpty() || !s.getFluidState().isEmpty()) {
-            double top = shape.isEmpty() ? 1.0 : Math.min(1.0, shape.getMax(Axis.Y));
-            return new Vec3d(at.x, p.getY() + top, at.z);
+            double top = shape.isEmpty() ? 1.0 : Math.min(1.0, shape.max(Axis.Y));
+            return new Vec3(at.x, p.getY() + top, at.z);
          }
 
          p.move(0, -1, 0);
@@ -2589,35 +2589,35 @@ public class ArchonBoss extends MysticalBoss {
       return null;
    }
 
-   private Vec3d rayEnd(ServerWorld level, Vec3d from, Vec3d dir, double len) {
-      return level.raycast(new RaycastContext(from, from.add(dir.multiply(len)), ShapeType.COLLIDER, FluidHandling.NONE, this)).getPos();
+   private Vec3 rayEnd(ServerLevel level, Vec3 from, Vec3 dir, double len) {
+      return level.clip(new ClipContext(from, from.add(dir.scale(len)), Block.COLLIDER, Fluid.NONE, this)).getLocation();
    }
 
-   private boolean los(ServerWorld level, Vec3d from, Vec3d to) {
-      return level.raycast(new RaycastContext(from, to, ShapeType.COLLIDER, FluidHandling.NONE, this)).getType() == Type.MISS;
+   private boolean los(ServerLevel level, Vec3 from, Vec3 to) {
+      return level.clip(new ClipContext(from, to, Block.COLLIDER, Fluid.NONE, this)).getType() == Type.MISS;
    }
 
    private void descend(@Nullable LivingEntity t, double above) {
       if (t != null) {
-         Vec3d v = this.getVelocity();
-         this.setVelocity(v.x, MathHelper.clamp((t.getY() + above - this.getY()) * 0.25, -0.3, 0.3), v.z);
+         Vec3 v = this.getDeltaMovement();
+         this.setDeltaMovement(v.x, Mth.clamp((t.getY() + above - this.getY()) * 0.25, -0.3, 0.3), v.z);
       }
    }
 
    private boolean victim(LivingEntity e) {
-      return e != this && e.isAlive() && !(e instanceof MysticalBoss) && !(e instanceof PlayerEntity p && (p.isCreative() || p.isSpectator()));
+      return e != this && e.isAlive() && !(e instanceof MysticalBoss) && !(e instanceof Player p && (p.isCreative() || p.isSpectator()));
    }
 
-   private List<LivingEntity> inCircle(ServerWorld level, Vec3d c, double r) {
+   private List<LivingEntity> inCircle(ServerLevel level, Vec3 c, double r) {
       return this.inCircle(level, c, r, 1.0, 3.5);
    }
 
-   private List<LivingEntity> inCircle(ServerWorld level, Vec3d c, double r, double below, double above) {
-      Box box = new Box(c.x - r - 1.0, c.y - below, c.z - r - 1.0, c.x + r + 1.0, c.y + above + 0.01, c.z + r + 1.0);
+   private List<LivingEntity> inCircle(ServerLevel level, Vec3 c, double r, double below, double above) {
+      AABB box = new AABB(c.x - r - 1.0, c.y - below, c.z - r - 1.0, c.x + r + 1.0, c.y + above + 0.01, c.z + r + 1.0);
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : level.getEntitiesByClass(LivingEntity.class, box, this::victim)) {
-         double rr = r + e.getWidth() * 0.5;
+      for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, box, this::victim)) {
+         double rr = r + e.getBbWidth() * 0.5;
          double dx = e.getX() - c.x;
          double dz = e.getZ() - c.z;
          if (dx * dx + dz * dz <= rr * rr && e.getY() >= c.y - below && e.getY() <= c.y + above) {
@@ -2628,20 +2628,20 @@ public class ArchonBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> inArc(ServerWorld level, double range, float halfAngle, float yaw) {
-      Vec3d f = Vec3d.fromPolar(0.0F, yaw);
-      Box box = new Box(
+   private List<LivingEntity> inArc(ServerLevel level, double range, float halfAngle, float yaw) {
+      Vec3 f = Vec3.directionFromRotation(0.0F, yaw);
+      AABB box = new AABB(
          this.getX() - range - 1.0, this.getY() - 3.0, this.getZ() - range - 1.0, this.getX() + range + 1.0, this.getY() + 5.0, this.getZ() + range + 1.0
       );
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : level.getEntitiesByClass(LivingEntity.class, box, this::victim)) {
+      for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, box, this::victim)) {
          if (!(e.getY() < this.getY() - 3.0) && !(e.getY() > this.getY() + 5.0)) {
             double dx = e.getX() - this.getX();
             double dz = e.getZ() - this.getZ();
             double d = Math.sqrt(dx * dx + dz * dz);
-            if (!(d > range + e.getWidth() * 0.5)
-               && (d < this.getWidth() * 0.5 + 0.6 || Math.toDegrees(Math.acos(MathHelper.clamp((dx * f.x + dz * f.z) / d, -1.0, 1.0))) <= halfAngle)) {
+            if (!(d > range + e.getBbWidth() * 0.5)
+               && (d < this.getBbWidth() * 0.5 + 0.6 || Math.toDegrees(Math.acos(Mth.clamp((dx * f.x + dz * f.z) / d, -1.0, 1.0))) <= halfAngle)) {
                out.add(e);
             }
          }
@@ -2650,11 +2650,11 @@ public class ArchonBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> onLine(ServerWorld level, Vec3d from, Vec3d to, double halfWidth) {
+   private List<LivingEntity> onLine(ServerLevel level, Vec3 from, Vec3 to, double halfWidth) {
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : level.getEntitiesByClass(LivingEntity.class, new Box(from, to).expand(halfWidth + 1.5), this::victim)) {
-         Vec3d c = e.getEntityPos().add(0.0, e.getHeight() * 0.5, 0.0);
+      for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, new AABB(from, to).inflate(halfWidth + 1.5), this::victim)) {
+         Vec3 c = e.position().add(0.0, e.getBbHeight() * 0.5, 0.0);
          if (segDist(c, from, to) <= halfWidth + 0.3) {
             out.add(e);
          }
@@ -2663,10 +2663,10 @@ public class ArchonBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> onStrip(ServerWorld level, Vec3d a, Vec3d b, double halfWidth, double below, double above) {
+   private List<LivingEntity> onStrip(ServerLevel level, Vec3 a, Vec3 b, double halfWidth, double below, double above) {
       double lo = Math.min(a.y, b.y) - below;
       double hi = Math.max(a.y, b.y) + above;
-      Box box = new Box(
+      AABB box = new AABB(
          Math.min(a.x, b.x) - halfWidth - 1.0,
          lo,
          Math.min(a.z, b.z) - halfWidth - 1.0,
@@ -2676,7 +2676,7 @@ public class ArchonBoss extends MysticalBoss {
       );
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : level.getEntitiesByClass(LivingEntity.class, box, this::victim)) {
+      for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, box, this::victim)) {
          if (e.getY() >= lo && e.getY() <= hi && segDistH(e.getX(), e.getZ(), a, b) <= halfWidth + 0.3) {
             out.add(e);
          }
@@ -2685,70 +2685,70 @@ public class ArchonBoss extends MysticalBoss {
       return out;
    }
 
-   private static double segDist(Vec3d p, Vec3d a, Vec3d b) {
-      Vec3d ab = b.subtract(a);
-      double len2 = ab.lengthSquared();
-      double t = len2 < 1.0E-6 ? 0.0 : MathHelper.clamp(p.subtract(a).dotProduct(ab) / len2, 0.0, 1.0);
-      return p.distanceTo(a.add(ab.multiply(t)));
+   private static double segDist(Vec3 p, Vec3 a, Vec3 b) {
+      Vec3 ab = b.subtract(a);
+      double len2 = ab.lengthSqr();
+      double t = len2 < 1.0E-6 ? 0.0 : Mth.clamp(p.subtract(a).dot(ab) / len2, 0.0, 1.0);
+      return p.distanceTo(a.add(ab.scale(t)));
    }
 
-   private static double segDistH(double px, double pz, Vec3d a, Vec3d b) {
+   private static double segDistH(double px, double pz, Vec3 a, Vec3 b) {
       double abx = b.x - a.x;
       double abz = b.z - a.z;
       double len2 = abx * abx + abz * abz;
-      double t = len2 < 1.0E-6 ? 0.0 : MathHelper.clamp(((px - a.x) * abx + (pz - a.z) * abz) / len2, 0.0, 1.0);
+      double t = len2 < 1.0E-6 ? 0.0 : Mth.clamp(((px - a.x) * abx + (pz - a.z) * abz) / len2, 0.0, 1.0);
       double dx = px - (a.x + abx * t);
       double dz = pz - (a.z + abz * t);
       return Math.sqrt(dx * dx + dz * dz);
    }
 
-   private boolean magic(ServerWorld level, LivingEntity e, float base) {
-      return e.damage(level, this.getDamageSources().indirectMagic(this, this), this.dmg(base));
+   private boolean magic(ServerLevel level, LivingEntity e, float base) {
+      return e.hurtServer(level, this.damageSources().indirectMagic(this, this), this.dmg(base));
    }
 
-   private boolean phys(ServerWorld level, LivingEntity e, float base) {
-      return e.damage(level, this.getDamageSources().mobAttack(this), this.dmg(base));
+   private boolean phys(ServerLevel level, LivingEntity e, float base) {
+      return e.hurtServer(level, this.damageSources().mobAttack(this), this.dmg(base));
    }
 
-   private void physMagic(ServerWorld level, LivingEntity e, float physBase, float magicBase) {
+   private void physMagic(ServerLevel level, LivingEntity e, float physBase, float magicBase) {
       this.phys(level, e, physBase);
-      e.timeUntilRegen = 0;
+      e.setInvulnerableTime(0);
       this.magic(level, e, magicBase);
    }
 
-   private void afflict(LivingEntity e, RegistryEntry<StatusEffect> effect, int ticks, int amplifier) {
-      e.addStatusEffect(new StatusEffectInstance(effect, ticks, amplifier), this);
+   private void afflict(LivingEntity e, Holder<MobEffect> effect, int ticks, int amplifier) {
+      e.addEffect(new MobEffectInstance(effect, ticks, amplifier), this);
    }
 
-   private static void shoveFrom(LivingEntity e, Vec3d from, double horizontal, double up) {
-      Vec3d away = new Vec3d(e.getX() - from.x, 0.0, e.getZ() - from.z);
-      away = away.lengthSquared() < 1.0E-4 ? new Vec3d(1.0, 0.0, 0.0) : away.normalize();
-      e.addVelocity(away.x * horizontal, up, away.z * horizontal);
-      e.knockedBack = true;
+   private static void shoveFrom(LivingEntity e, Vec3 from, double horizontal, double up) {
+      Vec3 away = new Vec3(e.getX() - from.x, 0.0, e.getZ() - from.z);
+      away = away.lengthSqr() < 1.0E-4 ? new Vec3(1.0, 0.0, 0.0) : away.normalize();
+      e.push(away.x * horizontal, up, away.z * horizontal);
+      e.syncVelocity = true;
    }
 
-   private static void hitFx(ServerWorld level, LivingEntity e, double power) {
-      Vfx.impact(level, e.getEntityPos().add(0.0, e.getHeight() * 0.55, 0.0), P, power);
+   private static void hitFx(ServerLevel level, LivingEntity e, double power) {
+      Vfx.impact(level, e.position().add(0.0, e.getBbHeight() * 0.55, 0.0), P, power);
    }
 
-   private void guardBreak(ServerWorld level, LivingEntity e, int ticks) {
-      ItemStack s = e.getBlockingItem();
+   private void guardBreak(ServerLevel level, LivingEntity e, int ticks) {
+      ItemStack s = e.getItemBlockingWith();
       if (s != null) {
-         if (e instanceof PlayerEntity p) {
-            p.getItemCooldownManager().set(s, ticks);
+         if (e instanceof Player p) {
+            p.getCooldowns().addCooldown(s, ticks);
          }
 
-         e.clearActiveItem();
-         Vfx.shards(level, e.getEyePos(), P.core(), 10, 0.4);
+         e.stopUsingItem();
+         Vfx.shards(level, e.getEyePosition(), P.core(), 10, 0.4);
       }
    }
 
-   private void drawIn(Vec3d to, double radius, double strength) {
-      for (ServerPlayerEntity p : this.engaged()) {
-         double d = hd(p.getEntityPos(), to);
+   private void drawIn(Vec3 to, double radius, double strength) {
+      for (ServerPlayer p : this.engaged()) {
+         double d = hd(p.position(), to);
          if (!(d > radius) && !(d < 1.0)) {
-            p.addVelocity((to.x - p.getX()) / d * strength, 0.0, (to.z - p.getZ()) / d * strength);
-            p.knockedBack = true;
+            p.push((to.x - p.getX()) / d * strength, 0.0, (to.z - p.getZ()) / d * strength);
+            p.syncVelocity = true;
          }
       }
    }
@@ -2756,8 +2756,8 @@ public class ArchonBoss extends MysticalBoss {
    private static int buffs(LivingEntity e) {
       int n = 0;
 
-      for (StatusEffectInstance inst : e.getStatusEffects()) {
-         if (((StatusEffect)inst.getEffectType().value()).isBeneficial() && !inst.isAmbient()) {
+      for (MobEffectInstance inst : e.getActiveEffects()) {
+         if (((MobEffect)inst.getEffect().value()).isBeneficial() && !inst.isAmbient()) {
             n++;
          }
       }
@@ -2770,21 +2770,21 @@ public class ArchonBoss extends MysticalBoss {
          return false;
       }
 
-      UseAction use = e.getActiveItem().getUseAction();
-      return use == UseAction.EAT || use == UseAction.DRINK;
+      ItemUseAnimation use = e.getUseItem().getUseAnimation();
+      return use == ItemUseAnimation.EAT || use == ItemUseAnimation.DRINK;
    }
 
-   private void spawnConstruct(ServerWorld level, String kind, Vec3d at, double lift, @Nullable LivingEntity target) {
+   private void spawnConstruct(ServerLevel level, String kind, Vec3 at, double lift, @Nullable LivingEntity target) {
       EntityType<RealmMob> type = RealmMobs.type(kind);
       if (type != null) {
-         RealmMob m = (RealmMob)type.create(level, SpawnReason.MOB_SUMMONED);
+         RealmMob m = (RealmMob)type.create(level, EntitySpawnReason.MOB_SUMMONED);
          if (m != null) {
-            m.refreshPositionAndAngles(at.x, at.y + lift, at.z, this.getRandom().nextFloat() * 360.0F, 0.0F);
+            m.snapTo(at.x, at.y + lift, at.z, this.getRandom().nextFloat() * 360.0F, 0.0F);
             if (target != null) {
                m.setTarget(target);
             }
 
-            level.spawnEntity(m);
+            level.addFreshEntity(m);
             Vfx.pillar(level, at, P, 3.0, 0.8);
             Vfx.impact(level, at, P, 0.8);
          }
@@ -2792,7 +2792,7 @@ public class ArchonBoss extends MysticalBoss {
    }
 
    private void scars(
-      ServerWorld level, List<Vec3d> spots, double r, int duration, float dps, @Nullable RegistryEntry<StatusEffect> effect, int effectTicks, int amplifier
+      ServerLevel level, List<Vec3> spots, double r, int duration, float dps, @Nullable Holder<MobEffect> effect, int effectTicks, int amplifier
    ) {
       if (!spots.isEmpty() && !(r <= 0.0)) {
          double minX = Double.MAX_VALUE;
@@ -2802,7 +2802,7 @@ public class ArchonBoss extends MysticalBoss {
          double maxY = -Double.MAX_VALUE;
          double maxZ = -Double.MAX_VALUE;
 
-         for (Vec3d s : spots) {
+         for (Vec3 s : spots) {
             Vfx.runeCircle(level, s, r, P, duration, 0.02F, Vfx.Rune.GLYPH);
             minX = Math.min(minX, s.x);
             minY = Math.min(minY, s.y);
@@ -2812,13 +2812,13 @@ public class ArchonBoss extends MysticalBoss {
             maxZ = Math.max(maxZ, s.z);
          }
 
-         Box box = new Box(minX - r - 1.0, minY - 1.0, minZ - r - 1.0, maxX + r + 1.0, maxY + 2.5, maxZ + r + 1.0);
+         AABB box = new AABB(minX - r - 1.0, minY - 1.0, minZ - r - 1.0, maxX + r + 1.0, maxY + 2.5, maxZ + r + 1.0);
 
          for (int t = 20; t <= duration; t += 20) {
             this.later(t, () -> {
-               for (LivingEntity e : level.getEntitiesByClass(LivingEntity.class, box, this::victim)) {
-                  for (Vec3d s : spots) {
-                     if (hd(e.getEntityPos(), s) <= r && e.getY() >= s.y - 1.0 && e.getY() <= s.y + 2.5) {
+               for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, box, this::victim)) {
+                  for (Vec3 s : spots) {
+                     if (hd(e.position(), s) <= r && e.getY() >= s.y - 1.0 && e.getY() <= s.y + 2.5) {
                         if (dps > 0.0F) {
                            this.magic(level, e, dps);
                         }
@@ -2852,20 +2852,20 @@ public class ArchonBoss extends MysticalBoss {
       SPIN = RawAnimation.begin().thenLoop("animation.archon.spin");
    }
 
-   private record Lattice(Vec3d center, List<Vec3d> ground, int start, int epoch, boolean outer, boolean rotate) {
+   private record Lattice(Vec3 center, List<Vec3> ground, int start, int epoch, boolean outer, boolean rotate) {
    }
 
-   private record Node(Vec3d ground, Vec3d top, boolean real) {
+   private record Node(Vec3 ground, Vec3 top, boolean real) {
    }
 
    private static final class Prison {
-      final Vec3d at;
+      final Vec3 at;
       final List<LivingEntity> caught;
       final Set<Integer> broken = new HashSet<>();
       final int end;
       final int epoch;
 
-      Prison(Vec3d at, List<LivingEntity> caught, int end, int epoch) {
+      Prison(Vec3 at, List<LivingEntity> caught, int end, int epoch) {
          this.at = at;
          this.caught = caught;
          this.end = end;

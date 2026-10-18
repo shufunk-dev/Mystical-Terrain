@@ -8,9 +8,9 @@
     "DragonLandingPhaseMixin",
     "DragonSittingFlamingPhaseMixin",
     "DragonStrafePlayerPhaseMixin",
-    "EndDragonFightAccessor",
-    "EndDragonFightInvoker",
-    "EndDragonFightMixin",
+    "EnderDragonFightAccessor",
+    "EnderDragonFightInvoker",
+    "EnderDragonFightMixin",
     "EnderDragonMixin",
     "ItemEntityMixin"
   ],

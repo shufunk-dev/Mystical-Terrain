@@ -4,10 +4,10 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.buffer.ByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.codec.PacketCodecs;
-import net.minecraft.particle.ParticleEffect;
-import net.minecraft.particle.ParticleType;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleType;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
 
 public record VfxOptions(
    ParticleType<VfxOptions> type,
@@ -26,7 +26,7 @@ public record VfxOptions(
    float stretch,
    float curl,
    int delay
-) implements ParticleEffect {
+) implements ParticleOptions {
    public static final int AUTO = 0;
    public static final int FACE = 1;
    public static final int FLAT = 2;
@@ -101,14 +101,14 @@ public record VfxOptions(
       );
    }
 
-   public static PacketCodec<ByteBuf, VfxOptions> streamCodec(ParticleType<VfxOptions> type) {
-      return PacketCodec.ofStatic((buf, o) -> o.write(buf), buf -> read(type, buf));
+   public static StreamCodec<ByteBuf, VfxOptions> streamCodec(ParticleType<VfxOptions> type) {
+      return StreamCodec.of((buf, o) -> o.write(buf), buf -> read(type, buf));
    }
 
    private void write(ByteBuf buf) {
       buf.writeInt(this.color);
       buf.writeFloat(this.scale);
-      PacketCodecs.VAR_INT.encode(buf, this.life);
+      ByteBufCodecs.VAR_INT.encode(buf, this.life);
       buf.writeFloat(this.yaw);
       int extra = (this.pitch != 0.0F ? 1 : 0)
          | (!Float.isNaN(this.roll) ? 2 : 0)
@@ -120,8 +120,8 @@ public record VfxOptions(
          | (this.stretch != 0.0F ? 128 : 0)
          | (this.curl != 0.0F ? 256 : 0)
          | (this.delay != 0 ? 512 : 0);
-      PacketCodecs.VAR_INT.encode(buf, this.flags);
-      PacketCodecs.VAR_INT.encode(buf, extra);
+      ByteBufCodecs.VAR_INT.encode(buf, this.flags);
+      ByteBufCodecs.VAR_INT.encode(buf, extra);
       if ((extra & 1) != 0) {
          buf.writeFloat(this.pitch);
       }
@@ -135,7 +135,7 @@ public record VfxOptions(
       }
 
       if ((extra & 8) != 0) {
-         PacketCodecs.VAR_INT.encode(buf, this.variant);
+         ByteBufCodecs.VAR_INT.encode(buf, this.variant);
       }
 
       if ((extra & 16) != 0) {
@@ -159,27 +159,27 @@ public record VfxOptions(
       }
 
       if ((extra & 512) != 0) {
-         PacketCodecs.VAR_INT.encode(buf, this.delay);
+         ByteBufCodecs.VAR_INT.encode(buf, this.delay);
       }
    }
 
    private static VfxOptions read(ParticleType<VfxOptions> type, ByteBuf buf) {
       int color = buf.readInt();
       float scale = buf.readFloat();
-      int life = (Integer)PacketCodecs.VAR_INT.decode(buf);
+      int life = (Integer)ByteBufCodecs.VAR_INT.decode(buf);
       float yaw = buf.readFloat();
-      int flags = (Integer)PacketCodecs.VAR_INT.decode(buf);
-      int extra = (Integer)PacketCodecs.VAR_INT.decode(buf);
+      int flags = (Integer)ByteBufCodecs.VAR_INT.decode(buf);
+      int extra = (Integer)ByteBufCodecs.VAR_INT.decode(buf);
       float pitch = (extra & 1) != 0 ? buf.readFloat() : 0.0F;
       float roll = (extra & 2) != 0 ? buf.readFloat() : Float.NaN;
       int color2 = (extra & 4) != 0 ? buf.readInt() : -1;
-      int variant = (extra & 8) != 0 ? (Integer)PacketCodecs.VAR_INT.decode(buf) : -1;
+      int variant = (extra & 8) != 0 ? (Integer)ByteBufCodecs.VAR_INT.decode(buf) : -1;
       float spin = (extra & 16) != 0 ? buf.readFloat() : 0.0F;
       float gravity = (extra & 32) != 0 ? buf.readFloat() : Float.NaN;
       float drag = (extra & 64) != 0 ? buf.readFloat() : Float.NaN;
       float stretch = (extra & 128) != 0 ? buf.readFloat() : 0.0F;
       float curl = (extra & 256) != 0 ? buf.readFloat() : 0.0F;
-      int delay = (extra & 512) != 0 ? (Integer)PacketCodecs.VAR_INT.decode(buf) : 0;
+      int delay = (extra & 512) != 0 ? (Integer)ByteBufCodecs.VAR_INT.decode(buf) : 0;
       return new VfxOptions(type, color, scale, life, yaw, pitch, roll, color2, variant, flags, spin, gravity, drag, stretch, curl, delay);
    }
 

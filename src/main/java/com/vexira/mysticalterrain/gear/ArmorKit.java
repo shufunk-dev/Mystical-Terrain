@@ -1,10 +1,10 @@
 package com.vexira.mysticalterrain.gear;
 
 import com.vexira.mysticalterrain.gear.arsenal.Arsenal;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import org.jspecify.annotations.Nullable;
 
 public final class ArmorKit {
@@ -109,7 +109,7 @@ public final class ArmorKit {
       return new String[]{"armor." + this.arsenal.armorModel() + ".ability", first};
    }
 
-   void tick(ServerWorld level, PlayerEntity player, int pieces) {
+   void tick(ServerLevel level, Player player, int pieces) {
       if (pieces >= 2 && this.twoPiece != null) {
          this.twoPiece.tick(level, player, pieces);
       }
@@ -119,32 +119,32 @@ public final class ArmorKit {
       }
    }
 
-   void hurt(ServerWorld level, PlayerEntity player, @Nullable LivingEntity attacker, DamageSource source, float taken, int pieces) {
+   void hurt(ServerLevel level, Player player, @Nullable LivingEntity attacker, DamageSource source, float taken, int pieces) {
       if (this.hurt != null) {
          this.hurt.hurt(level, player, attacker, source, taken, pieces);
       }
    }
 
-   boolean allowDamage(ServerWorld level, PlayerEntity player, DamageSource source, float amount, int pieces) {
+   boolean allowDamage(ServerLevel level, Player player, DamageSource source, float amount, int pieces) {
       return this.damage == null || this.damage.allow(level, player, source, amount, pieces);
    }
 
-   boolean allowDeath(ServerWorld level, PlayerEntity player, DamageSource source, float amount, int pieces) {
+   boolean allowDeath(ServerLevel level, Player player, DamageSource source, float amount, int pieces) {
       return this.death == null || this.death.allow(level, player, source, amount, pieces);
    }
 
    @FunctionalInterface
    public interface Guard {
-      boolean allow(ServerWorld var1, PlayerEntity var2, DamageSource var3, float var4, int var5);
+      boolean allow(ServerLevel var1, Player var2, DamageSource var3, float var4, int var5);
    }
 
    @FunctionalInterface
    public interface Hurt {
-      void hurt(ServerWorld var1, PlayerEntity var2, @Nullable LivingEntity var3, DamageSource var4, float var5, int var6);
+      void hurt(ServerLevel var1, Player var2, @Nullable LivingEntity var3, DamageSource var4, float var5, int var6);
    }
 
    @FunctionalInterface
    public interface Tick {
-      void tick(ServerWorld var1, PlayerEntity var2, int var3);
+      void tick(ServerLevel var1, Player var2, int var3);
    }
 }

@@ -16,46 +16,46 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.particles.BlockParticleOption;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.BossEvent.BossBarColor;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier.Builder;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.ClipContext.Block;
+import net.minecraft.world.level.ClipContext.Fluid;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult.Type;
+import net.minecraft.world.phys.Vec3;
 import java.util.Map.Entry;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.attribute.DefaultAttributeContainer.Builder;
-import net.minecraft.entity.boss.BossBar.Color;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.damage.DamageTypes;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.data.TrackedData;
-import net.minecraft.entity.data.TrackedDataHandlerRegistry;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.particle.BlockStateParticleEffect;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.tag.DamageTypeTags;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.storage.ReadView;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult.Type;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.World;
-import net.minecraft.world.RaycastContext.FluidHandling;
-import net.minecraft.world.RaycastContext.ShapeType;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
 
 public class BogrotBoss extends MysticalBoss {
    private static final BossSounds SOUNDS = BossSounds.of("bogrot");
@@ -63,10 +63,10 @@ public class BogrotBoss extends MysticalBoss {
    private static final Vfx.Palette TOX = Vfx.Palette.TOXIC;
    private static final Vfx.Palette HEX = new Vfx.Palette(15917311, 10771711, 2364462).withDebris(Vfx.Debris.LEAF);
    private static final Vfx.Palette WISP = new Vfx.Palette(16776144, 13168704, 2765848).withDebris(Vfx.Debris.ASH);
-   private static final BlockStateParticleEffect MUD = new BlockStateParticleEffect(ParticleTypes.BLOCK, Blocks.MUD.getDefaultState());
-   private static final BlockStateParticleEffect ROOTS = new BlockStateParticleEffect(ParticleTypes.BLOCK, Blocks.MANGROVE_ROOTS.getDefaultState());
-   private static final Vec3d UP = new Vec3d(0.0, 1.0, 0.0);
-   private static final TrackedData<Integer> FORM = DataTracker.registerData(BogrotBoss.class, TrackedDataHandlerRegistry.INTEGER);
+   private static final BlockParticleOption MUD = new BlockParticleOption(ParticleTypes.BLOCK, Blocks.MUD.defaultBlockState());
+   private static final BlockParticleOption ROOTS = new BlockParticleOption(ParticleTypes.BLOCK, Blocks.MANGROVE_ROOTS.defaultBlockState());
+   private static final Vec3 UP = new Vec3(0.0, 1.0, 0.0);
+   private static final EntityDataAccessor<Integer> FORM = SynchedEntityData.defineId(BogrotBoss.class, EntityDataSerializers.INT);
    private static final int BILE = 0;
    private static final int BLACK = 1;
    private static final int G_BILE = 0;
@@ -84,16 +84,16 @@ public class BogrotBoss extends MysticalBoss {
    private final Map<UUID, int[]> rotStacks = new HashMap<>();
    private final Map<UUID, Integer> hexedUntil = new HashMap<>();
    private final Set<Integer> trampled = new HashSet<>();
-   private final Vec3d[] lashDirs = new Vec3d[4];
-   private final Vec3d[] retchAims = new Vec3d[3];
-   private final List<Vec3d> geysers = new ArrayList<>();
-   private final List<Vec3d> rippleMid = new ArrayList<>();
-   private final List<Vec3d> rippleOuter = new ArrayList<>();
-   private final List<List<Vec3d>> hands = List.of(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
-   private Vec3d rippleCenter = Vec3d.ZERO;
-   private Vec3d lungeFrom = Vec3d.ZERO;
-   private Vec3d diveAt = Vec3d.ZERO;
-   private Vec3d strangleAt = Vec3d.ZERO;
+   private final Vec3[] lashDirs = new Vec3[4];
+   private final Vec3[] retchAims = new Vec3[3];
+   private final List<Vec3> geysers = new ArrayList<>();
+   private final List<Vec3> rippleMid = new ArrayList<>();
+   private final List<Vec3> rippleOuter = new ArrayList<>();
+   private final List<List<Vec3>> hands = List.of(new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+   private Vec3 rippleCenter = Vec3.ZERO;
+   private Vec3 lungeFrom = Vec3.ZERO;
+   private Vec3 diveAt = Vec3.ZERO;
+   private Vec3 strangleAt = Vec3.ZERO;
    private boolean submerged;
    private boolean pouncing;
    private @Nullable LivingEntity grabbed;
@@ -113,8 +113,8 @@ public class BogrotBoss extends MysticalBoss {
       return MysticalBoss.bossAttributes(980.0, 16.0, 0.22, 16.0);
    }
 
-   public BogrotBoss(EntityType<? extends HostileEntity> type, World level) {
-      super(type, level, "bogrot", Color.GREEN);
+   public BogrotBoss(EntityType<? extends Monster> type, Level level) {
+      super(type, level, "bogrot", BossBarColor.GREEN);
    }
 
    @Override
@@ -183,9 +183,9 @@ public class BogrotBoss extends MysticalBoss {
    }
 
    @Override
-   protected void initDataTracker(net.minecraft.entity.data.DataTracker.Builder builder) {
-      super.initDataTracker(builder);
-      builder.add(FORM, 0);
+   protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder) {
+      super.defineSynchedData(builder);
+      builder.define(FORM, 0);
    }
 
    @Override
@@ -198,98 +198,98 @@ public class BogrotBoss extends MysticalBoss {
       }
 
       controllers.add(
-         new AnimationController("form", 6, test -> test.setAndContinue(forms[MathHelper.clamp((Integer)this.dataTracker.get(FORM), 0, 3)]))
+         new AnimationController("form", 6, test -> test.setAndContinue(forms[Mth.clamp((Integer)this.entityData.get(FORM), 0, 3)]))
             .additiveAnimations()
       );
    }
 
    @Override
-   protected void readCustomData(ReadView view) {
-      super.readCustomData(view);
-      this.dataTracker.set(FORM, Math.min(3, this.phase()));
+   protected void readAdditionalSaveData(ValueInput view) {
+      super.readAdditionalSaveData(view);
+      this.entityData.set(FORM, Math.min(3, this.phase()));
    }
 
-   private Vec3d facing() {
-      return Vec3d.fromPolar(0.0F, this.getYaw());
+   private Vec3 facing() {
+      return Vec3.directionFromRotation(0.0F, this.getYRot());
    }
 
-   private static Vec3d dirOf(float yaw) {
-      return Vec3d.fromPolar(0.0F, yaw);
+   private static Vec3 dirOf(float yaw) {
+      return Vec3.directionFromRotation(0.0F, yaw);
    }
 
-   private Vec3d front(double dist, double up) {
-      return this.getEntityPos().add(this.facing().multiply(dist)).add(0.0, up, 0.0);
+   private Vec3 front(double dist, double up) {
+      return this.position().add(this.facing().scale(dist)).add(0.0, up, 0.0);
    }
 
-   private Vec3d side(double right, double fwd, double up) {
-      return this.getEntityPos().add(dirOf(this.getYaw() + 90.0F).multiply(right)).add(this.facing().multiply(fwd)).add(0.0, up, 0.0);
+   private Vec3 side(double right, double fwd, double up) {
+      return this.position().add(dirOf(this.getYRot() + 90.0F).scale(right)).add(this.facing().scale(fwd)).add(0.0, up, 0.0);
    }
 
-   private Vec3d mouth() {
+   private Vec3 mouth() {
       return this.front(1.4, 3.25);
    }
 
-   private Vec3d eyes() {
+   private Vec3 eyes() {
       return this.front(1.45, 3.65);
    }
 
-   private Vec3d maw() {
+   private Vec3 maw() {
       return this.front(0.8, 2.7);
    }
 
-   private Vec3d vineRoot() {
+   private Vec3 vineRoot() {
       return this.front(0.2, 3.4);
    }
 
-   private Vec3d lantern(boolean left) {
+   private Vec3 lantern(boolean left) {
       return this.side(left ? -0.75 : 0.75, 0.65, 4.7);
    }
 
-   private static Vec3d mid(LivingEntity e) {
-      return e.getEntityPos().add(0.0, e.getHeight() * 0.5, 0.0);
+   private static Vec3 mid(LivingEntity e) {
+      return e.position().add(0.0, e.getBbHeight() * 0.5, 0.0);
    }
 
-   private static Vec3d onGround(ServerWorld level, Vec3d p) {
-      Vec3d g = BossFx.ground(level, p.x, p.y, p.z);
+   private static Vec3 onGround(ServerLevel level, Vec3 p) {
+      Vec3 g = BossFx.ground(level, p.x, p.y, p.z);
       return g != null ? g : p;
    }
 
-   private static double flatDist(Vec3d a, Vec3d b) {
+   private static double flatDist(Vec3 a, Vec3 b) {
       double dx = b.x - a.x;
       double dz = b.z - a.z;
       return Math.sqrt(dx * dx + dz * dz);
    }
 
-   private static Vec3d flat(Vec3d from, Vec3d to) {
-      Vec3d d = new Vec3d(to.x - from.x, 0.0, to.z - from.z);
-      return d.lengthSquared() < 1.0E-6 ? Vec3d.ZERO : d.normalize();
+   private static Vec3 flat(Vec3 from, Vec3 to) {
+      Vec3 d = new Vec3(to.x - from.x, 0.0, to.z - from.z);
+      return d.lengthSqr() < 1.0E-6 ? Vec3.ZERO : d.normalize();
    }
 
-   private Vec3d away(Vec3d from, LivingEntity e) {
-      Vec3d d = flat(from, e.getEntityPos());
-      return d.lengthSquared() < 1.0E-6 ? this.facing() : d;
+   private Vec3 away(Vec3 from, LivingEntity e) {
+      Vec3 d = flat(from, e.position());
+      return d.lengthSqr() < 1.0E-6 ? this.facing() : d;
    }
 
-   private static float yawTo(Vec3d from, Vec3d to) {
-      return (float)(MathHelper.atan2(to.z - from.z, to.x - from.x) * 180.0F / (float)Math.PI) - 90.0F;
+   private static float yawTo(Vec3 from, Vec3 to) {
+      return (float)(Mth.atan2(to.z - from.z, to.x - from.x) * 180.0F / (float)Math.PI) - 90.0F;
    }
 
-   private void faceTo(Vec3d at) {
-      if (!(flatDist(this.getEntityPos(), at) < 0.01)) {
-         float yaw = yawTo(this.getEntityPos(), at);
-         this.setYaw(yaw);
-         this.setBodyYaw(yaw);
-         this.setHeadYaw(yaw);
+   private void faceTo(Vec3 at) {
+      if (!(flatDist(this.position(), at) < 0.01)) {
+         float yaw = yawTo(this.position(), at);
+         this.setYRot(yaw);
+         this.setYBodyRot(yaw);
+         this.setYHeadRot(yaw);
       }
    }
 
    private void commitYaw(int t, int from, int to) {
       if (t == from) {
-         this.committedYaw = this.getYaw();
+         this.committedYaw = this.getYRot();
       } else if (t > from && t <= to) {
-         this.setYaw(this.committedYaw);
-         this.setBodyYaw(this.committedYaw);
-         this.setHeadYaw(this.committedYaw);
+         this.setYRot(this.committedYaw);
+         this.setYBodyRot(this.committedYaw);
+         this.setYHeadRot(this.committedYaw);
       }
    }
 
@@ -297,74 +297,74 @@ public class BogrotBoss extends MysticalBoss {
       return this.phase() == 3 ? (melee ? 1.3F : 0.8F) : 1.0F;
    }
 
-   private void afflict(LivingEntity e, RegistryEntry<StatusEffect> effect, int ticks, int amplifier) {
-      e.addStatusEffect(new StatusEffectInstance(effect, ticks, amplifier), this);
+   private void afflict(LivingEntity e, Holder<MobEffect> effect, int ticks, int amplifier) {
+      e.addEffect(new MobEffectInstance(effect, ticks, amplifier), this);
    }
 
-   private List<ServerPlayerEntity> nearest(int max) {
-      List<ServerPlayerEntity> list = new ArrayList<>(this.engaged());
-      list.sort((a, b) -> Double.compare(a.squaredDistanceTo(this), b.squaredDistanceTo(this)));
+   private List<ServerPlayer> nearest(int max) {
+      List<ServerPlayer> list = new ArrayList<>(this.engaged());
+      list.sort((a, b) -> Double.compare(a.distanceToSqr(this), b.distanceToSqr(this)));
       return list.size() > max ? list.subList(0, max) : list;
    }
 
    private boolean hexed(LivingEntity e) {
-      Integer until = this.hexedUntil.get(e.getUuid());
-      return until != null && until > this.age;
+      Integer until = this.hexedUntil.get(e.getUUID());
+      return until != null && until > this.tickCount;
    }
 
    private float hit(LivingEntity e, float base) {
       return this.dmg(base) * (this.hexed(e) ? 1.2F : 1.0F);
    }
 
-   private boolean smite(ServerWorld level, LivingEntity e, float amount, Vec3d push, double up) {
-      if (!e.damage(level, this.getDamageSources().mobAttack(this), amount)) {
+   private boolean smite(ServerLevel level, LivingEntity e, float amount, Vec3 push, double up) {
+      if (!e.hurtServer(level, this.damageSources().mobAttack(this), amount)) {
          return false;
       }
 
-      if (push.lengthSquared() > 1.0E-6 || up > 0.0) {
-         e.addVelocity(push.x, up, push.z);
-         e.knockedBack = true;
+      if (push.lengthSqr() > 1.0E-6 || up > 0.0) {
+         e.push(push.x, up, push.z);
+         e.syncVelocity = true;
       }
 
       return true;
    }
 
-   private boolean deal(ServerWorld level, LivingEntity e, float base, Vec3d push, double up) {
+   private boolean deal(ServerLevel level, LivingEntity e, float base, Vec3 push, double up) {
       return this.smite(level, e, this.hit(e, base), push, up);
    }
 
-   private void guardBreak(ServerWorld level, LivingEntity e, int ticks) {
+   private void guardBreak(ServerLevel level, LivingEntity e, int ticks) {
       if (e.isBlocking()) {
-         ItemStack s = e.getBlockingItem();
-         if (s != null && e instanceof PlayerEntity player) {
-            player.getItemCooldownManager().set(s, ticks);
+         ItemStack s = e.getItemBlockingWith();
+         if (s != null && e instanceof Player player) {
+            player.getCooldowns().addCooldown(s, ticks);
          }
 
-         e.clearActiveItem();
-         Vfx.shards(level, e.getEyePos(), 16777215, 12, 0.5);
-         Vfx.glint(level, e.getEyePos(), P.core(), 1.6);
+         e.stopUsingItem();
+         Vfx.shards(level, e.getEyePosition(), 16777215, 12, 0.5);
+         Vfx.glint(level, e.getEyePosition(), P.core(), 1.6);
       }
    }
 
-   private List<LivingEntity> near(ServerWorld level, Box box) {
-      return level.getEntitiesByClass(
+   private List<LivingEntity> near(ServerLevel level, AABB box) {
+      return level.getEntitiesOfClass(
          LivingEntity.class,
          box,
-         e -> e != this && e.isAlive() && !(e instanceof MysticalBoss) && !(e instanceof PlayerEntity pl && (pl.isCreative() || pl.isSpectator()))
+         e -> e != this && e.isAlive() && !(e instanceof MysticalBoss) && !(e instanceof Player pl && (pl.isCreative() || pl.isSpectator()))
       );
    }
 
-   private List<LivingEntity> arc(ServerWorld level, float yaw, double reach, float halfAngle) {
-      Vec3d o = this.getEntityPos();
-      Vec3d f = dirOf(yaw);
+   private List<LivingEntity> arc(ServerLevel level, float yaw, double reach, float halfAngle) {
+      Vec3 o = this.position();
+      Vec3 f = dirOf(yaw);
       double cos = Math.cos(Math.toRadians(halfAngle));
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : this.near(level, new Box(o, o).expand(reach + 1.0, 0.0, reach + 1.0).stretch(0.0, 5.5, 0.0).stretch(0.0, -2.0, 0.0))) {
+      for (LivingEntity e : this.near(level, new AABB(o, o).inflate(reach + 1.0, 0.0, reach + 1.0).expandTowards(0.0, 5.5, 0.0).expandTowards(0.0, -2.0, 0.0))) {
          double dx = e.getX() - o.x;
          double dz = e.getZ() - o.z;
          double d = Math.sqrt(dx * dx + dz * dz);
-         if (!(d > reach + e.getWidth() * 0.5) && (d < 1.0 || (dx * f.x + dz * f.z) / d >= cos)) {
+         if (!(d > reach + e.getBbWidth() * 0.5) && (d < 1.0 || (dx * f.x + dz * f.z) / d >= cos)) {
             out.add(e);
          }
       }
@@ -372,11 +372,11 @@ public class BogrotBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> line(ServerWorld level, Vec3d from, Vec3d dir, double length, double halfWidth) {
-      Vec3d d = new Vec3d(dir.x, 0.0, dir.z);
-      d = d.lengthSquared() < 1.0E-6 ? this.facing() : d.normalize();
-      Vec3d to = from.add(d.multiply(length));
-      Box box = new Box(from, to).expand(halfWidth + 1.0, 0.0, halfWidth + 1.0).stretch(0.0, 5.0, 0.0).stretch(0.0, -2.0, 0.0);
+   private List<LivingEntity> line(ServerLevel level, Vec3 from, Vec3 dir, double length, double halfWidth) {
+      Vec3 d = new Vec3(dir.x, 0.0, dir.z);
+      d = d.lengthSqr() < 1.0E-6 ? this.facing() : d.normalize();
+      Vec3 to = from.add(d.scale(length));
+      AABB box = new AABB(from, to).inflate(halfWidth + 1.0, 0.0, halfWidth + 1.0).expandTowards(0.0, 5.0, 0.0).expandTowards(0.0, -2.0, 0.0);
       List<LivingEntity> out = new ArrayList<>();
 
       for (LivingEntity e : this.near(level, box)) {
@@ -384,7 +384,7 @@ public class BogrotBoss extends MysticalBoss {
          double rz = e.getZ() - from.z;
          double s = rx * d.x + rz * d.z;
          double off = Math.abs(rx * d.z - rz * d.x);
-         if (s >= -0.5 && s <= length + 0.3 && off <= halfWidth + e.getWidth() * 0.5) {
+         if (s >= -0.5 && s <= length + 0.3 && off <= halfWidth + e.getBbWidth() * 0.5) {
             out.add(e);
          }
       }
@@ -392,11 +392,11 @@ public class BogrotBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> ringHit(ServerWorld level, Vec3d c, double r0, double r1) {
+   private List<LivingEntity> ringHit(ServerLevel level, Vec3 c, double r0, double r1) {
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : this.near(level, new Box(c, c).expand(r1 + 1.0, 2.5, r1 + 1.0))) {
-         double d = flatDist(c, e.getEntityPos());
+      for (LivingEntity e : this.near(level, new AABB(c, c).inflate(r1 + 1.0, 2.5, r1 + 1.0))) {
+         double d = flatDist(c, e.position());
          if (d >= r0 && d <= r1 && Math.abs(e.getY() - c.y) < 2.5) {
             out.add(e);
          }
@@ -405,11 +405,11 @@ public class BogrotBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> column(ServerWorld level, Vec3d base, double r, double height) {
+   private List<LivingEntity> column(ServerLevel level, Vec3 base, double r, double height) {
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : this.near(level, new Box(base, base).expand(r + 1.0, 0.0, r + 1.0).stretch(0.0, height, 0.0).stretch(0.0, -1.0, 0.0))) {
-         if (flatDist(base, e.getEntityPos()) <= r + 0.3) {
+      for (LivingEntity e : this.near(level, new AABB(base, base).inflate(r + 1.0, 0.0, r + 1.0).expandTowards(0.0, height, 0.0).expandTowards(0.0, -1.0, 0.0))) {
+         if (flatDist(base, e.position()) <= r + 0.3) {
             out.add(e);
          }
       }
@@ -417,10 +417,10 @@ public class BogrotBoss extends MysticalBoss {
       return out;
    }
 
-   private List<LivingEntity> swept(ServerWorld level, Vec3d a, Vec3d b, double r) {
+   private List<LivingEntity> swept(ServerLevel level, Vec3 a, Vec3 b, double r) {
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : this.near(level, new Box(a, b).expand(r))) {
+      for (LivingEntity e : this.near(level, new AABB(a, b).inflate(r))) {
          if (sweepT(a, b, e.getBoundingBox(), r) >= 0.0) {
             out.add(e);
          }
@@ -429,9 +429,9 @@ public class BogrotBoss extends MysticalBoss {
       return out;
    }
 
-   private static double sweepT(Vec3d a, Vec3d b, Box box, double r) {
+   private static double sweepT(Vec3 a, Vec3 b, AABB box, double r) {
       double r2 = r * r;
-      if (box.squaredMagnitude(a) <= r2) {
+      if (box.distanceToSqr(a) <= r2) {
          return 0.0;
       }
 
@@ -441,7 +441,7 @@ public class BogrotBoss extends MysticalBoss {
       for (int i = 0; i < 24; i++) {
          double m1 = lo + (hi - lo) / 3.0;
          double m2 = hi - (hi - lo) / 3.0;
-         if (box.squaredMagnitude(a.lerp(b, m1)) < box.squaredMagnitude(a.lerp(b, m2))) {
+         if (box.distanceToSqr(a.lerp(b, m1)) < box.distanceToSqr(a.lerp(b, m2))) {
             hi = m2;
          } else {
             lo = m1;
@@ -449,7 +449,7 @@ public class BogrotBoss extends MysticalBoss {
       }
 
       double best = (lo + hi) / 2.0;
-      if (box.squaredMagnitude(a.lerp(b, best)) > r2) {
+      if (box.distanceToSqr(a.lerp(b, best)) > r2) {
          return -1.0;
       }
 
@@ -458,7 +458,7 @@ public class BogrotBoss extends MysticalBoss {
 
       for (int i = 0; i < 16; i++) {
          double m = (lo + hi) / 2.0;
-         if (box.squaredMagnitude(a.lerp(b, m)) <= r2) {
+         if (box.distanceToSqr(a.lerp(b, m)) <= r2) {
             hi = m;
          } else {
             lo = m;
@@ -468,22 +468,22 @@ public class BogrotBoss extends MysticalBoss {
       return hi;
    }
 
-   private List<LivingEntity> pull(ServerWorld level, double radius, double strength, int t, Vfx.Palette pal) {
-      Vec3d c = this.getEntityPos();
+   private List<LivingEntity> pull(ServerLevel level, double radius, double strength, int t, Vfx.Palette pal) {
+      Vec3 c = this.position();
       if (t % 2 == 0) {
          Vfx.gather(level, c.add(0.0, 0.8, 0.0), pal, radius, (int)Math.min(30.0, radius * 3.0));
       }
 
       List<LivingEntity> list = new ArrayList<>();
 
-      for (LivingEntity e : this.near(level, new Box(c, c).expand(radius, 4.0, radius))) {
-         if (!(flatDist(c, e.getEntityPos()) > radius)) {
+      for (LivingEntity e : this.near(level, new AABB(c, c).inflate(radius, 4.0, radius))) {
+         if (!(flatDist(c, e.position()) > radius)) {
             list.add(e);
-            Vec3d to = c.subtract(e.getEntityPos());
-            if (to.lengthSquared() > 1.0) {
-               Vec3d v = to.normalize().multiply(strength);
-               e.addVelocity(v.x, Math.max(0.05, v.y), v.z);
-               e.knockedBack = true;
+            Vec3 to = c.subtract(e.position());
+            if (to.lengthSqr() > 1.0) {
+               Vec3 v = to.normalize().scale(strength);
+               e.push(v.x, Math.max(0.05, v.y), v.z);
+               e.syncVelocity = true;
             }
          }
       }
@@ -491,76 +491,76 @@ public class BogrotBoss extends MysticalBoss {
       return list;
    }
 
-   private void rot(ServerWorld level, LivingEntity e, int n) {
-      if (e instanceof ServerPlayerEntity sp && n > 0 && sp.isAlive() && !sp.isCreative() && !sp.isSpectator()) {
-         int[] s = this.rotStacks.computeIfAbsent(sp.getUuid(), k -> new int[2]);
+   private void rot(ServerLevel level, LivingEntity e, int n) {
+      if (e instanceof ServerPlayer sp && n > 0 && sp.isAlive() && !sp.isCreative() && !sp.isSpectator()) {
+         int[] s = this.rotStacks.computeIfAbsent(sp.getUUID(), k -> new int[2]);
          s[0] += n;
-         s[1] = this.age;
+         s[1] = this.tickCount;
          if (s[0] >= (this.phase() >= 3 ? 4 : 5)) {
             s[0] = 0;
-            Vfx.flare(level, sp.getEyePos(), TOX.core(), 1.6, 12);
+            Vfx.flare(level, sp.getEyePosition(), TOX.core(), 1.6, 12);
             Vfx.gather(level, mid(sp), TOX, 1.2, 6);
             this.schedule(11, () -> this.bloom(level, sp));
          }
       }
    }
 
-   private void bloom(ServerWorld level, ServerPlayerEntity sp) {
-      if (this.isAlive() && sp.isAlive() && sp.getEntityWorld() == level) {
-         DamageSource src = this.getDamageSources().indirectMagic(this, this);
-         sp.damage(level, src, this.dmg(14.0F));
-         this.afflict(sp, StatusEffects.POISON, 100, 1);
-         this.afflict(sp, StatusEffects.SLOWNESS, 20, 3);
+   private void bloom(ServerLevel level, ServerPlayer sp) {
+      if (this.isAlive() && sp.isAlive() && sp.level() == level) {
+         DamageSource src = this.damageSources().indirectMagic(this, this);
+         sp.hurtServer(level, src, this.dmg(14.0F));
+         this.afflict(sp, MobEffects.POISON, 100, 1);
+         this.afflict(sp, MobEffects.SLOWNESS, 20, 3);
 
-         for (LivingEntity o : this.ringHit(level, sp.getEntityPos(), 0.0, 3.0)) {
-            if (o != sp && o instanceof PlayerEntity && o.damage(level, src, this.dmg(8.0F))) {
-               this.afflict(o, StatusEffects.POISON, 60, 0);
+         for (LivingEntity o : this.ringHit(level, sp.position(), 0.0, 3.0)) {
+            if (o != sp && o instanceof Player && o.hurtServer(level, src, this.dmg(8.0F))) {
+               this.afflict(o, MobEffects.POISON, 60, 0);
             }
          }
 
-         Vec3d eye = sp.getEyePos();
-         Vfx.nova(level, sp.getEntityPos().add(0.0, 1.0, 0.0), TOX, 2.5);
+         Vec3 eye = sp.getEyePosition();
+         Vfx.nova(level, sp.position().add(0.0, 1.0, 0.0), TOX, 2.5);
          Vfx.debris(level, eye, Vfx.Debris.LEAF, TOX.glow(), 14, 0.35);
          Vfx.flare(level, eye, TOX.core(), 2.0, 8);
       }
    }
 
-   private void tickRot(ServerWorld level) {
-      if (this.age % 10 == 0 && !this.hexedUntil.isEmpty()) {
+   private void tickRot(ServerLevel level) {
+      if (this.tickCount % 10 == 0 && !this.hexedUntil.isEmpty()) {
          Iterator<Entry<UUID, Integer>> it = this.hexedUntil.entrySet().iterator();
 
          while (it.hasNext()) {
             Entry<UUID, Integer> en = it.next();
-            PlayerEntity pl = level.getPlayerByUuid(en.getKey());
-            if (pl != null && pl.isAlive() && en.getValue() > this.age) {
-               Vfx.ring(level, pl.getEntityPos(), HEX.glow(), 1.0, 10);
+            Player pl = level.getPlayerByUUID(en.getKey());
+            if (pl != null && pl.isAlive() && en.getValue() > this.tickCount) {
+               Vfx.ring(level, pl.position(), HEX.glow(), 1.0, 10);
             } else {
                it.remove();
             }
          }
       }
 
-      if (this.age % 20 == 0 && !this.rotStacks.isEmpty()) {
+      if (this.tickCount % 20 == 0 && !this.rotStacks.isEmpty()) {
          Iterator<Entry<UUID, int[]>> it = this.rotStacks.entrySet().iterator();
 
          while (it.hasNext()) {
             Entry<UUID, int[]> en = it.next();
-            PlayerEntity pl = level.getPlayerByUuid(en.getKey());
+            Player pl = level.getPlayerByUUID(en.getKey());
             int[] s = en.getValue();
             if (pl != null && pl.isAlive()) {
-               if (this.age - s[1] >= 80) {
+               if (this.tickCount - s[1] >= 80) {
                   s[0]--;
-                  s[1] = this.age;
+                  s[1] = this.tickCount;
                }
 
-               if (pl.isTouchingWater()) {
+               if (pl.isInWater()) {
                   s[0]--;
                }
 
                if (s[0] <= 0) {
                   it.remove();
                } else {
-                  Vfx.wisps(level, pl.getEyePos().add(0.0, 0.6, 0.0), TOX, s[0], 0.7, 22);
+                  Vfx.wisps(level, pl.getEyePosition().add(0.0, 0.6, 0.0), TOX, s[0], 0.7, 22);
                }
             } else {
                it.remove();
@@ -569,26 +569,26 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void pool(ServerWorld level, Vec3d at, double r, int ticks, int kind) {
+   private void pool(ServerLevel level, Vec3 at, double r, int ticks, int kind) {
       int life = this.enraged() ? ticks * 3 / 2 : ticks;
       if (this.pools.size() >= 10) {
          this.pools.remove(0);
       }
 
-      this.pools.add(new BogrotBoss.Pool(at, r, kind, this.age + life));
+      this.pools.add(new BogrotBoss.Pool(at, r, kind, this.tickCount + life));
       Vfx.groundCrack(level, at, r, kind == 0 ? TOX : P);
    }
 
-   private void tickPools(ServerWorld level) {
+   private void tickPools(ServerLevel level) {
       if (!this.pools.isEmpty()) {
-         boolean fx = this.age % 20 == 0;
-         boolean sting = this.age % 10 == 0;
+         boolean fx = this.tickCount % 20 == 0;
+         boolean sting = this.tickCount % 10 == 0;
          Iterator<BogrotBoss.Pool> it = this.pools.iterator();
 
          while (it.hasNext()) {
             BogrotBoss.Pool p = it.next();
             Vfx.Palette pal = p.kind() == 0 ? TOX : P;
-            if (this.age >= p.end()) {
+            if (this.tickCount >= p.end()) {
                Vfx.smoke(level, p.at(), pal.smoke(), 6, p.r() * 0.7, 1.2);
                it.remove();
             } else {
@@ -598,18 +598,18 @@ public class BogrotBoss extends MysticalBoss {
                }
 
                if (sting) {
-                  for (ServerPlayerEntity pl : this.engaged()) {
-                     if (!(flatDist(p.at(), pl.getEntityPos()) >= p.r()) && !(Math.abs(pl.getY() - p.at().y) > 2.0)) {
-                        DamageSource src = this.getDamageSources().indirectMagic(this, this);
+                  for (ServerPlayer pl : this.engaged()) {
+                     if (!(flatDist(p.at(), pl.position()) >= p.r()) && !(Math.abs(pl.getY() - p.at().y) > 2.0)) {
+                        DamageSource src = this.damageSources().indirectMagic(this, this);
                         if (p.kind() == 0) {
-                           pl.damage(level, src, this.dmg(2.0F));
-                           this.afflict(pl, StatusEffects.POISON, 40, 0);
-                           if (this.age % 40 == 0) {
+                           pl.hurtServer(level, src, this.dmg(2.0F));
+                           this.afflict(pl, MobEffects.POISON, 40, 0);
+                           if (this.tickCount % 40 == 0) {
                               this.rot(level, pl, 1);
                            }
                         } else {
-                           pl.damage(level, src, this.dmg(1.5F));
-                           this.afflict(pl, StatusEffects.SLOWNESS, 30, 1);
+                           pl.hurtServer(level, src, this.dmg(1.5F));
+                           this.afflict(pl, MobEffects.SLOWNESS, 30, 1);
                         }
                      }
                   }
@@ -619,13 +619,13 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void mend(ServerWorld level) {
-      if (this.age % 20 == 0 && !(this.getHealth() >= this.getMaxHealth())) {
-         boolean in = this.isTouchingWater();
+   private void mend(ServerLevel level) {
+      if (this.tickCount % 20 == 0 && !(this.getHealth() >= this.getMaxHealth())) {
+         boolean in = this.isInWater();
          boolean black = false;
 
          for (BogrotBoss.Pool p : this.pools) {
-            if (flatDist(this.getEntityPos(), p.at()) < p.r() && Math.abs(this.getY() - p.at().y) < 3.0) {
+            if (flatDist(this.position(), p.at()) < p.r() && Math.abs(this.getY() - p.at().y) < 3.0) {
                in = true;
                black |= p.kind() == 1;
             }
@@ -633,13 +633,13 @@ public class BogrotBoss extends MysticalBoss {
 
          if (in) {
             this.heal(this.getMaxHealth() * (this.phase() == 3 ? 0.0035F : 0.0025F) * (black ? 2 : 1));
-            Vfx.auraRing(level, this.getEntityPos(), P, 1.6);
+            Vfx.auraRing(level, this.position(), P, 1.6);
          }
       }
    }
 
    private void addGlob(BogrotBoss.Glob g) {
-      g.born = this.age;
+      g.born = this.tickCount;
       if (this.globs.size() >= 24) {
          this.globs.remove(0);
       }
@@ -655,19 +655,19 @@ public class BogrotBoss extends MysticalBoss {
       };
    }
 
-   private void tickGlobs(ServerWorld level) {
+   private void tickGlobs(ServerLevel level) {
       if (!this.globs.isEmpty()) {
          for (BogrotBoss.Glob g : new ArrayList<>(this.globs)) {
-            if (g.born != this.age) {
+            if (g.born != this.tickCount) {
                g.age++;
-               if (g.homing > 0.0 && g.target != null && g.target.isAlive() && g.target.getEntityWorld() == level) {
-                  Vec3d to = g.target.getEyePos().subtract(g.pos);
-                  if (to.lengthSquared() > 1.0E-4) {
-                     g.vel = g.vel.lerp(to.normalize().multiply(g.speed), g.homing);
+               if (g.homing > 0.0 && g.target != null && g.target.isAlive() && g.target.level() == level) {
+                  Vec3 to = g.target.getEyePosition().subtract(g.pos);
+                  if (to.lengthSqr() > 1.0E-4) {
+                     g.vel = g.vel.lerp(to.normalize().scale(g.speed), g.homing);
                   }
                }
 
-               Vec3d from = g.pos;
+               Vec3 from = g.pos;
                g.vel = g.vel.add(0.0, -g.gravity, 0.0);
                g.pos = g.pos.add(g.vel);
                switch (g.kind) {
@@ -682,7 +682,7 @@ public class BogrotBoss extends MysticalBoss {
                   case 2:
                      Vfx.trail(level, g.pos, HEX, 0.6);
                      if (g.age % 3 == 0) {
-                        Vfx.streaks(level, g.pos, g.vel.multiply(-1.0), HEX, 3);
+                        Vfx.streaks(level, g.pos, g.vel.scale(-1.0), HEX, 3);
                      }
                      break;
                   case 4:
@@ -690,13 +690,13 @@ public class BogrotBoss extends MysticalBoss {
                }
 
                if (g.landing == null) {
-                  BlockPos bp = BlockPos.ofFloored(g.pos);
-                  if (!level.isPosLoaded(bp)) {
+                  BlockPos bp = BlockPos.containing(g.pos);
+                  if (!level.isLoaded(bp)) {
                      this.globs.remove(g);
                   } else {
-                     BlockHitResult wall = level.raycast(new RaycastContext(from, g.pos, ShapeType.COLLIDER, FluidHandling.NONE, this));
+                     BlockHitResult wall = level.clip(new ClipContext(from, g.pos, Block.COLLIDER, Fluid.NONE, this));
                      boolean blocked = wall.getType() != Type.MISS;
-                     Vec3d end = blocked ? wall.getPos() : g.pos;
+                     Vec3 end = blocked ? wall.getLocation() : g.pos;
                      List<LivingEntity> hit = this.swept(level, from, end, g.radius);
                      if (hit.isEmpty()) {
                         if (blocked) {
@@ -732,49 +732,49 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void globHit(ServerWorld level, BogrotBoss.Glob g, LivingEntity e) {
-      e.timeUntilRegen = 0;
+   private void globHit(ServerLevel level, BogrotBoss.Glob g, LivingEntity e) {
+      e.setInvulnerableTime(0);
       switch (g.kind) {
          case 1:
-            if (e.isGliding() || !e.isOnGround()) {
-               e.stopGliding();
-               Vec3d v = e.getVelocity();
-               e.setVelocity(v.x * 0.3, -1.4, v.z * 0.3);
-               e.knockedBack = true;
-               this.afflict(e, StatusEffects.SLOWNESS, 40, 1);
+            if (e.isFallFlying() || !e.onGround()) {
+               e.stopFallFlying();
+               Vec3 v = e.getDeltaMovement();
+               e.setDeltaMovement(v.x * 0.3, -1.4, v.z * 0.3);
+               e.syncVelocity = true;
+               this.afflict(e, MobEffects.SLOWNESS, 40, 1);
             }
 
-            if (this.deal(level, e, 10.0F, Vec3d.ZERO, 0.0)) {
-               this.afflict(e, StatusEffects.POISON, 40, 0);
+            if (this.deal(level, e, 10.0F, Vec3.ZERO, 0.0)) {
+               this.afflict(e, MobEffects.POISON, 40, 0);
             }
 
             Vfx.impact(level, g.pos, WISP, 0.8);
             break;
          case 2:
-            this.deal(level, e, 8.0F, Vec3d.ZERO, 0.0);
-            this.afflict(e, StatusEffects.WEAKNESS, 160, 0);
-            this.afflict(e, StatusEffects.SLOWNESS, 160, 0);
+            this.deal(level, e, 8.0F, Vec3.ZERO, 0.0);
+            this.afflict(e, MobEffects.WEAKNESS, 160, 0);
+            this.afflict(e, MobEffects.SLOWNESS, 160, 0);
             this.rot(level, e, 2);
-            this.hexedUntil.put(e.getUuid(), this.age + 160);
-            if (e instanceof ServerPlayerEntity sp) {
+            this.hexedUntil.put(e.getUUID(), this.tickCount + 160);
+            if (e instanceof ServerPlayer sp) {
                this.markTarget(sp, 160);
             }
 
             Vfx.nova(level, mid(e), HEX, 2.0);
-            Vfx.runeCircle(level, onGround(level, e.getEntityPos()), 1.6, HEX, 40, 0.08F, Vfx.Rune.GLYPH);
-            Vfx.flare(level, e.getEyePos(), HEX.glow(), 2.4, 8);
+            Vfx.runeCircle(level, onGround(level, e.position()), 1.6, HEX, 40, 0.08F, Vfx.Rune.GLYPH);
+            Vfx.flare(level, e.getEyePosition(), HEX.glow(), 2.4, 8);
             break;
          case 3:
-            if (this.deal(level, e, 14.0F, Vec3d.ZERO, 0.3)) {
-               this.afflict(e, StatusEffects.POISON, 40, 0);
+            if (this.deal(level, e, 14.0F, Vec3.ZERO, 0.3)) {
+               this.afflict(e, MobEffects.POISON, 40, 0);
                this.rot(level, e, 1);
             }
 
             Vfx.impact(level, g.pos, WISP, 1.0);
             break;
          case 4:
-            if (this.deal(level, e, 12.0F, Vec3d.ZERO, 0.0)) {
-               this.afflict(e, StatusEffects.POISON, 60, 0);
+            if (this.deal(level, e, 12.0F, Vec3.ZERO, 0.0)) {
+               this.afflict(e, MobEffects.POISON, 60, 0);
             }
 
             Vfx.impact(level, g.pos, TOX, 0.6);
@@ -782,10 +782,10 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void bileLand(ServerWorld level, Vec3d at) {
+   private void bileLand(ServerLevel level, Vec3 at) {
       for (LivingEntity e : this.ringHit(level, at, 0.0, 2.4)) {
-         if (this.deal(level, e, 16.0F, this.away(at, e).multiply(0.5), 0.3)) {
-            this.afflict(e, StatusEffects.POISON, 80, 0);
+         if (this.deal(level, e, 16.0F, this.away(at, e).scale(0.5), 0.3)) {
+            this.afflict(e, MobEffects.POISON, 80, 0);
             this.rot(level, e, 1);
          }
       }
@@ -794,35 +794,35 @@ public class BogrotBoss extends MysticalBoss {
       Vfx.explosion(level, at, TOX, 2.2);
    }
 
-   private void releaseGrab(ServerWorld level, boolean dropped) {
+   private void releaseGrab(ServerLevel level, boolean dropped) {
       LivingEntity e = this.grabbed;
       this.grabbed = null;
       if (e != null && dropped && e.isAlive()) {
-         Vec3d a = this.away(this.getEntityPos(), e).multiply(0.5);
-         e.setVelocity(a.x, -0.5, a.z);
-         e.knockedBack = true;
+         Vec3 a = this.away(this.position(), e).scale(0.5);
+         e.setDeltaMovement(a.x, -0.5, a.z);
+         e.syncVelocity = true;
          Vfx.impact(level, mid(e), P, 0.6);
          Vfx.debris(level, mid(e), Vfx.Debris.LEAF, P.glow(), 10, 0.3);
       }
    }
 
-   private void grasp(ServerWorld level) {
-      Vec3d from = this.front(1.0, 0.0);
+   private void grasp(ServerLevel level) {
+      Vec3 from = this.front(1.0, 0.0);
       LivingEntity best = null;
       double bestD = Double.MAX_VALUE;
 
       for (LivingEntity e : this.line(level, from, this.facing(), 9.0, 1.0)) {
-         double d = e.squaredDistanceTo(this);
+         double d = e.distanceToSqr(this);
          if (d < bestD) {
             best = e;
             bestD = d;
          }
       }
 
-      Vfx.claw(level, this.front(1.5, 2.6), this.getYaw(), 0.0F, 7.0, P);
+      Vfx.claw(level, this.front(1.5, 2.6), this.getYRot(), 0.0F, 7.0, P);
       if (best != null) {
          this.guardBreak(level, best, 40);
-         this.deal(level, best, 8.0F, Vec3d.ZERO, 0.0);
+         this.deal(level, best, 8.0F, Vec3.ZERO, 0.0);
          if (best.isAlive()) {
             this.grabbed = best;
             this.grabDamage = 0.0F;
@@ -831,23 +831,23 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void holdGrab(ServerWorld level, int t) {
+   private void holdGrab(ServerLevel level, int t) {
       LivingEntity e = this.grabbed;
       if (e != null) {
-         Vec3d holdAt = this.front(2.6, 3.2);
+         Vec3 holdAt = this.front(2.6, 3.2);
          if (e.isAlive()
-            && (t <= 18 || !(e.getEntityPos().distanceTo(holdAt) > 5.0))
-            && !(e instanceof PlayerEntity pl && (pl.isCreative() || pl.isSpectator()))) {
-            Vec3d v = holdAt.subtract(e.getEntityPos()).multiply(0.55);
-            if (v.lengthSquared() > 4.0) {
-               v = v.normalize().multiply(2.0);
+            && (t <= 18 || !(e.position().distanceTo(holdAt) > 5.0))
+            && !(e instanceof Player pl && (pl.isCreative() || pl.isSpectator()))) {
+            Vec3 v = holdAt.subtract(e.position()).scale(0.55);
+            if (v.lengthSqr() > 4.0) {
+               v = v.normalize().scale(2.0);
             }
 
-            e.setVelocity(v);
-            e.knockedBack = true;
+            e.setDeltaMovement(v);
+            e.syncVelocity = true;
             e.fallDistance = 0.0;
             if (t % 10 == 0) {
-               this.afflict(e, StatusEffects.POISON, 40, 0);
+               this.afflict(e, MobEffects.POISON, 40, 0);
                this.rot(level, e, 1);
             }
 
@@ -860,22 +860,22 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void graspSlam(ServerWorld level) {
-      Vec3d g = onGround(level, this.front(3.0, 0.0));
+   private void graspSlam(ServerLevel level) {
+      Vec3 g = onGround(level, this.front(3.0, 0.0));
       LivingEntity e = this.grabbed;
       this.grabbed = null;
       if (e != null && e.isAlive()) {
          this.guardBreak(level, e, 40);
-         e.setVelocity(0.0, -1.5, 0.0);
-         e.knockedBack = true;
-         if (this.deal(level, e, 30.0F, this.facing().multiply(1.2), 0.0)) {
-            this.afflict(e, StatusEffects.SLOWNESS, 40, 2);
-            this.afflict(e, StatusEffects.NAUSEA, 60, 0);
+         e.setDeltaMovement(0.0, -1.5, 0.0);
+         e.syncVelocity = true;
+         if (this.deal(level, e, 30.0F, this.facing().scale(1.2), 0.0)) {
+            this.afflict(e, MobEffects.SLOWNESS, 40, 2);
+            this.afflict(e, MobEffects.NAUSEA, 60, 0);
             this.rot(level, e, 2);
          }
       } else {
          for (LivingEntity v : this.ringHit(level, g, 0.0, 2.5)) {
-            this.deal(level, v, 14.0F, Vec3d.ZERO, 0.0);
+            this.deal(level, v, 14.0F, Vec3.ZERO, 0.0);
          }
       }
 
@@ -884,20 +884,20 @@ public class BogrotBoss extends MysticalBoss {
       Vfx.debris(level, g, Vfx.Debris.LEAF, P.glow(), 16, 0.4);
    }
 
-   private void tickGrab(ServerWorld level) {
+   private void tickGrab(ServerLevel level) {
       BossAction cur = this.currentMove();
       if (this.grabbed != null && (cur == null || !cur.anim().equals("hag_grasp"))) {
          this.releaseGrab(level, false);
       }
    }
 
-   private void countMinions(ServerWorld level) {
-      if (this.age - this.minionCheck >= 10) {
-         this.minionCheck = this.age;
+   private void countMinions(ServerLevel level) {
+      if (this.tickCount - this.minionCheck >= 10) {
+         this.minionCheck = this.tickCount;
          int t = 0;
          int l = 0;
 
-         for (RealmMob m : level.getEntitiesByClass(RealmMob.class, this.getBoundingBox().expand(32.0), LivingEntity::isAlive)) {
+         for (RealmMob m : level.getEntitiesOfClass(RealmMob.class, this.getBoundingBox().inflate(32.0), LivingEntity::isAlive)) {
             if (m.bossId().equals("bog_thrall")) {
                t++;
             } else if (m.bossId().equals("bog_leech")) {
@@ -911,7 +911,7 @@ public class BogrotBoss extends MysticalBoss {
    }
 
    private int thrallCount() {
-      if (this.getEntityWorld() instanceof ServerWorld level) {
+      if (this.level() instanceof ServerLevel level) {
          this.countMinions(level);
       }
 
@@ -946,16 +946,16 @@ public class BogrotBoss extends MysticalBoss {
 
                this.commitYaw(t, 4, 10);
                if (t == 4) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw(), 65.0F, 5.5, 6, P);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot(), 65.0F, 5.5, 6, P);
                }
             })
             .hit((b, level, target, i) -> {
-               float yaw = this.getYaw();
-               Vec3d left = dirOf(yaw - 90.0F);
+               float yaw = this.getYRot();
+               Vec3 left = dirOf(yaw - 90.0F);
 
                for (LivingEntity e : this.arc(level, yaw, 5.5, 65.0F)) {
-                  if (this.deal(level, e, 16.0F, left.multiply(0.8), 0.25)) {
-                     this.afflict(e, StatusEffects.POISON, 60, 0);
+                  if (this.deal(level, e, 16.0F, left.scale(0.8), 0.25)) {
+                     this.afflict(e, MobEffects.POISON, 60, 0);
                      this.rot(level, e, 1);
                   }
 
@@ -980,21 +980,21 @@ public class BogrotBoss extends MysticalBoss {
                this.commitYaw(t, 3, 9);
                this.commitYaw(t, 13, 19);
                if (t == 3) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw() - 12.0F, 55.0F, 5.0, 6, P);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot() - 12.0F, 55.0F, 5.0, 6, P);
                } else if (t == 13) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw() + 12.0F, 55.0F, 5.0, 6, P);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot() + 12.0F, 55.0F, 5.0, 6, P);
                }
             })
             .hit((b, level, target, i) -> {
                float s = i == 0 ? -1.0F : 1.0F;
-               float yaw = this.getYaw() + 12.0F * s;
-               Vec3d fwd = this.facing();
+               float yaw = this.getYRot() + 12.0F * s;
+               Vec3 fwd = this.facing();
 
                for (LivingEntity e : this.arc(level, yaw, 5.0, 55.0F)) {
-                  if (this.deal(level, e, 18.0F, fwd.multiply(0.5), 0.2)) {
+                  if (this.deal(level, e, 18.0F, fwd.scale(0.5), 0.2)) {
                      this.rot(level, e, 1);
                      if (i == 1) {
-                        this.afflict(e, StatusEffects.POISON, 40, 1);
+                        this.afflict(e, MobEffects.POISON, 40, 1);
                      }
                   }
 
@@ -1002,7 +1002,7 @@ public class BogrotBoss extends MysticalBoss {
                }
 
                Vfx.claw(level, this.front(0.5, 3.0), yaw, 15.0F, 5.0, P);
-               Vfx.slashArc(level, this.front(0.5, 3.0), this.getYaw(), 15.0F, -45.0F * s, 5.0, P, -150.0F * s);
+               Vfx.slashArc(level, this.front(0.5, 3.0), this.getYRot(), 15.0F, -45.0F * s, 5.0, P, -150.0F * s);
             })
       );
       out.add(
@@ -1017,7 +1017,7 @@ public class BogrotBoss extends MysticalBoss {
             .tick((b, level, target, t) -> {
                this.commitYaw(t, 2, 8);
                if (t == 2) {
-                  Vfx.telegraphLine(level, this.getEntityPos(), this.facing(), 5.5, 2.8, 6, P);
+                  Vfx.telegraphLine(level, this.position(), this.facing(), 5.5, 2.8, 6, P);
                }
 
                if (t <= 7 && t % 2 == 1) {
@@ -1037,7 +1037,7 @@ public class BogrotBoss extends MysticalBoss {
             .tick((b, level, target, t) -> {
                this.commitYaw(t, 2, 20);
                if (t == 2) {
-                  Vfx.telegraphLine(level, this.getEntityPos(), this.facing(), 6.0, 2.8, 18, P);
+                  Vfx.telegraphLine(level, this.position(), this.facing(), 6.0, 2.8, 18, P);
                }
 
                if (t >= 6 && t <= 16 && t % 4 == 2) {
@@ -1094,16 +1094,16 @@ public class BogrotBoss extends MysticalBoss {
             .utility((b, t, c) -> this.frenzy(true))
             .tick((b, level, target, t) -> {
                if (t == 4) {
-                  Vfx.telegraphCircle(level, onGround(level, this.getEntityPos()), 5.5, 11, P);
+                  Vfx.telegraphCircle(level, onGround(level, this.position()), 5.5, 11, P);
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d c = onGround(level, this.getEntityPos());
+               Vec3 c = onGround(level, this.position());
 
                for (LivingEntity e : this.ringHit(level, c, 0.0, 5.5)) {
-                  double d = flatDist(c, e.getEntityPos());
-                  if (this.smite(level, e, this.hit(e, 32.0F) * (float)(0.4 + 0.6 * (1.0 - d / 5.5)), this.away(c, e).multiply(1.4), 0.35)) {
-                     this.afflict(e, StatusEffects.SLOWNESS, 30, 3);
+                  double d = flatDist(c, e.position());
+                  if (this.smite(level, e, this.hit(e, 32.0F) * (float)(0.4 + 0.6 * (1.0 - d / 5.5)), this.away(c, e).scale(1.4), 0.35)) {
+                     this.afflict(e, MobEffects.SLOWNESS, 30, 3);
                      this.rot(level, e, 1);
                   }
                }
@@ -1123,15 +1123,15 @@ public class BogrotBoss extends MysticalBoss {
             .when((b, t) -> this.ctx().targetBehind)
             .tick((b, level, target, t) -> {
                if (t == 3) {
-                  Vfx.telegraphCone(level, this.getEntityPos(), this.getYaw() + 180.0F, 75.0F, 6.5, 8, P);
+                  Vfx.telegraphCone(level, this.position(), this.getYRot() + 180.0F, 75.0F, 6.5, 8, P);
                }
             })
             .hit((b, level, target, i) -> {
-               float yaw = this.getYaw() + 180.0F;
+               float yaw = this.getYRot() + 180.0F;
 
                for (LivingEntity e : this.arc(level, yaw, 6.5, 75.0F)) {
-                  if (this.deal(level, e, 20.0F, this.away(this.getEntityPos(), e).multiply(1.6), 0.35)) {
-                     this.afflict(e, StatusEffects.POISON, 60, 0);
+                  if (this.deal(level, e, 20.0F, this.away(this.position(), e).scale(1.6), 0.35)) {
+                     this.afflict(e, MobEffects.POISON, 60, 0);
                      this.rot(level, e, 1);
                   }
 
@@ -1145,19 +1145,19 @@ public class BogrotBoss extends MysticalBoss {
       );
    }
 
-   private void verdict(ServerWorld level, double reach, float base) {
-      Vec3d fwd = this.facing();
+   private void verdict(ServerLevel level, double reach, float base) {
+      Vec3 fwd = this.facing();
 
-      for (LivingEntity e : this.line(level, this.getEntityPos(), fwd, reach, 1.4)) {
+      for (LivingEntity e : this.line(level, this.position(), fwd, reach, 1.4)) {
          this.guardBreak(level, e, 100);
          if (this.deal(level, e, base, fwd, 0.1)) {
-            this.afflict(e, StatusEffects.SLOWNESS, 30, 1);
+            this.afflict(e, MobEffects.SLOWNESS, 30, 1);
             this.rot(level, e, 1);
          }
       }
 
-      Vec3d g = onGround(level, this.front(reach - 2.0, 0.0));
-      Vfx.slashArc(level, this.front(0.3, 3.2), this.getYaw(), 0.0F, 90.0F, reach - 0.5, P, 160.0F);
+      Vec3 g = onGround(level, this.front(reach - 2.0, 0.0));
+      Vfx.slashArc(level, this.front(0.3, 3.2), this.getYRot(), 0.0F, 90.0F, reach - 0.5, P, 160.0F);
       Vfx.heavyImpact(level, g, P, 1.0);
       Vfx.groundCrack(level, g, 2.5, P);
    }
@@ -1179,24 +1179,24 @@ public class BogrotBoss extends MysticalBoss {
                   this.faceTo(this.predict(target, 18.0));
                }
 
-               this.lungeFrom = this.getEntityPos();
-               Vfx.telegraphLine(level, this.getEntityPos(), this.facing(), MathHelper.clamp(this.ctx().hDist + 2.0, 8.0, 14.0), 2.6, 18, P);
+               this.lungeFrom = this.position();
+               Vfx.telegraphLine(level, this.position(), this.facing(), Mth.clamp(this.ctx().hDist + 2.0, 8.0, 14.0), 2.6, 18, P);
             })
             .tick((b, level, target, t) -> {
                if (t >= 7 && t <= 17) {
                   this.trample(level, t);
                }
 
-               if (t >= 7 && t <= 18 && target != null && flatDist(this.getEntityPos(), target.getEntityPos()) < this.getWidth() * 0.5 + 1.4) {
-                  this.setVelocity(0.0, this.getVelocity().y, 0.0);
+               if (t >= 7 && t <= 18 && target != null && flatDist(this.position(), target.position()) < this.getBbWidth() * 0.5 + 1.4) {
+                  this.setDeltaMovement(0.0, this.getDeltaMovement().y, 0.0);
                }
             })
             .hit((b, level, target, i) -> {
-               float yaw = this.getYaw();
-               Vec3d fwd = this.facing();
+               float yaw = this.getYRot();
+               Vec3 fwd = this.facing();
 
                for (LivingEntity e : this.arc(level, yaw, 5.0, 70.0F)) {
-                  if (this.deal(level, e, 24.0F, fwd.multiply(1.2), 0.3)) {
+                  if (this.deal(level, e, 24.0F, fwd.scale(1.2), 0.3)) {
                      this.rot(level, e, 1);
                   }
 
@@ -1205,7 +1205,7 @@ public class BogrotBoss extends MysticalBoss {
 
                Vfx.claw(level, this.front(0.5, 2.2), yaw, 20.0F, 4.5, P);
                Vfx.heavyImpact(level, onGround(level, this.front(2.8, 0.0)), P, 0.8);
-               Vfx.dashTrail(level, this.lungeFrom.add(0.0, 1.2, 0.0), this.getEntityPos().add(0.0, 1.2, 0.0), P);
+               Vfx.dashTrail(level, this.lungeFrom.add(0.0, 1.2, 0.0), this.position().add(0.0, 1.2, 0.0), P);
             })
       );
       out.add(
@@ -1220,12 +1220,12 @@ public class BogrotBoss extends MysticalBoss {
             .utility((b, t, c) -> c.kitingTicks <= 60 && !c.targetUnreachable ? 1.0F : 1.8F)
             .tick((b, level, target, t) -> {
                if (t == 2) {
-                  Vfx.groundCrack(level, onGround(level, this.getEntityPos()), 3.0, P);
+                  Vfx.groundCrack(level, onGround(level, this.position()), 3.0, P);
                }
 
                if (t >= 2 && t <= 15 && t % 3 == 2) {
-                  level.spawnParticles(MUD, this.getX(), this.getY() + 0.3, this.getZ(), 16, 1.2, 0.2, 1.2, 0.12);
-                  Vfx.ring(level, this.getEntityPos(), P.glow(), 2.0 + t * 0.1, 8);
+                  level.sendParticles(MUD, this.getX(), this.getY() + 0.3, this.getZ(), 16, 1.2, 0.2, 1.2, 0.12);
+                  Vfx.ring(level, this.position(), P.glow(), 2.0 + t * 0.1, 8);
                }
 
                if (t == 12) {
@@ -1233,9 +1233,9 @@ public class BogrotBoss extends MysticalBoss {
                }
 
                if (t >= 17 && t <= 39 && t % 4 == 1) {
-                  Vec3d e = this.diveAt;
+                  Vec3 e = this.diveAt;
                   Vfx.smoke(level, e, P.smoke(), 3, 1.2, 1.0);
-                  level.spawnParticles(ParticleTypes.BUBBLE_POP, e.x, e.y + 0.2, e.z, 12, 1.0, 0.1, 1.0, 0.02);
+                  level.sendParticles(ParticleTypes.BUBBLE_POP, e.x, e.y + 0.2, e.z, 12, 1.0, 0.1, 1.0, 0.02);
                }
 
                if (t == 36) {
@@ -1268,10 +1268,10 @@ public class BogrotBoss extends MysticalBoss {
             })
             .hit((b, level, target, i) -> {
                if (i == 0 && target != null) {
-                  Vec3d l = onGround(level, this.predict(target, 18.0));
-                  int n = MathHelper.clamp((int)Math.round(12.0 + flatDist(this.getEntityPos(), l) * 0.6), 14, 26);
+                  Vec3 l = onGround(level, this.predict(target, 18.0));
+                  int n = Mth.clamp((int)Math.round(12.0 + flatDist(this.position(), l) * 0.6), 14, 26);
                   Vfx.telegraphCircle(level, l, 4.0, n, P);
-                  Vec3d from = this.getEntityPos();
+                  Vec3 from = this.position();
                   this.leapTo(l, Math.max(5.0, l.y - this.getY() + 4.0));
                   this.pouncing = true;
                   Vfx.dashTrail(level, from, from.add(0.0, 2.0, 0.0), P);
@@ -1286,35 +1286,35 @@ public class BogrotBoss extends MysticalBoss {
       );
    }
 
-   private void trample(ServerWorld level, int t) {
-      Vec3d right = dirOf(this.getYaw() + 90.0F);
+   private void trample(ServerLevel level, int t) {
+      Vec3 right = dirOf(this.getYRot() + 90.0F);
 
-      for (LivingEntity e : this.near(level, this.getBoundingBox().expand(1.0, 0.5, 1.0))) {
-         if (!(flatDist(this.getEntityPos(), e.getEntityPos()) > 1.8 + e.getWidth() * 0.5) && this.trampled.add(e.getId())) {
-            Vec3d rel = e.getEntityPos().subtract(this.getEntityPos());
-            Vec3d aside = rel.x * right.x + rel.z * right.z >= 0.0 ? right : right.multiply(-1.0);
-            this.deal(level, e, 10.0F, aside.multiply(0.9), 0.3);
+      for (LivingEntity e : this.near(level, this.getBoundingBox().inflate(1.0, 0.5, 1.0))) {
+         if (!(flatDist(this.position(), e.position()) > 1.8 + e.getBbWidth() * 0.5) && this.trampled.add(e.getId())) {
+            Vec3 rel = e.position().subtract(this.position());
+            Vec3 aside = rel.x * right.x + rel.z * right.z >= 0.0 ? right : right.scale(-1.0);
+            this.deal(level, e, 10.0F, aside.scale(0.9), 0.3);
          }
       }
 
       if (t % 2 == 1) {
-         Vfx.dashTrail(level, this.getEntityPos().subtract(this.facing().multiply(1.6)).add(0.0, 1.2, 0.0), this.getEntityPos().add(0.0, 1.2, 0.0), P);
-         level.spawnParticles(MUD, this.getX(), this.getY() + 0.2, this.getZ(), 10, 1.0, 0.1, 1.0, 0.1);
+         Vfx.dashTrail(level, this.position().subtract(this.facing().scale(1.6)).add(0.0, 1.2, 0.0), this.position().add(0.0, 1.2, 0.0), P);
+         level.sendParticles(MUD, this.getX(), this.getY() + 0.2, this.getZ(), 10, 1.0, 0.1, 1.0, 0.1);
       }
    }
 
-   private void diveUnder(ServerWorld level, @Nullable LivingEntity target) {
+   private void diveUnder(ServerLevel level, @Nullable LivingEntity target) {
       if (target == null) {
          this.submerged = false;
          this.cancelMove(level, 10);
       } else {
-         Vec3d ahead = this.predict(target, 24.0);
-         Vec3d look = target.getRotationVector().getHorizontal();
-         if (look.lengthSquared() < 1.0E-4) {
-            look = flat(this.getEntityPos(), target.getEntityPos());
+         Vec3 ahead = this.predict(target, 24.0);
+         Vec3 look = target.getLookAngle().horizontal();
+         if (look.lengthSqr() < 1.0E-4) {
+            look = flat(this.position(), target.position());
          }
 
-         Vec3d e = onGround(level, ahead.subtract(look.normalize().multiply(2.5)));
+         Vec3 e = onGround(level, ahead.subtract(look.normalize().scale(2.5)));
          if (!BossFx.safeGround(level, e, 3.0)) {
             e = onGround(level, ahead);
          }
@@ -1323,20 +1323,20 @@ public class BogrotBoss extends MysticalBoss {
             this.submerged = false;
             this.cancelMove(level, 10);
          } else {
-            this.faceTo(target.getEntityPos());
-            this.diveAt = onGround(level, this.getEntityPos());
+            this.faceTo(target.position());
+            this.diveAt = onGround(level, this.position());
             Vfx.telegraphCircle(level, this.diveAt, 3.5, 24, P);
          }
       }
    }
 
-   private void diveErupt(ServerWorld level) {
+   private void diveErupt(ServerLevel level) {
       this.submerged = false;
-      Vec3d c = this.diveAt;
+      Vec3 c = this.diveAt;
 
       for (LivingEntity e : this.ringHit(level, c, 0.0, 3.5)) {
          if (this.deal(level, e, 30.0F, this.away(c, e), 0.9)) {
-            this.afflict(e, StatusEffects.POISON, 60, 1);
+            this.afflict(e, MobEffects.POISON, 60, 1);
             this.rot(level, e, 1);
          }
       }
@@ -1348,15 +1348,15 @@ public class BogrotBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onLand(ServerWorld level) {
+   protected void onLand(ServerLevel level) {
       if (this.pouncing) {
          this.pouncing = false;
-         Vec3d c = this.getEntityPos();
+         Vec3 c = this.position();
 
          for (LivingEntity e : this.ringHit(level, c, 0.0, 4.0)) {
-            double d = flatDist(c, e.getEntityPos());
-            if (this.smite(level, e, this.hit(e, 36.0F) * (float)(0.5 + 0.5 * (1.0 - d / 4.0)), this.away(c, e).multiply(1.5), 0.4)) {
-               this.afflict(e, StatusEffects.SLOWNESS, 40, 1);
+            double d = flatDist(c, e.position());
+            if (this.smite(level, e, this.hit(e, 36.0F) * (float)(0.5 + 0.5 * (1.0 - d / 4.0)), this.away(c, e).scale(1.5), 0.4)) {
+               this.afflict(e, MobEffects.SLOWNESS, 40, 1);
                this.rot(level, e, 1);
             }
          }
@@ -1420,13 +1420,13 @@ public class BogrotBoss extends MysticalBoss {
             .start((b, level, target, i) -> {
                Vfx.chargeUp(level, this.front(2.4, 3.2), HEX, 18);
                if (target != null) {
-                  Vfx.runeCircle(level, onGround(level, target.getEntityPos()), 1.8, HEX, 18, 0.06F, Vfx.Rune.GLYPH);
+                  Vfx.runeCircle(level, onGround(level, target.position()), 1.8, HEX, 18, 0.06F, Vfx.Rune.GLYPH);
                }
             })
             .hit((b, level, target, i) -> {
                if (target != null) {
-                  Vec3d from = this.side(-0.9, 4.2, 2.3);
-                  BogrotBoss.Glob g = new BogrotBoss.Glob(2, from, target.getEyePos().subtract(from).normalize().multiply(0.8), 50);
+                  Vec3 from = this.side(-0.9, 4.2, 2.3);
+                  BogrotBoss.Glob g = new BogrotBoss.Glob(2, from, target.getEyePosition().subtract(from).normalize().scale(0.8), 50);
                   g.target = target;
                   g.homing = 0.18;
                   g.speed = 0.8;
@@ -1438,17 +1438,17 @@ public class BogrotBoss extends MysticalBoss {
       );
    }
 
-   private void spit(ServerWorld level, LivingEntity target) {
-      int n = MathHelper.clamp((int)Math.round(flatDist(this.getEntityPos(), target.getEntityPos()) * 1.1), 14, 26);
+   private void spit(ServerLevel level, LivingEntity target) {
+      int n = Mth.clamp((int)Math.round(flatDist(this.position(), target.position()) * 1.1), 14, 26);
       int count = this.phase() == 0 ? 1 : (this.phase() == 1 ? 3 : 5);
-      Vec3d from = this.mouth();
-      Vec3d aim = this.predict(target, n);
-      Vec3d dir = flat(this.getEntityPos(), aim);
-      Vec3d perp = new Vec3d(-dir.z, 0.0, dir.x);
+      Vec3 from = this.mouth();
+      Vec3 aim = this.predict(target, n);
+      Vec3 dir = flat(this.position(), aim);
+      Vec3 perp = new Vec3(-dir.z, 0.0, dir.x);
 
       for (int k = 0; k < count; k++) {
-         Vec3d l = onGround(level, aim.add(perp.multiply((k - (count - 1) / 2.0) * 2.8)));
-         Vec3d v = l.subtract(from).multiply(1.0 / n).add(0.0, 0.025 * (n + 1), 0.0);
+         Vec3 l = onGround(level, aim.add(perp.scale((k - (count - 1) / 2.0) * 2.8)));
+         Vec3 v = l.subtract(from).scale(1.0 / n).add(0.0, 0.025 * (n + 1), 0.0);
          BogrotBoss.Glob g = new BogrotBoss.Glob(0, from, v, n);
          g.gravity = 0.05;
          g.landing = l;
@@ -1461,28 +1461,28 @@ public class BogrotBoss extends MysticalBoss {
       Vfx.sparks(level, from, TOX.core(), 8, 0.3, 0.18);
    }
 
-   private void retchAim(ServerWorld level, LivingEntity target, int k) {
-      double dist = Math.sqrt(this.squaredDistanceTo(target));
-      Vec3d a = this.predict(target, dist / 1.5).add(0.0, 1.0, 0.0);
-      Vec3d m = this.mouth();
-      Vec3d d = a.subtract(m).rotateY(-RETCH_YAW[k] * (float) (Math.PI / 180.0));
+   private void retchAim(ServerLevel level, LivingEntity target, int k) {
+      double dist = Math.sqrt(this.distanceToSqr(target));
+      Vec3 a = this.predict(target, dist / 1.5).add(0.0, 1.0, 0.0);
+      Vec3 m = this.mouth();
+      Vec3 d = a.subtract(m).yRot(-RETCH_YAW[k] * (float) (Math.PI / 180.0));
       this.retchAims[k] = m.add(d);
-      Vfx.telegraphLine(level, onGround(level, this.getEntityPos()), this.retchAims[k].subtract(this.getEntityPos()), d.length(), 0.9, 5, TOX);
+      Vfx.telegraphLine(level, onGround(level, this.position()), this.retchAims[k].subtract(this.position()), d.length(), 0.9, 5, TOX);
    }
 
-   private void retch(ServerWorld level, @Nullable LivingEntity target, int k) {
-      Vec3d aim = k >= 0 && k < 3 ? this.retchAims[k] : null;
+   private void retch(ServerLevel level, @Nullable LivingEntity target, int k) {
+      Vec3 aim = k >= 0 && k < 3 ? this.retchAims[k] : null;
       if (aim == null) {
          if (target == null) {
             return;
          }
 
-         aim = target.getEyePos();
+         aim = target.getEyePosition();
       }
 
-      Vec3d m = this.mouth();
-      Vec3d dir = aim.subtract(m).normalize();
-      BogrotBoss.Glob g = new BogrotBoss.Glob(4, m, dir.multiply(1.5), 40);
+      Vec3 m = this.mouth();
+      Vec3 dir = aim.subtract(m).normalize();
+      BogrotBoss.Glob g = new BogrotBoss.Glob(4, m, dir.scale(1.5), 40);
       g.radius = 0.7;
       this.addGlob(g);
       BossSounds.play(level, m, "bolt.spore.launch", 1.4F, 1.0F);
@@ -1490,10 +1490,10 @@ public class BogrotBoss extends MysticalBoss {
       Vfx.streaks(level, m, dir, TOX, 5);
    }
 
-   private void witchfire(ServerWorld level, @Nullable LivingEntity target) {
+   private void witchfire(ServerLevel level, @Nullable LivingEntity target) {
       int count = 3 + Math.min(2, this.phase());
-      Vec3d from = this.side(-0.65, 2.5, 4.9);
-      List<ServerPlayerEntity> players = this.engaged();
+      Vec3 from = this.side(-0.65, 2.5, 4.9);
+      List<ServerPlayer> players = this.engaged();
 
       for (int k = 0; k < count; k++) {
          LivingEntity to = target;
@@ -1502,7 +1502,7 @@ public class BogrotBoss extends MysticalBoss {
          }
 
          if (to != null) {
-            Vec3d spread = dirOf(this.getYaw() + k * 360.0F / count).multiply(0.3);
+            Vec3 spread = dirOf(this.getYRot() + k * 360.0F / count).scale(0.3);
             BogrotBoss.Glob g = new BogrotBoss.Glob(1, from, spread.add(0.0, 0.3, 0.0), 80);
             g.target = to;
             g.homing = 0.12;
@@ -1525,31 +1525,31 @@ public class BogrotBoss extends MysticalBoss {
             .tags("aoe gap_closer")
             .combo("rootbound_stomp", 0.55F)
             .combo("twin_rake", 0.2F)
-            .start((b, level, target, i) -> Vfx.runeCircle(level, onGround(level, this.getEntityPos()), 14.0, P, 40, -0.05F, Vfx.Rune.GLYPH))
+            .start((b, level, target, i) -> Vfx.runeCircle(level, onGround(level, this.position()), 14.0, P, 40, -0.05F, Vfx.Rune.GLYPH))
             .tick((b, level, target, t) -> {
                if (t >= 12 && t <= 29) {
                   List<LivingEntity> pulled = this.pull(level, 14.0, 0.16, t, P);
                   if (t % 5 == 0) {
                      for (LivingEntity e : pulled) {
-                        this.afflict(e, StatusEffects.SLOWNESS, 10, 0);
+                        this.afflict(e, MobEffects.SLOWNESS, 10, 0);
                      }
                   }
 
                   if (t % 4 == 0) {
-                     Vfx.ring(level, this.getEntityPos(), P.glow(), 14.0 - (t - 12) * 0.55, 8);
-                     level.spawnParticles(MUD, this.getX(), this.getY() + 0.3, this.getZ(), 20, 4.0, 0.1, 4.0, 0.1);
+                     Vfx.ring(level, this.position(), P.glow(), 14.0 - (t - 12) * 0.55, 8);
+                     level.sendParticles(MUD, this.getX(), this.getY() + 0.3, this.getZ(), 20, 4.0, 0.1, 4.0, 0.1);
                   }
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d c = onGround(level, this.getEntityPos());
+               Vec3 c = onGround(level, this.position());
                if (i == 0) {
                   Vfx.telegraphCircle(level, c, 4.5, 18, P);
                   Vfx.impact(level, this.front(2.5, 0.0), P, 0.8);
                } else {
                   for (LivingEntity e : this.ringHit(level, c, 0.0, 4.5)) {
-                     if (this.deal(level, e, 12.0F, Vec3d.ZERO, 0.0)) {
-                        this.afflict(e, StatusEffects.SLOWNESS, 40, 2);
+                     if (this.deal(level, e, 12.0F, Vec3.ZERO, 0.0)) {
+                        this.afflict(e, MobEffects.SLOWNESS, 40, 2);
                         this.rot(level, e, 1);
                      }
                   }
@@ -1592,8 +1592,8 @@ public class BogrotBoss extends MysticalBoss {
       );
    }
 
-   private void rippleMarks(ServerWorld level) {
-      Vec3d c = onGround(level, this.getEntityPos());
+   private void rippleMarks(ServerLevel level) {
+      Vec3 c = onGround(level, this.position());
       this.rippleCenter = c;
       this.rippleMid.clear();
       this.rippleOuter.clear();
@@ -1601,7 +1601,7 @@ public class BogrotBoss extends MysticalBoss {
 
       for (int k = 0; k < 8; k++) {
          double a = k * Math.PI / 4.0;
-         Vec3d s = onGround(level, c.add(Math.cos(a) * 6.0, 0.0, Math.sin(a) * 6.0));
+         Vec3 s = onGround(level, c.add(Math.cos(a) * 6.0, 0.0, Math.sin(a) * 6.0));
          this.rippleMid.add(s);
          Vfx.telegraphCircle(level, s, 2.0, 32, TOX);
       }
@@ -1610,7 +1610,7 @@ public class BogrotBoss extends MysticalBoss {
 
       for (int k = 0; k < 12; k++) {
          double a = k * Math.PI / 6.0;
-         Vec3d s = onGround(level, c.add(Math.cos(a) * 10.0, 0.0, Math.sin(a) * 10.0));
+         Vec3 s = onGround(level, c.add(Math.cos(a) * 10.0, 0.0, Math.sin(a) * 10.0));
          this.rippleOuter.add(s);
          Vfx.telegraphCircle(level, s, 2.0, 44, TOX);
       }
@@ -1618,14 +1618,14 @@ public class BogrotBoss extends MysticalBoss {
       Vfx.ring(level, c, TOX.glow(), 12.0, 44);
    }
 
-   private void ripple(ServerWorld level, int i) {
+   private void ripple(ServerLevel level, int i) {
       double r0 = i * 4;
       double r1 = r0 + 4.0;
-      Vec3d c = this.rippleCenter;
+      Vec3 c = this.rippleCenter;
 
       for (LivingEntity e : this.ringHit(level, c, r0, r1)) {
-         if (this.deal(level, e, 24.0F, Vec3d.ZERO, 0.6)) {
-            this.afflict(e, StatusEffects.POISON, 60, 0);
+         if (this.deal(level, e, 24.0F, Vec3.ZERO, 0.6)) {
+            this.afflict(e, MobEffects.POISON, 60, 0);
             this.rot(level, e, 1);
          }
       }
@@ -1634,7 +1634,7 @@ public class BogrotBoss extends MysticalBoss {
          Vfx.heavyImpact(level, c, TOX, 1.0);
          Vfx.groundCrack(level, c, 4.0, TOX);
       } else {
-         for (Vec3d s : i == 1 ? this.rippleMid : this.rippleOuter) {
+         for (Vec3 s : i == 1 ? this.rippleMid : this.rippleOuter) {
             Vfx.pillar(level, s, TOX, 3.0, 0.8);
          }
 
@@ -1642,36 +1642,36 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void belchGas(ServerWorld level) {
-      float yaw = this.getYaw();
+   private void belchGas(ServerLevel level) {
+      float yaw = this.getYRot();
 
       for (LivingEntity e : this.arc(level, yaw, 11.0, 40.0F)) {
-         this.afflict(e, StatusEffects.NAUSEA, 60, 0);
-         this.afflict(e, StatusEffects.POISON, 40, 0);
+         this.afflict(e, MobEffects.NAUSEA, 60, 0);
+         this.afflict(e, MobEffects.POISON, 40, 0);
       }
 
-      Vec3d m = this.mouth();
-      Vec3d f = this.facing();
+      Vec3 m = this.mouth();
+      Vec3 f = this.facing();
 
       for (int k = 0; k < 6; k++) {
-         Vfx.smoke(level, m.add(f.multiply(1.5 + k * 1.6)), TOX.smoke(), 4, 0.8 + k * 0.25, 2.0);
+         Vfx.smoke(level, m.add(f.scale(1.5 + k * 1.6)), TOX.smoke(), 4, 0.8 + k * 0.25, 2.0);
       }
 
-      Vfx.telegraphCone(level, this.getEntityPos(), yaw, 40.0F, 11.0, 18, WISP);
+      Vfx.telegraphCone(level, this.position(), yaw, 40.0F, 11.0, 18, WISP);
    }
 
-   private void belchFire(ServerWorld level) {
-      float yaw = this.getYaw();
+   private void belchFire(ServerLevel level) {
+      float yaw = this.getYRot();
 
       for (LivingEntity e : this.arc(level, yaw, 11.0, 40.0F)) {
-         if (this.deal(level, e, 34.0F, this.away(this.getEntityPos(), e).multiply(0.8), 0.4)) {
-            e.setOnFireFor(4.0F);
+         if (this.deal(level, e, 34.0F, this.away(this.position(), e).scale(0.8), 0.4)) {
+            e.igniteForSeconds(4.0F);
             this.rot(level, e, 1);
          }
       }
 
       for (int k = 0; k < 5; k++) {
-         Vec3d at = onGround(level, this.front(2 + k * 2, 0.0)).add(0.0, 0.6, 0.0);
+         Vec3 at = onGround(level, this.front(2 + k * 2, 0.0)).add(0.0, 0.6, 0.0);
          if (k == 0) {
             Vfx.explosion(level, at, WISP, 2.0);
          } else {
@@ -1679,7 +1679,7 @@ public class BogrotBoss extends MysticalBoss {
          }
       }
 
-      Vfx.shake(level, this.getEntityPos(), 20.0, 0.8, 10);
+      Vfx.shake(level, this.position(), 20.0, 0.8, 10);
    }
 
    private void utilityMoves(List<BossAction> out) {
@@ -1693,12 +1693,12 @@ public class BogrotBoss extends MysticalBoss {
             .utility((b, t, c) -> this.warded() ? 0.0F : (c.surroundCount >= 2 ? 1.5F : 1.0F))
             .tick((b, level, target, t) -> {
                if (t >= 2 && t <= 17 && t % 3 == 2) {
-                  Vfx.debris(level, this.getEntityPos().add(0.0, 3.0, 0.0), Vfx.Debris.LEAF, P.glow(), 6, 0.25);
+                  Vfx.debris(level, this.position().add(0.0, 3.0, 0.0), Vfx.Debris.LEAF, P.glow(), 6, 0.25);
                }
             })
             .hit((b, level, target, i) -> {
                this.shield(this.getMaxHealth() * 0.1F, 200);
-               Vfx.shieldBubble(level, this.getEntityPos().add(0.0, 2.2, 0.0), 3.2, P, 200);
+               Vfx.shieldBubble(level, this.position().add(0.0, 2.2, 0.0), 3.2, P, 200);
                this.wasWarded = true;
             })
       );
@@ -1712,14 +1712,14 @@ public class BogrotBoss extends MysticalBoss {
             .anyTarget()
             .utility((b, t, c) -> this.thrallCount() >= 4 ? 0.0F : 1.0F)
             .start((b, level, target, i) -> {
-               Vfx.runeCircle(level, onGround(level, this.getEntityPos()), 6.0, P, 30, 0.08F, Vfx.Rune.GLYPH);
-               Vfx.vortex(level, this.getEntityPos(), 4.0, 5.0, P, 30);
+               Vfx.runeCircle(level, onGround(level, this.position()), 6.0, P, 30, 0.08F, Vfx.Rune.GLYPH);
+               Vfx.vortex(level, this.position(), 4.0, 5.0, P, 30);
             })
             .hit((b, level, target, i) -> this.callDrowned(level))
       );
    }
 
-   private void callDrowned(ServerWorld level) {
+   private void callDrowned(ServerLevel level) {
       this.minionCheck = -100;
       this.countMinions(level);
       int want = Math.min(1 + this.phase(), 4 - this.thralls);
@@ -1731,36 +1731,36 @@ public class BogrotBoss extends MysticalBoss {
          BossFx.summonMinions(level, this, RealmMobs.type("bog_leech"), this.phase() >= 2 ? 3 : 2, 4.0, null, m -> {});
       }
 
-      Vfx.nova(level, this.getEntityPos().add(0.0, 1.0, 0.0), P, 6.0);
+      Vfx.nova(level, this.position().add(0.0, 1.0, 0.0), P, 6.0);
       if (this.phase() >= 2) {
-         for (ServerPlayerEntity pl : this.nearest(2)) {
-            Vec3d s = onGround(level, pl.getEntityPos());
+         for (ServerPlayer pl : this.nearest(2)) {
+            Vec3 s = onGround(level, pl.position());
             Vfx.telegraphCircle(level, s, 1.8, 20, P);
             this.schedule(20, () -> this.erupt(level, s, pl));
          }
       }
    }
 
-   private void erupt(ServerWorld level, Vec3d s, ServerPlayerEntity pl) {
+   private void erupt(ServerLevel level, Vec3 s, ServerPlayer pl) {
       if (this.isAlive()) {
-         RealmMob m = (RealmMob)RealmMobs.type("bog_thrall").create(level, SpawnReason.MOB_SUMMONED);
+         RealmMob m = (RealmMob)RealmMobs.type("bog_thrall").create(level, EntitySpawnReason.MOB_SUMMONED);
          if (m != null) {
-            m.refreshPositionAndAngles(s.x, s.y, s.z, this.random.nextFloat() * 360.0F, 0.0F);
+            m.snapTo(s.x, s.y, s.z, this.random.nextFloat() * 360.0F, 0.0F);
             if (pl.isAlive()) {
                m.setTarget(pl);
             }
 
-            level.spawnEntity(m);
+            level.addFreshEntity(m);
          }
 
          for (LivingEntity e : this.ringHit(level, s, 0.0, 1.8)) {
-            if (this.deal(level, e, 16.0F, Vec3d.ZERO, 0.7)) {
+            if (this.deal(level, e, 16.0F, Vec3.ZERO, 0.7)) {
                this.rot(level, e, 1);
             }
          }
 
          Vfx.pillar(level, s, P, 2.5, 0.8);
-         level.spawnParticles(MUD, s.x, s.y + 0.4, s.z, 30, 0.6, 0.5, 0.6, 0.15);
+         level.sendParticles(MUD, s.x, s.y + 0.4, s.z, 30, 0.6, 0.5, 0.6, 0.15);
       }
    }
 
@@ -1779,10 +1779,10 @@ public class BogrotBoss extends MysticalBoss {
             .tick((b, level, target, t) -> {
                if (t >= 6 && t <= 24 && t % 6 == 0) {
                   int k = t / 6 - 1;
-                  float base = target != null ? yawTo(this.getEntityPos(), this.predict(target, 6.0)) : this.getYaw();
-                  Vec3d dir = dirOf(base + LASH_YAW[k]);
+                  float base = target != null ? yawTo(this.position(), this.predict(target, 6.0)) : this.getYRot();
+                  Vec3 dir = dirOf(base + LASH_YAW[k]);
                   this.lashDirs[k] = dir;
-                  Vfx.telegraphLine(level, onGround(level, this.getEntityPos()), dir, 10.0, 1.8, 6, P);
+                  Vfx.telegraphLine(level, onGround(level, this.position()), dir, 10.0, 1.8, 6, P);
                }
             })
             .hit((b, level, target, i) -> this.thornLash(level, i))
@@ -1790,8 +1790,8 @@ public class BogrotBoss extends MysticalBoss {
       out.add(
          BossAction.of("strangling_vines", 1.8, 1.0).range(0.0, 30.0).cooldown(180).phase(2).weight(5).tags("ranged anti_air").tick((b, level, target, t) -> {
             if (t == 4) {
-               Vec3d a = target != null ? this.predict(target, 16.0) : this.front(6.0, 0.0);
-               Vec3d g = BossFx.ground(level, a.x, a.y, a.z);
+               Vec3 a = target != null ? this.predict(target, 16.0) : this.front(6.0, 0.0);
+               Vec3 g = BossFx.ground(level, a.x, a.y, a.z);
                this.strangleAt = g != null ? g : a.add(0.0, -8.0, 0.0);
                Vfx.telegraphCircle(level, this.strangleAt, 2.2, 16, P);
             }
@@ -1799,15 +1799,15 @@ public class BogrotBoss extends MysticalBoss {
       );
    }
 
-   private void thornLash(ServerWorld level, int k) {
-      Vec3d dir = k >= 0 && k < 4 && this.lashDirs[k] != null ? this.lashDirs[k] : this.facing();
-      Vec3d feet = this.getEntityPos();
+   private void thornLash(ServerLevel level, int k) {
+      Vec3 dir = k >= 0 && k < 4 && this.lashDirs[k] != null ? this.lashDirs[k] : this.facing();
+      Vec3 feet = this.position();
 
       for (LivingEntity e : this.line(level, feet, dir, 10.0, 0.9)) {
          if (!(e.getY() > feet.y + 3.0)) {
-            e.timeUntilRegen = 0;
-            if (this.deal(level, e, 16.0F, dir.multiply(0.6), 0.2)) {
-               this.afflict(e, StatusEffects.POISON, 40, 0);
+            e.setInvulnerableTime(0);
+            if (this.deal(level, e, 16.0F, dir.scale(0.6), 0.2)) {
+               this.afflict(e, MobEffects.POISON, 40, 0);
                this.rot(level, e, 1);
             }
 
@@ -1815,24 +1815,24 @@ public class BogrotBoss extends MysticalBoss {
          }
       }
 
-      Vec3d slam = onGround(level, feet.add(dir.multiply(4.5)).add(0.0, 1.0, 0.0));
-      Vec3d end = onGround(level, feet.add(dir.multiply(10.0)).add(0.0, 1.0, 0.0));
-      Vec3d start = onGround(level, feet.add(dir.multiply(1.6)).add(0.0, 1.0, 0.0));
+      Vec3 slam = onGround(level, feet.add(dir.scale(4.5)).add(0.0, 1.0, 0.0));
+      Vec3 end = onGround(level, feet.add(dir.scale(10.0)).add(0.0, 1.0, 0.0));
+      Vec3 start = onGround(level, feet.add(dir.scale(1.6)).add(0.0, 1.0, 0.0));
       Vfx.beam(level, start.add(0.0, 0.7, 0.0), end.add(0.0, 0.6, 0.0), TOX, 0.35, 4);
       Vfx.impact(level, slam.add(0.0, 0.2, 0.0), P, 0.6);
       Vfx.streaks(level, slam.add(0.0, 0.5, 0.0), dir, P, 10);
       Vfx.debris(level, slam.add(0.0, 0.3, 0.0), Vfx.Debris.LEAF, P.glow(), 8, 0.3);
    }
 
-   private void strangle(ServerWorld level) {
-      Vec3d g = this.strangleAt;
+   private void strangle(ServerLevel level) {
+      Vec3 g = this.strangleAt;
 
       for (LivingEntity e : this.column(level, g, 2.2, 16.0)) {
-         e.stopGliding();
-         e.setVelocity(0.0, -2.2, 0.0);
-         e.knockedBack = true;
-         if (this.deal(level, e, 26.0F, Vec3d.ZERO, 0.0)) {
-            this.afflict(e, StatusEffects.SLOWNESS, 60, 2);
+         e.stopFallFlying();
+         e.setDeltaMovement(0.0, -2.2, 0.0);
+         e.syncVelocity = true;
+         if (this.deal(level, e, 26.0F, Vec3.ZERO, 0.0)) {
+            this.afflict(e, MobEffects.SLOWNESS, 60, 2);
             this.rot(level, e, 2);
          }
 
@@ -1856,7 +1856,7 @@ public class BogrotBoss extends MysticalBoss {
             .telegraph(0.0, 3.8)
             .start((b, level, target, i) -> {
                Vfx.chargeUp(level, this.front(0.5, 3.0), P, 36);
-               Vfx.runeCircle(level, onGround(level, this.getEntityPos()), 16.0, P, 100, 0.03F, Vfx.Rune.GLYPH);
+               Vfx.runeCircle(level, onGround(level, this.position()), 16.0, P, 100, 0.03F, Vfx.Rune.GLYPH);
             })
             .tick((b, level, target, t) -> {
                if (t == 56) {
@@ -1865,7 +1865,7 @@ public class BogrotBoss extends MysticalBoss {
             })
             .hit((b, level, target, i) -> {
                if (i < 3) {
-                  Vec3d c = onGround(level, this.getEntityPos());
+                  Vec3 c = onGround(level, this.position());
                   BossFx.wave(level, this, c, 16.0, 20, 26.0F, MUD, 1.2, true);
                   Vfx.groundCrack(level, c, 4.0, P);
                   if (i == 0) {
@@ -1887,13 +1887,13 @@ public class BogrotBoss extends MysticalBoss {
             .superArmor()
             .telegraph(0.0, 3.9)
             .start((b, level, target, i) -> {
-               Vec3d c = onGround(level, this.getEntityPos());
+               Vec3 c = onGround(level, this.position());
                Vfx.telegraphCircle(level, c, 4.5, 64, Vfx.Palette.BLOOD);
                Vfx.runeCircle(level, c, 18.0, HEX, 64, -0.06F, Vfx.Rune.GLYPH);
             })
             .tick((b, level, target, t) -> {
                if (t == 16) {
-                  Vfx.vortex(level, this.getEntityPos(), 6.0, 5.0, TOX, 48);
+                  Vfx.vortex(level, this.position(), 6.0, 5.0, TOX, 48);
                }
 
                if (t >= 16 && t <= 60) {
@@ -1924,13 +1924,13 @@ public class BogrotBoss extends MysticalBoss {
             .telegraph(0.0, 5.6)
             .when((b, t) -> false)
             .start((b, level, target, i) -> {
-               for (List<Vec3d> h : this.hands) {
+               for (List<Vec3> h : this.hands) {
                   h.clear();
                }
 
-               Vfx.runeCircle(level, onGround(level, this.getEntityPos()), 20.0, P, 130, 0.02F, Vfx.Rune.GLYPH);
-               Vfx.vortex(level, this.getEntityPos(), 14.0, 3.0, P, 130);
-               Vfx.flash(level, this.getEntityPos(), 48.0, TOX.glow(), 0.35F);
+               Vfx.runeCircle(level, onGround(level, this.position()), 20.0, P, 130, 0.02F, Vfx.Rune.GLYPH);
+               Vfx.vortex(level, this.position(), 14.0, 3.0, P, 130);
+               Vfx.flash(level, this.position(), 48.0, TOX.glow(), 0.35F);
             })
             .tick((b, level, target, t) -> {
                if (t >= 16 && t <= 64 && t % 16 == 0) {
@@ -1938,7 +1938,7 @@ public class BogrotBoss extends MysticalBoss {
                }
 
                if (t == 68) {
-                  Vfx.telegraphCircle(level, onGround(level, this.getEntityPos()), 13.0, 44, TOX);
+                  Vfx.telegraphCircle(level, onGround(level, this.position()), 13.0, 44, TOX);
                   Vfx.chargeUp(level, this.maw(), TOX, 44);
                }
             })
@@ -1953,27 +1953,27 @@ public class BogrotBoss extends MysticalBoss {
       );
    }
 
-   private void geyserMarks(ServerWorld level) {
+   private void geyserMarks(ServerLevel level) {
       this.geysers.clear();
 
-      for (ServerPlayerEntity pl : this.nearest(3)) {
+      for (ServerPlayer pl : this.nearest(3)) {
          this.geysers.add(onGround(level, this.predict(pl, 20.0)));
       }
 
       while (this.geysers.size() < 6) {
-         this.geysers.add(BossFx.around(level, this, this.getEntityPos(), 4.0, 14.0));
+         this.geysers.add(BossFx.around(level, this, this.position(), 4.0, 14.0));
       }
 
-      for (Vec3d s : this.geysers) {
+      for (Vec3 s : this.geysers) {
          Vfx.telegraphCircle(level, s, 2.8, 20, TOX);
       }
    }
 
-   private void geyserBurst(ServerWorld level) {
-      for (Vec3d s : this.geysers) {
+   private void geyserBurst(ServerLevel level) {
+      for (Vec3 s : this.geysers) {
          for (LivingEntity e : this.ringHit(level, s, 0.0, 2.8)) {
-            if (this.deal(level, e, 40.0F, Vec3d.ZERO, 1.0)) {
-               this.afflict(e, StatusEffects.POISON, 80, 1);
+            if (this.deal(level, e, 40.0F, Vec3.ZERO, 1.0)) {
+               this.afflict(e, MobEffects.POISON, 80, 1);
                this.rot(level, e, 1);
             }
          }
@@ -1986,13 +1986,13 @@ public class BogrotBoss extends MysticalBoss {
       this.geysers.clear();
    }
 
-   private void chomp(ServerWorld level) {
-      Vec3d c = onGround(level, this.getEntityPos());
+   private void chomp(ServerLevel level) {
+      Vec3 c = onGround(level, this.position());
       int fed = 0;
 
       for (LivingEntity e : this.ringHit(level, c, 0.0, 4.5)) {
-         if (this.deal(level, e, 60.0F, Vec3d.ZERO, 0.0)) {
-            this.afflict(e, StatusEffects.WITHER, 80, 1);
+         if (this.deal(level, e, 60.0F, Vec3.ZERO, 0.0)) {
+            this.afflict(e, MobEffects.WITHER, 80, 1);
             this.rot(level, e, 2);
             fed++;
          }
@@ -2000,82 +2000,82 @@ public class BogrotBoss extends MysticalBoss {
 
       if (fed > 0) {
          this.heal(this.getMaxHealth() * 0.015F * Math.min(3, fed));
-         Vfx.impactFrame(level, this.getEntityPos(), 20.0, TOX.glow(), 0.8F);
+         Vfx.impactFrame(level, this.position(), 20.0, TOX.glow(), 0.8F);
       }
 
       Vfx.heavyImpact(level, this.maw(), Vfx.Palette.BLOOD, 2.0);
       Vfx.telegraphCircle(level, c, 10.0, 14, TOX);
    }
 
-   private void exhale(ServerWorld level) {
-      Vec3d c = onGround(level, this.getEntityPos());
+   private void exhale(ServerLevel level) {
+      Vec3 c = onGround(level, this.position());
 
       for (LivingEntity e : this.ringHit(level, c, 0.0, 10.0)) {
-         double d = flatDist(c, e.getEntityPos());
-         if (this.smite(level, e, this.hit(e, 38.0F) * (float)(0.4 + 0.6 * (1.0 - d / 10.0)), this.away(c, e).multiply(1.6), 0.4)) {
-            this.afflict(e, StatusEffects.POISON, 100, 1);
-            this.afflict(e, StatusEffects.NAUSEA, 80, 0);
+         double d = flatDist(c, e.position());
+         if (this.smite(level, e, this.hit(e, 38.0F) * (float)(0.4 + 0.6 * (1.0 - d / 10.0)), this.away(c, e).scale(1.6), 0.4)) {
+            this.afflict(e, MobEffects.POISON, 100, 1);
+            this.afflict(e, MobEffects.NAUSEA, 80, 0);
          }
       }
 
-      Vfx.nova(level, this.getEntityPos().add(0.0, 2.0, 0.0), TOX, 10.0);
-      Vfx.radialFlash(level, this.getEntityPos(), 30.0, TOX.glow(), 0.5F);
+      Vfx.nova(level, this.position().add(0.0, 2.0, 0.0), TOX, 10.0);
+      Vfx.radialFlash(level, this.position(), 30.0, TOX.glow(), 0.5F);
    }
 
-   private void handMarks(ServerWorld level, int k) {
-      List<Vec3d> spots = this.hands.get(k);
+   private void handMarks(ServerLevel level, int k) {
+      List<Vec3> spots = this.hands.get(k);
       spots.clear();
 
-      for (ServerPlayerEntity pl : this.nearest(4)) {
-         Vec3d s = onGround(level, this.predict(pl, 16.0));
+      for (ServerPlayer pl : this.nearest(4)) {
+         Vec3 s = onGround(level, this.predict(pl, 16.0));
          spots.add(s);
          Vfx.telegraphCircle(level, s, 2.6, 16, P);
       }
    }
 
-   private void drownedHands(ServerWorld level, int k) {
-      for (Vec3d s : this.hands.get(k)) {
+   private void drownedHands(ServerLevel level, int k) {
+      for (Vec3 s : this.hands.get(k)) {
          for (LivingEntity e : this.ringHit(level, s, 0.0, 2.6)) {
-            if (this.deal(level, e, 30.0F, flat(e.getEntityPos(), this.getEntityPos()).multiply(0.4), 0.6)) {
-               this.afflict(e, StatusEffects.SLOWNESS, 30, 2);
+            if (this.deal(level, e, 30.0F, flat(e.position(), this.position()).scale(0.4), 0.6)) {
+               this.afflict(e, MobEffects.SLOWNESS, 30, 2);
                this.rot(level, e, 1);
             }
          }
 
          Vfx.pillar(level, s, P, 4.0, 1.0);
-         level.spawnParticles(MUD, s.x, s.y + 0.3, s.z, 24, 0.8, 0.3, 0.8, 0.15);
+         level.sendParticles(MUD, s.x, s.y + 0.3, s.z, 24, 0.8, 0.3, 0.8, 0.15);
          Vfx.claw(level, s.add(0.0, 1.0, 0.0), this.random.nextFloat() * 360.0F, -60.0F, 2.0, P);
       }
    }
 
-   private void lastDrowning(ServerWorld level) {
-      Vec3d c = onGround(level, this.getEntityPos());
+   private void lastDrowning(ServerLevel level) {
+      Vec3 c = onGround(level, this.position());
 
       for (LivingEntity e : this.ringHit(level, c, 0.0, 13.0)) {
-         double d = flatDist(c, e.getEntityPos());
-         if (this.smite(level, e, this.hit(e, 70.0F) * (float)(0.4 + 0.6 * (1.0 - d / 13.0)), this.away(c, e).multiply(2.0), 0.5)) {
-            this.afflict(e, StatusEffects.WITHER, 100, 1);
+         double d = flatDist(c, e.position());
+         if (this.smite(level, e, this.hit(e, 70.0F) * (float)(0.4 + 0.6 * (1.0 - d / 13.0)), this.away(c, e).scale(2.0), 0.5)) {
+            this.afflict(e, MobEffects.WITHER, 100, 1);
          }
       }
 
-      Vfx.impactFrame(level, this.getEntityPos(), 30.0, TOX.glow(), 1.0F);
+      Vfx.impactFrame(level, this.position(), 30.0, TOX.glow(), 1.0F);
       Vfx.heavyImpact(level, c, P, 3.0);
-      Vfx.nova(level, this.getEntityPos().add(0.0, 1.0, 0.0), TOX, 13.0);
+      Vfx.nova(level, this.position().add(0.0, 1.0, 0.0), TOX, 13.0);
       Vfx.groundCrack(level, c, 13.0, P);
    }
 
-   private void exhausted(ServerWorld level) {
+   private void exhausted(ServerLevel level) {
       if (this.isAlive()) {
          this.buff(100, 1.35F, 1.0F);
          this.setCooldown("rot_mothers_embrace", Math.max(this.cooldownLeft("rot_mothers_embrace"), 300));
-         Vfx.smoke(level, this.getEntityPos(), P.smoke(), 12, 1.5, 2.0);
+         Vfx.smoke(level, this.position(), P.smoke(), 12, 1.5, 2.0);
          Vfx.glint(level, this.maw(), TOX.core(), 2.0);
       }
    }
 
    @Override
-   protected void mobTick(ServerWorld world) {
-      super.mobTick(world);
+   protected void customServerAiStep(ServerLevel world) {
+      super.customServerAiStep(world);
       if (this.isAlive() && !this.inIntro()) {
          BossFx.current(this);
          this.tickGlobs(world);
@@ -2101,18 +2101,18 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void shroudBurst(ServerWorld level) {
-      Vec3d c = this.getEntityPos();
+   private void shroudBurst(ServerLevel level) {
+      Vec3 c = this.position();
 
       for (LivingEntity e : this.ringHit(level, c, 0.0, 5.0)) {
-         this.deal(level, e, 14.0F, this.away(c, e).multiply(1.6), 0.4);
+         this.deal(level, e, 14.0F, this.away(c, e).scale(1.6), 0.4);
       }
 
       Vfx.nova(level, c.add(0.0, 2.0, 0.0), P, 5.0);
       Vfx.debris(level, c.add(0.0, 2.5, 0.0), Vfx.Debris.LEAF, P.glow(), 24, 0.5);
    }
 
-   private void hazards(ServerWorld level) {
+   private void hazards(ServerLevel level) {
       if (this.getTarget() != null) {
          BossAction cur = this.currentMove();
          if (cur == null || !cur.anim().startsWith("phase_")) {
@@ -2136,15 +2136,15 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void rotBlooms(ServerWorld level) {
-      for (ServerPlayerEntity pl : this.nearest(3)) {
-         Vec3d s = onGround(level, this.predict(pl, 20.0));
+   private void rotBlooms(ServerLevel level) {
+      for (ServerPlayer pl : this.nearest(3)) {
+         Vec3 s = onGround(level, this.predict(pl, 20.0));
          Vfx.telegraphCircle(level, s, 2.5, 30, TOX);
          this.schedule(30, () -> {
             if (this.isAlive()) {
                for (LivingEntity e : this.ringHit(level, s, 0.0, 2.5)) {
-                  if (this.deal(level, e, 18.0F, Vec3d.ZERO, 0.4)) {
-                     this.afflict(e, StatusEffects.POISON, 60, 1);
+                  if (this.deal(level, e, 18.0F, Vec3.ZERO, 0.4)) {
+                     this.afflict(e, MobEffects.POISON, 60, 1);
                      this.rot(level, e, 1);
                   }
                }
@@ -2157,9 +2157,9 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void blackWater(ServerWorld level) {
+   private void blackWater(ServerLevel level) {
       for (int k = 0; k < 3; k++) {
-         Vec3d s = BossFx.around(level, this, this.getEntityPos(), 5.0, 12.0);
+         Vec3 s = BossFx.around(level, this, this.position(), 5.0, 12.0);
          Vfx.telegraphCircle(level, s, 3.5, 30, P);
          this.schedule(30, () -> {
             if (this.isAlive()) {
@@ -2169,13 +2169,13 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void marshWisps(ServerWorld level) {
-      List<ServerPlayerEntity> near = this.nearest(2);
+   private void marshWisps(ServerLevel level) {
+      List<ServerPlayer> near = this.nearest(2);
       if (!near.isEmpty()) {
          for (int k = 0; k < 2; k++) {
-            ServerPlayerEntity pl = near.get(Math.min(k, near.size() - 1));
-            Vec3d from = this.lantern(k == 0);
-            BogrotBoss.Glob g = new BogrotBoss.Glob(3, from, pl.getEyePos().subtract(from).normalize().multiply(0.16), 200);
+            ServerPlayer pl = near.get(Math.min(k, near.size() - 1));
+            Vec3 from = this.lantern(k == 0);
+            BogrotBoss.Glob g = new BogrotBoss.Glob(3, from, pl.getEyePosition().subtract(from).normalize().scale(0.16), 200);
             g.target = pl;
             g.homing = 0.06;
             g.speed = 0.16;
@@ -2186,28 +2186,28 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void lookFx(ServerWorld level) {
-      int f = (Integer)this.dataTracker.get(FORM);
-      if (f >= 1 && this.age % 10 == 0) {
+   private void lookFx(ServerLevel level) {
+      int f = (Integer)this.entityData.get(FORM);
+      if (f >= 1 && this.tickCount % 10 == 0) {
          Vfx.embers(level, this.side(0.0, -0.4, 3.4), TOX.glow(), 2, 0.8);
       }
 
-      if (f >= 2 && this.age % 14 == 0) {
+      if (f >= 2 && this.tickCount % 14 == 0) {
          Vfx.smoke(level, this.maw(), TOX.smoke(), 1, 0.3, 0.8);
       }
 
       if (f >= 3) {
-         if (this.age % 6 == 0) {
-            Vfx.flare(level, this.lantern(this.age % 12 < 6), WISP.glow(), 0.9, 6);
+         if (this.tickCount % 6 == 0) {
+            Vfx.flare(level, this.lantern(this.tickCount % 12 < 6), WISP.glow(), 0.9, 6);
          }
 
-         if (this.age % 40 == 0) {
-            Vfx.auraRing(level, this.getEntityPos(), WISP);
+         if (this.tickCount % 40 == 0) {
+            Vfx.auraRing(level, this.position(), WISP);
          }
       }
    }
 
-   private void clearFight(ServerWorld level) {
+   private void clearFight(ServerLevel level) {
       this.releaseGrab(level, false);
       this.globs.clear();
       this.pools.clear();
@@ -2218,14 +2218,14 @@ public class BogrotBoss extends MysticalBoss {
    }
 
    @Override
-   public boolean damage(ServerWorld world, DamageSource source, float amount) {
-      if (this.submerged && !source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
+   public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
+      if (this.submerged && !source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
          return false;
       }
 
       float before = this.getHealth() + this.shield();
       boolean wardUp = this.warded();
-      if (!super.damage(world, source, amount)) {
+      if (!super.hurtServer(world, source, amount)) {
          return false;
       }
 
@@ -2237,56 +2237,56 @@ public class BogrotBoss extends MysticalBoss {
       }
 
       if (wardUp
-         && !source.isOf(DamageTypes.THORNS)
-         && source.getAttacker() instanceof LivingEntity att
-         && source.getSource() == att
+         && !source.is(DamageTypes.THORNS)
+         && source.getEntity() instanceof LivingEntity att
+         && source.getDirectEntity() == att
          && att != this
          && att.isAlive()
-         && att.squaredDistanceTo(this) < 36.0) {
-         att.damage(world, this.getDamageSources().thorns(this), this.dmg(4.0F));
-         this.afflict(att, StatusEffects.POISON, 40, 0);
-         Vfx.sparks(world, att.getEyePos(), P.glow(), 6, 0.3, 0.18);
+         && att.distanceToSqr(this) < 36.0) {
+         att.hurtServer(world, this.damageSources().thorns(this), this.dmg(4.0F));
+         this.afflict(att, MobEffects.POISON, 40, 0);
+         Vfx.sparks(world, att.getEyePosition(), P.glow(), 6, 0.3, 0.18);
       }
 
       return true;
    }
 
    @Override
-   public void onDeath(DamageSource damageSource) {
-      super.onDeath(damageSource);
-      if (this.getEntityWorld() instanceof ServerWorld level) {
+   public void die(DamageSource damageSource) {
+      super.die(damageSource);
+      if (this.level() instanceof ServerLevel level) {
          this.clearFight(level);
       }
    }
 
    @Override
-   protected void onPhaseChange(ServerWorld level, int phase) {
+   protected void onPhaseChange(ServerLevel level, int phase) {
       this.releaseGrab(level, true);
       this.submerged = false;
       this.pouncing = false;
    }
 
    @Override
-   protected void phaseBurst(ServerWorld level, int phase) {
-      this.dataTracker.set(FORM, Math.min(3, phase));
-      Vec3d c = onGround(level, this.getEntityPos());
+   protected void phaseBurst(ServerLevel level, int phase) {
+      this.entityData.set(FORM, Math.min(3, phase));
+      Vec3 c = onGround(level, this.position());
 
       for (LivingEntity e : this.ringHit(level, c, 0.0, 7.0)) {
-         this.deal(level, e, 12.0F, this.away(c, e).multiply(1.6), 0.5);
+         this.deal(level, e, 12.0F, this.away(c, e).scale(1.6), 0.5);
       }
 
       BossFx.knockback(level, this, c, 9.0, 1.2);
-      Vfx.nova(level, this.getEntityPos().add(0.0, 2.0, 0.0), TOX, 9.0);
+      Vfx.nova(level, this.position().add(0.0, 2.0, 0.0), TOX, 9.0);
       Vfx.heavyImpact(level, c, P, 1.5);
       Vfx.shake(level, c, 40.0, 1.0, 20);
       if (phase == 1) {
-         Vec3d hump = this.getEntityPos().add(0.0, 3.4, 0.0);
+         Vec3 hump = this.position().add(0.0, 3.4, 0.0);
          Vfx.shards(level, hump, 5127726, 24, 0.6);
          Vfx.debris(level, hump, Vfx.Debris.LEAF, P.glow(), 24, 0.5);
          BossFx.burst(level, hump, ROOTS, 60, 1.2, 0.3);
 
          for (int k = 0; k < 4; k++) {
-            Vec3d s = BossFx.around(level, this, this.getEntityPos(), 4.0, 9.0);
+            Vec3 s = BossFx.around(level, this, this.position(), 4.0, 9.0);
             Vfx.telegraphCircle(level, s, 2.2, 20, TOX);
             this.schedule(20, () -> {
                if (this.isAlive()) {
@@ -2302,20 +2302,20 @@ public class BogrotBoss extends MysticalBoss {
          BossFx.summonMinions(level, this, RealmMobs.type("bog_thrall"), 2, 6.0, null, m -> {});
          this.tideTimer = 100.0F;
       } else if (phase >= 3) {
-         Vfx.pillar(level, this.getEntityPos(), WISP, 10.0, 1.4);
+         Vfx.pillar(level, this.position(), WISP, 10.0, 1.4);
          Vfx.runeCircle(level, c, 12.0, HEX, 60, 0.05F, Vfx.Rune.GLYPH);
-         Vfx.radialFlash(level, this.getEntityPos(), 40.0, WISP.glow(), 0.6F);
+         Vfx.radialFlash(level, this.position(), 40.0, WISP.glow(), 0.6F);
          Vfx.glint(level, this.maw(), TOX.core(), 2.5);
          this.wispTimer = 60.0F;
       }
    }
 
    @Override
-   protected void onStagger(ServerWorld level) {
+   protected void onStagger(ServerLevel level) {
       this.releaseGrab(level, true);
-      int f = (Integer)this.dataTracker.get(FORM);
+      int f = (Integer)this.entityData.get(FORM);
       if (f >= 1) {
-         Vec3d sacs = this.side(0.0, -0.4, 3.4);
+         Vec3 sacs = this.side(0.0, -0.4, 3.4);
          Vfx.debris(level, sacs, Vfx.Debris.LEAF, TOX.glow(), 16, 0.4);
          Vfx.smoke(level, sacs, TOX.smoke(), 6, 1.0, 1.4);
       }
@@ -2326,14 +2326,14 @@ public class BogrotBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onEnrage(ServerWorld level) {
-      Vfx.auraRing(level, this.getEntityPos(), WISP, 3.5);
-      Vfx.nova(level, this.getEntityPos().add(0.0, 2.0, 0.0), WISP, 6.0);
+   protected void onEnrage(ServerLevel level) {
+      Vfx.auraRing(level, this.position(), WISP, 3.5);
+      Vfx.nova(level, this.position().add(0.0, 2.0, 0.0), WISP, 6.0);
       Vfx.flare(level, this.eyes(), WISP.glow(), 3.0, 12);
    }
 
    @Override
-   protected void desperation(ServerWorld level) {
+   protected void desperation(ServerLevel level) {
       BossAction cur = this.currentMove();
       if (cur != null && cur.anim().startsWith("phase_")) {
          this.schedule(Math.max(1, cur.length() - this.actionTick() + 1), () -> this.drown(level));
@@ -2342,42 +2342,42 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private void drown(ServerWorld level) {
+   private void drown(ServerLevel level) {
       if (this.isAlive()) {
          this.forceAction(level, "the_last_drowning");
-         Vfx.impactFrame(level, this.getEntityPos(), 40.0, TOX.glow(), 0.7F);
+         Vfx.impactFrame(level, this.position(), 40.0, TOX.glow(), 0.7F);
          this.voice(level, "enrage", 4.0F);
       }
    }
 
    @Override
-   protected void onIntroTick(ServerWorld level, int ticksLeft) {
+   protected void onIntroTick(ServerLevel level, int ticksLeft) {
       int t = this.introTicks() - ticksLeft;
       if (t == 1) {
-         Vec3d c = onGround(level, this.getEntityPos());
+         Vec3 c = onGround(level, this.position());
          Vfx.runeCircle(level, c, 8.0, HEX, 140, 0.03F, Vfx.Rune.GLYPH);
          Vfx.groundCrack(level, c, 5.0, P);
       }
 
       if (t % 3 == 0) {
-         level.spawnParticles(MUD, this.getX(), this.getY() + 0.3, this.getZ(), 10, 1.25, 0.2, 1.25, 0.08);
-         level.spawnParticles(ParticleTypes.SPLASH, this.getX(), this.getY() + 0.3, this.getZ(), 20, 1.25, 0.2, 1.25, 0.2);
-         level.spawnParticles(ParticleTypes.BUBBLE_POP, this.getX(), this.getY() + 0.2, this.getZ(), 8, 1.25, 0.1, 1.25, 0.02);
+         level.sendParticles(MUD, this.getX(), this.getY() + 0.3, this.getZ(), 10, 1.25, 0.2, 1.25, 0.08);
+         level.sendParticles(ParticleTypes.SPLASH, this.getX(), this.getY() + 0.3, this.getZ(), 20, 1.25, 0.2, 1.25, 0.2);
+         level.sendParticles(ParticleTypes.BUBBLE_POP, this.getX(), this.getY() + 0.2, this.getZ(), 8, 1.25, 0.1, 1.25, 0.02);
       }
 
       if (t == 16) {
-         Vfx.debris(level, this.getEntityPos().add(0.0, 0.6, 0.0), Vfx.Debris.LEAF, P.glow(), 16, 0.4);
-         Vfx.smoke(level, this.getEntityPos(), P.smoke(), 6, 1.6, 1.6);
+         Vfx.debris(level, this.position().add(0.0, 0.6, 0.0), Vfx.Debris.LEAF, P.glow(), 16, 0.4);
+         Vfx.smoke(level, this.position(), P.smoke(), 6, 1.6, 1.6);
       }
 
       if (t == 24 || t == 44) {
-         Vec3d hand = this.side(t == 24 ? 1.4 : -1.4, 1.2, 0.3);
+         Vec3 hand = this.side(t == 24 ? 1.4 : -1.4, 1.2, 0.3);
          Vfx.impact(level, hand, P, 0.8);
-         level.spawnParticles(MUD, hand.x, hand.y, hand.z, 20, 0.4, 0.2, 0.4, 0.15);
+         level.sendParticles(MUD, hand.x, hand.y, hand.z, 20, 0.4, 0.2, 0.4, 0.15);
       }
 
       if (t >= 44 && t <= 80 && t % 6 == 2) {
-         Vfx.smoke(level, this.getEntityPos(), P.smoke(), 6, 2.5, 2.0);
+         Vfx.smoke(level, this.position(), P.smoke(), 6, 2.5, 2.0);
       }
 
       if (t == 92) {
@@ -2386,16 +2386,16 @@ public class BogrotBoss extends MysticalBoss {
       }
 
       if (t == 104) {
-         Vfx.nova(level, this.getEntityPos().add(0.0, 2.0, 0.0), P, 10.0);
-         BossFx.knockback(level, this, this.getEntityPos(), 8.0, 1.2);
-         Vfx.radialFlash(level, this.getEntityPos(), 30.0, P.glow(), 0.5F);
-         Vfx.shake(level, this.getEntityPos(), 30.0, 0.9, 20);
-         Vfx.wisps(level, this.getEntityPos().add(0.0, 3.0, 0.0), TOX, 8, 3.0, 40);
+         Vfx.nova(level, this.position().add(0.0, 2.0, 0.0), P, 10.0);
+         BossFx.knockback(level, this, this.position(), 8.0, 1.2);
+         Vfx.radialFlash(level, this.position(), 30.0, P.glow(), 0.5F);
+         Vfx.shake(level, this.position(), 30.0, 0.9, 20);
+         Vfx.wisps(level, this.position().add(0.0, 3.0, 0.0), TOX, 8, 3.0, 40);
       }
    }
 
    @Override
-   protected void onDeathTick(ServerWorld level, int tick) {
+   protected void onDeathTick(ServerLevel level, int tick) {
       if (tick <= 24) {
          if (tick % 3 == 0) {
             Vfx.sparks(level, this.maw(), TOX.core(), 6, 0.3, 0.2);
@@ -2422,22 +2422,22 @@ public class BogrotBoss extends MysticalBoss {
       }
 
       if (tick >= 84 && tick <= 104 && tick % 5 == 4) {
-         Vfx.debris(level, this.getEntityPos().add(0.0, 3.0, 0.0), Vfx.Debris.LEAF, P.glow(), 10, 0.3);
-         Vfx.smoke(level, this.getEntityPos().add(0.0, 2.5, 0.0), P.smoke(), 3, 1.2, 1.4);
+         Vfx.debris(level, this.position().add(0.0, 3.0, 0.0), Vfx.Debris.LEAF, P.glow(), 10, 0.3);
+         Vfx.smoke(level, this.position().add(0.0, 2.5, 0.0), P.smoke(), 3, 1.2, 1.4);
       }
 
       if (tick >= 104 && tick <= 146 && tick % 3 == 2) {
-         level.spawnParticles(MUD, this.getX(), this.getY() + 0.3, this.getZ(), 10, 1.2, 0.2, 1.2, 0.08);
-         level.spawnParticles(ParticleTypes.SPLASH, this.getX(), this.getY() + 0.3, this.getZ(), 16, 1.2, 0.2, 1.2, 0.2);
+         level.sendParticles(MUD, this.getX(), this.getY() + 0.3, this.getZ(), 10, 1.2, 0.2, 1.2, 0.08);
+         level.sendParticles(ParticleTypes.SPLASH, this.getX(), this.getY() + 0.3, this.getZ(), 16, 1.2, 0.2, 1.2, 0.2);
       }
 
       if (tick == 120) {
-         Vfx.groundCrack(level, onGround(level, this.getEntityPos()), 4.0, P);
+         Vfx.groundCrack(level, onGround(level, this.position()), 4.0, P);
       }
 
       if (tick == 144) {
-         Vfx.pillar(level, this.getEntityPos(), TOX, 8.0, 1.4);
-         Vfx.nova(level, this.getEntityPos(), TOX, 6.0);
+         Vfx.pillar(level, this.position(), TOX, 8.0, 1.4);
+         Vfx.nova(level, this.position(), TOX, 6.0);
       }
    }
 
@@ -2460,8 +2460,8 @@ public class BogrotBoss extends MysticalBoss {
 
    private static final class Glob {
       final int kind;
-      Vec3d pos;
-      Vec3d vel;
+      Vec3 pos;
+      Vec3 vel;
       final int life;
       double gravity;
       double homing;
@@ -2470,9 +2470,9 @@ public class BogrotBoss extends MysticalBoss {
       int age;
       int born;
       @Nullable LivingEntity target;
-      @Nullable Vec3d landing;
+      @Nullable Vec3 landing;
 
-      Glob(int kind, Vec3d pos, Vec3d vel, int life) {
+      Glob(int kind, Vec3 pos, Vec3 vel, int life) {
          this.kind = kind;
          this.pos = pos;
          this.vel = vel;
@@ -2480,6 +2480,6 @@ public class BogrotBoss extends MysticalBoss {
       }
    }
 
-   private record Pool(Vec3d at, double r, int kind, int end) {
+   private record Pool(Vec3 at, double r, int kind, int end) {
    }
 }

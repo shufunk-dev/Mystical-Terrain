@@ -16,18 +16,18 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.SpawnGroup;
-import net.minecraft.entity.EntityType.Builder;
-import net.minecraft.entity.EntityType.EntityFactory;
-import net.minecraft.item.Item;
-import net.minecraft.item.SpawnEggItem;
-import net.minecraft.item.Item.Settings;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityType.Builder;
+import net.minecraft.world.entity.EntityType.EntityFactory;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Item.Properties;
+import net.minecraft.world.item.SpawnEggItem;
 
 public final class BossEntities {
    public static final Map<String, EntityType<? extends MysticalBoss>> BOSSES = new LinkedHashMap<>();
@@ -42,19 +42,19 @@ public final class BossEntities {
    public static final EntityType<ArchonBoss> ARCHON = boss("archon", ArchonBoss::new, 2.2F, 5.0F, false);
    public static final EntityType<AstraelBoss> ASTRAEL = boss("astrael", AstraelBoss::new, 1.2F, 3.6F, false);
    public static final EntityType<WardenShade> WARDEN_SHADE = register(
-      "warden_shade", Builder.create(WardenShade::new, SpawnGroup.MONSTER).dimensions(1.0F, 3.6F).maxTrackingRange(10)
+      "warden_shade", Builder.of(WardenShade::new, MobCategory.MONSTER).sized(1.0F, 3.6F).clientTrackingRange(10)
    );
    public static final EntityType<BossBolt> BOSS_BOLT = register(
-      "boss_bolt", Builder.create(BossBolt::new, SpawnGroup.MISC).dimensions(0.5F, 0.5F).maxTrackingRange(8).trackingTickInterval(2)
+      "boss_bolt", Builder.of(BossBolt::new, MobCategory.MISC).sized(0.5F, 0.5F).clientTrackingRange(8).updateInterval(2)
    );
 
    private BossEntities() {
    }
 
    private static <T extends MysticalBoss> EntityType<T> boss(String id, EntityFactory<T> factory, float width, float height, boolean fireImmune) {
-      Builder<T> builder = Builder.create(factory, SpawnGroup.MONSTER).dimensions(width, height).maxTrackingRange(16);
+      Builder<T> builder = Builder.of(factory, MobCategory.MONSTER).sized(width, height).clientTrackingRange(16);
       if (fireImmune) {
-         builder = builder.makeFireImmune();
+         builder = builder.fireImmune();
       }
 
       EntityType<T> type = register(id, builder);
@@ -63,8 +63,8 @@ public final class BossEntities {
    }
 
    private static <T extends Entity> EntityType<T> register(String id, Builder<T> builder) {
-      RegistryKey<EntityType<?>> key = RegistryKey.of(RegistryKeys.ENTITY_TYPE, MysticalTerrain.id(id));
-      return (EntityType<T>)Registry.register(Registries.ENTITY_TYPE, key, builder.build(key));
+      ResourceKey<EntityType<?>> key = ResourceKey.create(Registries.ENTITY_TYPE, MysticalTerrain.id(id));
+      return (EntityType<T>)Registry.register(BuiltInRegistries.ENTITY_TYPE, key, builder.build(key));
    }
 
    static void register() {
@@ -81,8 +81,8 @@ public final class BossEntities {
       FabricDefaultAttributeRegistry.register(WARDEN_SHADE, WardenShade.createAttributes());
 
       for (Entry<String, EntityType<? extends MysticalBoss>> e : BOSSES.entrySet()) {
-         RegistryKey<Item> key = RegistryKey.of(RegistryKeys.ITEM, MysticalTerrain.id(e.getKey() + "_spawn_egg"));
-         Item egg = (Item)Registry.register(Registries.ITEM, key, new SpawnEggItem(new Settings().registryKey(key).spawnEgg(e.getValue())));
+         ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, MysticalTerrain.id(e.getKey() + "_spawn_egg"));
+         Item egg = (Item)Registry.register(BuiltInRegistries.ITEM, key, new SpawnEggItem(new Properties().setId(key).spawnEgg(e.getValue())));
          MysticalBosses.addToTab(egg);
       }
    }

@@ -15,59 +15,58 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.BossEvent.BossBarColor;
+import net.minecraft.world.BossEvent.BossBarOverlay;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier.Builder;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
+import net.minecraft.world.phys.Vec3;
 import java.util.Map.Entry;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.Entity.RemovalReason;
-import net.minecraft.entity.ai.goal.SwimGoal;
-import net.minecraft.entity.ai.pathing.Path;
-import net.minecraft.entity.attribute.EntityAttributeInstance;
-import net.minecraft.entity.attribute.EntityAttributeModifier;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.attribute.DefaultAttributeContainer.Builder;
-import net.minecraft.entity.attribute.EntityAttributeModifier.Operation;
-import net.minecraft.entity.boss.ServerBossBar;
-import net.minecraft.entity.boss.BossBar.Color;
-import net.minecraft.entity.boss.BossBar.Style;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.damage.DamageTypes;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.data.TrackedData;
-import net.minecraft.entity.data.TrackedDataHandlerRegistry;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.tag.DamageTypeTags;
-import net.minecraft.registry.tag.ItemTags;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.storage.ReadView;
-import net.minecraft.storage.WriteView;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
-import software.bernie.geckolib.animation.object.PlayState;
-import software.bernie.geckolib.util.GeckoLibUtil;
+import com.geckolib.animatable.GeoEntity;
+import com.geckolib.animatable.instance.AnimatableInstanceCache;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
+import com.geckolib.animation.object.PlayState;
+import com.geckolib.util.GeckoLibUtil;
 
-public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
-   private static final TrackedData<Integer> PHASE = DataTracker.registerData(MysticalBoss.class, TrackedDataHandlerRegistry.INTEGER);
-   private static final TrackedData<Integer> INTRO = DataTracker.registerData(MysticalBoss.class, TrackedDataHandlerRegistry.INTEGER);
-   private static final TrackedData<Integer> ACTION = DataTracker.registerData(MysticalBoss.class, TrackedDataHandlerRegistry.INTEGER);
-   private static final TrackedData<Integer> STATE = DataTracker.registerData(MysticalBoss.class, TrackedDataHandlerRegistry.INTEGER);
+public abstract class MysticalBoss extends Monster implements GeoEntity {
+   private static final EntityDataAccessor<Integer> PHASE = SynchedEntityData.defineId(MysticalBoss.class, EntityDataSerializers.INT);
+   private static final EntityDataAccessor<Integer> INTRO = SynchedEntityData.defineId(MysticalBoss.class, EntityDataSerializers.INT);
+   private static final EntityDataAccessor<Integer> ACTION = SynchedEntityData.defineId(MysticalBoss.class, EntityDataSerializers.INT);
+   private static final EntityDataAccessor<Integer> STATE = SynchedEntityData.defineId(MysticalBoss.class, EntityDataSerializers.INT);
    private static final int S_RUNNING = 1;
    private static final int S_STAGGERED = 2;
    private static final int S_ENRAGED = 4;
@@ -80,7 +79,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    private static final Identifier PHASE_SPEED = MysticalTerrain.id("boss_phase_speed");
    private static final Set<BossAction.Tag> COUNTER_TAGS = Collections.unmodifiableSet(EnumSet.of(BossAction.Tag.MELEE, BossAction.Tag.GAP_CLOSER));
    private static final String[] DODGES = new String[]{"dodge_back", "dodge_left", "dodge_right"};
-   protected final ServerBossBar bar;
+   protected final ServerBossEvent bar;
    private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
    private final List<BossAction> actions = new ArrayList<>();
    private final BossAction phaseAction;
@@ -106,7 +105,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    private final BossContext ctx = new BossContext();
    private final ThreatTable threat = new ThreatTable();
    private final BossNet.Sync sync = new BossNet.Sync();
-   private List<ServerPlayerEntity> engaged = List.of();
+   private List<ServerPlayer> engaged = List.of();
    private float cooldownCarry;
    private int lastPick = -1;
    private int prevPick = -1;
@@ -126,7 +125,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    private int dodgeCooldown;
    private int dodgeFrames;
    private int lastDodgedProjectile = -1;
-   private @Nullable Vec3d dodgeDir;
+   private @Nullable Vec3 dodgeDir;
    private int pendingDodge = -1;
    private boolean freeToDodge;
    private int markTimer = 400;
@@ -145,27 +144,27 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    private int unreachableFor;
    private int recoverCooldown;
    private int recoverTicks;
-   private @Nullable Vec3d recoverAt;
+   private @Nullable Vec3 recoverAt;
    private boolean recoverBlink;
    private int leapTick;
    private int leapLength;
-   private Vec3d leapFrom = Vec3d.ZERO;
-   private Vec3d leapTarget = Vec3d.ZERO;
+   private Vec3 leapFrom = Vec3.ZERO;
+   private Vec3 leapTarget = Vec3.ZERO;
    private double leapApex;
    private int dashTicks;
    private int dashLength;
-   private Vec3d dashDir = Vec3d.ZERO;
+   private Vec3 dashDir = Vec3.ZERO;
    private double dashSpeed;
    private float hitScale = 1.0F;
    private static volatile MysticalBoss.@Nullable DebugGuard debugGuard;
 
-   protected MysticalBoss(EntityType<? extends HostileEntity> type, World level, String id, Color color) {
+   protected MysticalBoss(EntityType<? extends Monster> type, Level level, String id, BossBarColor color) {
       super(type, level);
       this.id = id;
       this.setNoGravity(this.hovers());
-      this.experiencePoints = this.isBoss() ? 400 : 8;
-      this.bar = new ServerBossBar(this.getDisplayName(), color, Style.PROGRESS);
-      this.bar.setDragonMusic(true);
+      this.xpReward = this.isBoss() ? 400 : 8;
+      this.bar = new ServerBossEvent(this.getUUID(), this.getDisplayName(), color, BossBarOverlay.PROGRESS);
+      this.bar.setPlayBossMusic(true);
       this.defineActions(this.actions);
       this.phaseAction = BossAction.of("phase", this.phaseSeconds(), this.phaseSeconds() * 0.4).anyTarget().hit(this::onPhaseRoar);
 
@@ -181,7 +180,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
 
       this.cooldowns = new int[this.actions.size()];
       if (this.isBoss()) {
-         this.setPersistent();
+         this.setPersistenceRequired();
       }
    }
 
@@ -198,16 +197,16 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    }
 
    public static Builder bossAttributes(double health, double damage, double speed, double armor) {
-      return HostileEntity.createHostileAttributes()
-         .add(EntityAttributes.MAX_HEALTH, health)
-         .add(EntityAttributes.ATTACK_DAMAGE, damage)
-         .add(EntityAttributes.MOVEMENT_SPEED, speed)
-         .add(EntityAttributes.ARMOR, armor)
-         .add(EntityAttributes.ARMOR_TOUGHNESS, 6.0)
-         .add(EntityAttributes.KNOCKBACK_RESISTANCE, 1.0)
-         .add(EntityAttributes.FOLLOW_RANGE, 48.0)
-         .add(EntityAttributes.STEP_HEIGHT, 1.6)
-         .add(EntityAttributes.SAFE_FALL_DISTANCE, 64.0);
+      return Monster.createMonsterAttributes()
+         .add(Attributes.MAX_HEALTH, health)
+         .add(Attributes.ATTACK_DAMAGE, damage)
+         .add(Attributes.MOVEMENT_SPEED, speed)
+         .add(Attributes.ARMOR, armor)
+         .add(Attributes.ARMOR_TOUGHNESS, 6.0)
+         .add(Attributes.KNOCKBACK_RESISTANCE, 1.0)
+         .add(Attributes.FOLLOW_RANGE, 48.0)
+         .add(Attributes.STEP_HEIGHT, 1.6)
+         .add(Attributes.SAFE_FALL_DISTANCE, 64.0);
    }
 
    protected abstract void defineActions(List<BossAction> var1);
@@ -244,17 +243,17 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return 2.5;
    }
 
-   protected void onPhaseChange(ServerWorld level, int phase) {
+   protected void onPhaseChange(ServerLevel level, int phase) {
    }
 
-   protected boolean ownCourse(ServerWorld level, @Nullable LivingEntity target) {
+   protected boolean ownCourse(ServerLevel level, @Nullable LivingEntity target) {
       return false;
    }
 
-   protected void onIntroTick(ServerWorld level, int ticksLeft) {
+   protected void onIntroTick(ServerLevel level, int ticksLeft) {
    }
 
-   protected void onDeathTick(ServerWorld level, int tick) {
+   protected void onDeathTick(ServerLevel level, int tick) {
    }
 
    protected boolean v2() {
@@ -297,50 +296,50 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return false;
    }
 
-   protected boolean minionsAlive(ServerWorld level) {
-      return !level.getEntitiesByClass(RealmMob.class, this.getBoundingBox().expand(24.0), LivingEntity::isAlive).isEmpty();
+   protected boolean minionsAlive(ServerLevel level) {
+      return !level.getEntitiesOfClass(RealmMob.class, this.getBoundingBox().inflate(24.0), LivingEntity::isAlive).isEmpty();
    }
 
-   protected void phaseBurst(ServerWorld level, int phase) {
-      Vec3d at = this.getEntityPos();
+   protected void phaseBurst(ServerLevel level, int phase) {
+      Vec3 at = this.position();
       BossFx.current(this);
       BossFx.shockwave(level, this, at, 7.0, 4.0F, 1.6);
       BossFx.knockback(level, this, at, 8.0, 1.2);
-      Vfx.explosion(level, at.add(0.0, this.getHeight() * 0.5, 0.0), this.palette(), 3.5);
-      Vfx.pillar(level, at, this.palette(), this.getHeight() * 2.5, 1.6);
+      Vfx.explosion(level, at.add(0.0, this.getBbHeight() * 0.5, 0.0), this.palette(), 3.5);
+      Vfx.pillar(level, at, this.palette(), this.getBbHeight() * 2.5, 1.6);
       Vfx.shake(level, at, 40.0, 1.1, 20);
    }
 
-   protected void onStagger(ServerWorld level) {
+   protected void onStagger(ServerLevel level) {
    }
 
-   protected void onEnrage(ServerWorld level) {
+   protected void onEnrage(ServerLevel level) {
    }
 
-   protected void desperation(ServerWorld level) {
+   protected void desperation(ServerLevel level) {
    }
 
-   protected void onLand(ServerWorld level) {
+   protected void onLand(ServerLevel level) {
    }
 
-   protected void initDataTracker(net.minecraft.entity.data.DataTracker.Builder builder) {
-      super.initDataTracker(builder);
-      builder.add(PHASE, 0);
-      builder.add(INTRO, 0);
-      builder.add(ACTION, -1);
-      builder.add(STATE, 0);
+   protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder) {
+      super.defineSynchedData(builder);
+      builder.define(PHASE, 0);
+      builder.define(INTRO, 0);
+      builder.define(ACTION, -1);
+      builder.define(STATE, 0);
    }
 
-   protected void initGoals() {
-      this.goalSelector.add(0, new SwimGoal(this));
+   protected void registerGoals() {
+      this.goalSelector.addGoal(0, new FloatGoal(this));
    }
 
    public int phase() {
-      return (Integer)this.dataTracker.get(PHASE);
+      return (Integer)this.entityData.get(PHASE);
    }
 
    public boolean inIntro() {
-      return (Integer)this.dataTracker.get(INTRO) > 0;
+      return (Integer)this.entityData.get(INTRO) > 0;
    }
 
    public boolean busy() {
@@ -348,30 +347,30 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    }
 
    public boolean staggered() {
-      return ((Integer)this.dataTracker.get(STATE) & 2) != 0;
+      return ((Integer)this.entityData.get(STATE) & 2) != 0;
    }
 
    public boolean enraged() {
-      return ((Integer)this.dataTracker.get(STATE) & 4) != 0;
+      return ((Integer)this.entityData.get(STATE) & 4) != 0;
    }
 
    public boolean running() {
-      return ((Integer)this.dataTracker.get(STATE) & 1) != 0;
+      return ((Integer)this.entityData.get(STATE) & 1) != 0;
    }
 
    public boolean dodging() {
-      return ((Integer)this.dataTracker.get(STATE) & 16) != 0;
+      return ((Integer)this.entityData.get(STATE) & 16) != 0;
    }
 
    public boolean warded() {
-      return ((Integer)this.dataTracker.get(STATE) & 8) != 0;
+      return ((Integer)this.entityData.get(STATE) & 8) != 0;
    }
 
    private void setState(int bits, boolean on) {
-      int s = (Integer)this.dataTracker.get(STATE);
+      int s = (Integer)this.entityData.get(STATE);
       int n = on ? s | bits : s & ~bits;
       if (n != s) {
-         this.dataTracker.set(STATE, n);
+         this.entityData.set(STATE, n);
       }
    }
 
@@ -383,7 +382,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return this.threat;
    }
 
-   public List<ServerPlayerEntity> engaged() {
+   public List<ServerPlayer> engaged() {
       return this.engaged;
    }
 
@@ -434,14 +433,14 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    }
 
    public void schedule(int delay, Runnable task) {
-      this.scheduled.add(new MysticalBoss.Scheduled(this.age + Math.max(1, delay), task));
+      this.scheduled.add(new MysticalBoss.Scheduled(this.tickCount + Math.max(1, delay), task));
    }
 
    private void runScheduled() {
       if (!this.scheduled.isEmpty()) {
          List<MysticalBoss.Scheduled> due = new ArrayList<>();
          this.scheduled.removeIf(sx -> {
-            if (sx.at() <= this.age) {
+            if (sx.at() <= this.tickCount) {
                due.add(sx);
                return true;
             } else {
@@ -477,7 +476,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          this.wardMax = had ? Math.max(this.wardMax, this.ward) : this.ward;
          this.wardTicks = Math.max(this.wardTicks, ticks);
          this.setState(8, true);
-         if (this.getEntityWorld() instanceof ServerWorld level) {
+         if (this.level() instanceof ServerLevel level) {
             BossFx.wardUp(level, this);
          }
       }
@@ -487,15 +486,15 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return this.ward;
    }
 
-   public void markTarget(ServerPlayerEntity player, int ticks) {
-      this.marked = player.getUuid();
+   public void markTarget(ServerPlayer player, int ticks) {
+      this.marked = player.getUUID();
       this.markTicks = Math.max(1, ticks);
-      if (this.getEntityWorld() instanceof ServerWorld level) {
+      if (this.level() instanceof ServerLevel level) {
          BossFx.markTarget(level, this, player, Math.min(40, this.markTicks));
       }
    }
 
-   protected void cancelMove(ServerWorld level, int rest) {
+   protected void cancelMove(ServerLevel level, int rest) {
       this.interrupt(level);
       this.restTicks = Math.max(0, rest);
    }
@@ -530,17 +529,17 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
 
    public void beginIntro(BlockPos home) {
       this.home = home;
-      if (this.getEntityWorld() instanceof ServerWorld level) {
+      if (this.level() instanceof ServerLevel level) {
          this.voice(level, "summon", 6.0F);
       }
 
-      this.dataTracker.set(INTRO, this.introTicks());
+      this.entityData.set(INTRO, this.introTicks());
       this.setHealth(1.0F);
    }
 
-   protected void voice(ServerWorld level, String key, float volume) {
+   protected void voice(ServerLevel level, String key, float volume) {
       if (this.isBoss()) {
-         BossSounds.play(level, this.getEntityPos(), "boss." + this.id + "." + key, volume, 0.94F + this.random.nextFloat() * 0.12F);
+         BossSounds.play(level, this.position(), "boss." + this.id + "." + key, volume, 0.94F + this.random.nextFloat() * 0.12F);
       }
    }
 
@@ -553,26 +552,26 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   protected void mobTick(ServerWorld world) {
-      super.mobTick(world);
+   protected void customServerAiStep(ServerLevel world) {
+      super.customServerAiStep(world);
       this.runScheduled();
       if (this.buffTicks > 0 && --this.buffTicks == 0) {
          this.damageTaken = 1.0F;
          this.damageDealt = 1.0F;
       }
 
-      this.updateBar(world, this.age % 10 == 0);
-      int intro = (Integer)this.dataTracker.get(INTRO);
+      this.updateBar(world, this.tickCount % 10 == 0);
+      int intro = (Integer)this.entityData.get(INTRO);
       if (intro > 0) {
-         this.dataTracker.set(INTRO, intro - 1);
+         this.entityData.set(INTRO, intro - 1);
          this.setHealth(Math.max(1.0F, this.getMaxHealth() * (1.0F - (float)(intro - 1) / this.introTicks())));
          this.getNavigation().stop();
-         this.setVelocity(this.getVelocity().multiply(0.0, this.hovers() ? 0.0 : 1.0, 0.0));
+         this.setDeltaMovement(this.getDeltaMovement().multiply(0.0, this.hovers() ? 0.0 : 1.0, 0.0));
          this.onIntroTick(world, intro - 1);
          if (intro == 1) {
-            world.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundCategory.HOSTILE, 5.0F, 0.9F);
-            Vfx.shockwave(world, this.getEntityPos(), this.palette(), 9.0);
-            Vfx.screen(world, this.getEntityPos(), 48.0, 1.2, 20, this.palette().glow(), 0.35F);
+            world.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundSource.HOSTILE, 5.0F, 0.9F);
+            Vfx.shockwave(world, this.position(), this.palette(), 9.0);
+            Vfx.screen(world, this.position(), 48.0, 1.2, 20, this.palette().glow(), 0.35F);
          }
 
          this.syncState(world);
@@ -587,7 +586,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void tickClassic(ServerWorld level) {
+   private void tickClassic(ServerLevel level) {
       LivingEntity target = this.findTarget(level);
       this.updateContext(level, target);
       this.checkPhase(level);
@@ -602,7 +601,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
 
          if (this.restTicks > 0) {
             this.restTicks--;
-         } else if (this.age % 4 == 0) {
+         } else if (this.tickCount % 4 == 0) {
             this.pickAction(level, target);
          }
 
@@ -613,7 +612,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
 
       this.tickMobility(level);
       if (target == null) {
-         if (++this.lonelyTicks > 600 && this.getHealth() < this.getMaxHealth() && this.age % 10 == 0) {
+         if (++this.lonelyTicks > 600 && this.getHealth() < this.getMaxHealth() && this.tickCount % 10 == 0) {
             this.heal(this.getMaxHealth() * 0.02F);
          }
 
@@ -623,7 +622,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void tickV2(ServerWorld level) {
+   private void tickV2(ServerLevel level) {
       this.strafedNow = false;
       LivingEntity target = this.selectTarget(level);
       this.updateContext(level, target);
@@ -651,7 +650,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          this.freeToDodge = true;
          if (this.restTicks > 0) {
             this.restTicks--;
-         } else if (target != null && this.age % 4 == 0) {
+         } else if (target != null && this.tickCount % 4 == 0) {
             this.pickActionV2(level, target, null);
          }
 
@@ -664,7 +663,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       this.tickMobility(level);
       this.setState(1, running);
       if (!this.strafedNow) {
-         this.setSidewaysSpeed(0.0F);
+         this.setXxa(0.0F);
       }
 
       if (target == null) {
@@ -673,7 +672,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
             this.resetFight();
          }
 
-         if (this.lonelyTicks > 600 && this.getHealth() < this.getMaxHealth() && this.age % 10 == 0) {
+         if (this.lonelyTicks > 600 && this.getHealth() < this.getMaxHealth() && this.tickCount % 10 == 0) {
             this.heal(this.getMaxHealth() * 0.02F);
          }
 
@@ -683,20 +682,20 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private @Nullable LivingEntity findTarget(ServerWorld level) {
+   private @Nullable LivingEntity findTarget(ServerLevel level) {
       LivingEntity target = this.getTarget();
       if (target != null
-         && (!target.isAlive() || target.squaredDistanceTo(this) > 3136.0 || target instanceof PlayerEntity p && (p.isCreative() || p.isSpectator()))) {
+         && (!target.isAlive() || target.distanceToSqr(this) > 3136.0 || target instanceof Player p && (p.isCreative() || p.isSpectator()))) {
          target = null;
       }
 
-      if (target == null && this.age % 10 == 0) {
-         target = level.getClosestPlayer(
+      if (target == null && this.tickCount % 10 == 0) {
+         target = level.getNearestPlayer(
             this.getX(),
             this.getY(),
             this.getZ(),
             this.targetRange(),
-            px -> px instanceof PlayerEntity pl && !pl.isCreative() && !pl.isSpectator() && pl.isAlive()
+            px -> px instanceof Player pl && !pl.isCreative() && !pl.isSpectator() && pl.isAlive()
          );
       }
 
@@ -704,7 +703,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return target;
    }
 
-   private @Nullable LivingEntity selectTarget(ServerWorld level) {
+   private @Nullable LivingEntity selectTarget(ServerLevel level) {
       this.updateEngaged(level);
       this.threat.tick(this, this.engaged);
       LivingEntity target = null;
@@ -723,13 +722,13 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return target;
    }
 
-   private @Nullable ServerPlayerEntity markedPlayer() {
+   private @Nullable ServerPlayer markedPlayer() {
       if (this.marked == null) {
          return null;
       }
 
-      for (ServerPlayerEntity p : this.engaged) {
-         if (p.getUuid().equals(this.marked)) {
+      for (ServerPlayer p : this.engaged) {
+         if (p.getUUID().equals(this.marked)) {
             return p;
          }
       }
@@ -737,13 +736,13 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return null;
    }
 
-   private void updateEngaged(ServerWorld level) {
-      List<ServerPlayerEntity> list = new ArrayList<>();
+   private void updateEngaged(ServerLevel level) {
+      List<ServerPlayer> list = new ArrayList<>();
       double range = this.targetRange();
 
-      for (ServerPlayerEntity p : level.getPlayers()) {
+      for (ServerPlayer p : level.players()) {
          if (p.isAlive() && !p.isCreative() && !p.isSpectator()) {
-            double d = p.squaredDistanceTo(this);
+            double d = p.distanceToSqr(this);
             if (d <= 2304.0 && (d <= range * range || this.threat.get(p) > 1.0F)) {
                list.add(p);
             }
@@ -753,7 +752,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       this.engaged = list;
    }
 
-   private void updateContext(ServerWorld level, @Nullable LivingEntity target) {
+   private void updateContext(ServerLevel level, @Nullable LivingEntity target) {
       if (this.isBoss()) {
          if (!this.isV2()) {
             this.updateEngaged(level);
@@ -763,7 +762,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void tickTimers(ServerWorld level, @Nullable LivingEntity target) {
+   private void tickTimers(ServerLevel level, @Nullable LivingEntity target) {
       float pm = this.poiseMax();
       if (pm > 0.0F) {
          if (this.poise < 0.0F || this.poise > pm) {
@@ -799,7 +798,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       if (this.wardTicks > 0 && --this.wardTicks == 0 && this.ward > 0.0F) {
          this.ward = 0.0F;
          this.wardMax = 0.0F;
-         Vfx.smoke(level, this.getEntityPos().add(0.0, this.getHeight() * 0.5, 0.0), this.palette().smoke(), 6, this.getWidth() * 0.5 + 0.5, 1.2);
+         Vfx.smoke(level, this.position().add(0.0, this.getBbHeight() * 0.5, 0.0), this.palette().smoke(), 6, this.getBbWidth() * 0.5 + 0.5, 1.2);
       }
 
       this.setState(8, this.ward > 0.0F);
@@ -819,8 +818,8 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          this.enrage(level);
       }
 
-      if (this.enraged() && this.age % 12 == 0) {
-         Vfx.embers(level, this.getEntityPos().add(0.0, this.getHeight() * 0.5, 0.0), this.palette().glow(), 4, this.getWidth() * 0.6 + 0.4);
+      if (this.enraged() && this.tickCount % 12 == 0) {
+         Vfx.embers(level, this.position().add(0.0, this.getBbHeight() * 0.5, 0.0), this.palette().glow(), 4, this.getBbWidth() * 0.6 + 0.4);
       }
 
       if (!this.desperate && this.isLastPhase() && this.getHealth() <= this.getMaxHealth() * 0.08F) {
@@ -835,10 +834,10 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       this.tickMark(level, target);
    }
 
-   private void tickMark(ServerWorld level, @Nullable LivingEntity target) {
+   private void tickMark(ServerLevel level, @Nullable LivingEntity target) {
       if (this.markTicks > 0) {
          this.markTicks--;
-         ServerPlayerEntity m = this.markedPlayer();
+         ServerPlayer m = this.markedPlayer();
          if (m == null) {
             this.markTicks = 0;
          } else if (this.markTicks % 30 == 0 && this.markTicks > 0) {
@@ -847,17 +846,17 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       } else if (this.phase() >= 1 && this.engaged.size() >= 2 && target != null) {
          if (--this.markTimer <= 0) {
             this.markTimer = 400 + this.random.nextInt(201);
-            List<ServerPlayerEntity> others = new ArrayList<>();
+            List<ServerPlayer> others = new ArrayList<>();
 
-            for (ServerPlayerEntity p : this.engaged) {
+            for (ServerPlayer p : this.engaged) {
                if (p != target) {
                   others.add(p);
                }
             }
 
             if (!others.isEmpty()) {
-               ServerPlayerEntity pick = others.get(this.random.nextInt(others.size()));
-               this.marked = pick.getUuid();
+               ServerPlayer pick = others.get(this.random.nextInt(others.size()));
+               this.marked = pick.getUUID();
                this.markTicks = 120;
                BossFx.markTarget(level, this, pick, 40);
             }
@@ -867,16 +866,16 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
 
    private void applyPhaseSpeed() {
       this.appliedSpeedPhase = this.phase();
-      EntityAttributeInstance speed = this.getAttributeInstance(EntityAttributes.MOVEMENT_SPEED);
+      AttributeInstance speed = this.getAttribute(Attributes.MOVEMENT_SPEED);
       if (speed != null) {
          speed.removeModifier(PHASE_SPEED);
          if (this.appliedSpeedPhase > 0) {
-            speed.updateModifier(new EntityAttributeModifier(PHASE_SPEED, 0.08 * this.appliedSpeedPhase, Operation.ADD_MULTIPLIED_BASE));
+            speed.addOrUpdateTransientModifier(new AttributeModifier(PHASE_SPEED, 0.08 * this.appliedSpeedPhase, Operation.ADD_MULTIPLIED_BASE));
          }
       }
    }
 
-   private void enrage(ServerWorld level) {
+   private void enrage(ServerLevel level) {
       this.setState(4, true);
       this.voice(level, "enrage", 6.0F);
       BossFx.enrage(level, this);
@@ -897,7 +896,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void checkPhase(ServerWorld level) {
+   private void checkPhase(ServerLevel level) {
       float[] thresholds = this.thresholds();
       float health = this.getHealth() / this.getMaxHealth();
       int phase = 0;
@@ -909,7 +908,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
 
       if (phase > this.phase()) {
-         this.dataTracker.set(PHASE, phase);
+         this.entityData.set(PHASE, phase);
          if (this.isV2()) {
             this.poiseBroken = false;
             if (this.poiseMax() > 0.0F) {
@@ -925,19 +924,19 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
             this.startAction(level, this.phaseAction, this.getTarget());
          }
 
-         level.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundCategory.HOSTILE, 6.0F, 0.8F);
+         level.playSound(null, this.getX(), this.getY(), this.getZ(), this.roarSound(), SoundSource.HOSTILE, 6.0F, 0.8F);
          this.onPhaseChange(level, phase);
       }
    }
 
-   private void onPhaseRoar(MysticalBoss boss, ServerWorld level, @Nullable LivingEntity target, int index) {
-      BossFx.shockwave(level, this, this.getEntityPos(), 7.0, 4.0F, 1.6);
-      Vfx.explosion(level, this.getEntityPos().add(0.0, this.getHeight() * 0.5, 0.0), this.palette(), 3.5);
-      Vfx.pillar(level, this.getEntityPos(), this.palette(), this.getHeight() * 2.5, 1.6);
+   private void onPhaseRoar(MysticalBoss boss, ServerLevel level, @Nullable LivingEntity target, int index) {
+      BossFx.shockwave(level, this, this.position(), 7.0, 4.0F, 1.6);
+      Vfx.explosion(level, this.position().add(0.0, this.getBbHeight() * 0.5, 0.0), this.palette(), 3.5);
+      Vfx.pillar(level, this.position(), this.palette(), this.getBbHeight() * 2.5, 1.6);
    }
 
-   private void pickAction(ServerWorld level, @Nullable LivingEntity target) {
-      double dist = target == null ? Double.MAX_VALUE : Math.sqrt(this.squaredDistanceTo(target));
+   private void pickAction(ServerLevel level, @Nullable LivingEntity target) {
+      double dist = target == null ? Double.MAX_VALUE : Math.sqrt(this.distanceToSqr(target));
       int total = 0;
       List<Integer> options = new ArrayList<>();
 
@@ -976,7 +975,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       int p = this.phase();
       if (p >= a.minPhase && p <= a.maxPhase && (!a.needsTarget || target != null)) {
          if (target != null) {
-            double d = Math.sqrt(this.squaredDistanceTo(target));
+            double d = Math.sqrt(this.distanceToSqr(target));
             if (d < a.minRange || d > a.maxRange) {
                return false;
             }
@@ -1048,7 +1047,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return u;
    }
 
-   private boolean pickActionV2(ServerWorld level, @Nullable LivingEntity target, @Nullable Set<BossAction.Tag> require) {
+   private boolean pickActionV2(ServerLevel level, @Nullable LivingEntity target, @Nullable Set<BossAction.Tag> require) {
       boolean lastPhase = this.isLastPhase();
       boolean minions = false;
       boolean minionsChecked = false;
@@ -1105,7 +1104,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return true;
    }
 
-   private void choose(ServerWorld level, int i, @Nullable LivingEntity target) {
+   private void choose(ServerLevel level, int i, @Nullable LivingEntity target) {
       BossAction a = this.actions.get(i);
       this.cooldowns[i] = this.isV2() && this.enraged() ? Math.round(a.cooldown * 0.7F) : a.cooldown;
       this.prevPick = this.lastPick;
@@ -1124,7 +1123,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return -1;
    }
 
-   private boolean tryCombo(ServerWorld level, BossAction a, @Nullable LivingEntity target) {
+   private boolean tryCombo(ServerLevel level, BossAction a, @Nullable LivingEntity target) {
       for (BossAction.Combo c : a.combos) {
          float chance = Math.min(0.95F, c.chance() + 0.15F * this.phase());
          if (!(this.random.nextFloat() >= chance)) {
@@ -1172,7 +1171,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return 0;
    }
 
-   protected void startAction(ServerWorld level, BossAction action, @Nullable LivingEntity target) {
+   protected void startAction(ServerLevel level, BossAction action, @Nullable LivingEntity target) {
       if (this.current != null) {
          this.interrupt(level);
       }
@@ -1183,7 +1182,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       this.actionTicks = 0;
       this.closeInTicks = 0;
 
-      this.dataTracker.set(ACTION, switch (kind) {
+      this.entityData.set(ACTION, switch (kind) {
          case 1 -> 999;
          case 2 -> 998;
          case 3 -> 997;
@@ -1204,7 +1203,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   protected void forceAction(ServerWorld level, String anim) {
+   protected void forceAction(ServerLevel level, String anim) {
       for (int i = 0; i < this.actions.size(); i++) {
          if (this.actions.get(i).anim.equals(anim)) {
             this.startAction(level, this.actions.get(i), this.getTarget());
@@ -1213,13 +1212,13 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void interrupt(ServerWorld level) {
+   private void interrupt(ServerLevel level) {
       BossAction a = this.current;
       if (a != null) {
          int kind = this.currentKind;
          this.current = null;
          this.currentKind = 0;
-         this.dataTracker.set(ACTION, -1);
+         this.entityData.set(ACTION, -1);
          if (kind == 2) {
             this.endStagger();
          } else if (kind == 3) {
@@ -1233,12 +1232,12 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void finishAction(ServerWorld level, @Nullable LivingEntity target) {
+   private void finishAction(ServerLevel level, @Nullable LivingEntity target) {
       BossAction a = this.current;
       int kind = this.currentKind;
       this.current = null;
       this.currentKind = 0;
-      this.dataTracker.set(ACTION, -1);
+      this.entityData.set(ACTION, -1);
       if (kind == 2) {
          this.endStagger();
       } else if (kind == 3) {
@@ -1265,7 +1264,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void tickAction(ServerWorld level, @Nullable LivingEntity target) {
+   private void tickAction(ServerLevel level, @Nullable LivingEntity target) {
       BossAction a = this.current;
       int kind = this.currentKind;
       BossFx.current(this);
@@ -1277,11 +1276,11 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       if (this.leapLength <= 0 && this.dashTicks <= 0) {
          if (kind == 3 && a.hits.length > 0 && this.actionTicks > a.hits[0]) {
             double f = this.hovers() ? 0.75 : 0.85;
-            this.setVelocity(this.getVelocity().multiply(f, 1.0, f));
+            this.setDeltaMovement(this.getDeltaMovement().multiply(f, 1.0, f));
          } else if (!this.hovers()) {
-            this.setVelocity(this.getVelocity().multiply(0.3, 1.0, 0.3));
+            this.setDeltaMovement(this.getDeltaMovement().multiply(0.3, 1.0, 0.3));
          } else {
-            this.setVelocity(this.getVelocity().multiply(0.6));
+            this.setDeltaMovement(this.getDeltaMovement().scale(0.6));
          }
 
          if (kind == 0 && !a.advances.isEmpty()) {
@@ -1319,22 +1318,22 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    private void applyAdvance(BossAction a, @Nullable LivingEntity target) {
       for (BossAction.Advance adv : a.advances) {
          if (this.actionTicks >= adv.from() && this.actionTicks <= adv.to()) {
-            Vec3d dir;
+            Vec3 dir;
             if (a.track && target != null) {
-               dir = new Vec3d(target.getX() - this.getX(), 0.0, target.getZ() - this.getZ());
-               if (adv.speed() > 0.0 && dir.horizontalLength() < this.getWidth() * 0.5 + target.getWidth() * 0.5 + 0.6) {
+               dir = new Vec3(target.getX() - this.getX(), 0.0, target.getZ() - this.getZ());
+               if (adv.speed() > 0.0 && dir.horizontalDistance() < this.getBbWidth() * 0.5 + target.getBbWidth() * 0.5 + 0.6) {
                   return;
                }
             } else {
-               dir = Vec3d.fromPolar(0.0F, this.getYaw());
+               dir = Vec3.directionFromRotation(0.0F, this.getYRot());
             }
 
-            if (dir.lengthSquared() < 1.0E-4) {
+            if (dir.lengthSqr() < 1.0E-4) {
                return;
             }
 
-            dir = dir.normalize().multiply(adv.speed());
-            this.setVelocity(dir.x, this.getVelocity().y, dir.z);
+            dir = dir.normalize().scale(adv.speed());
+            this.setDeltaMovement(dir.x, this.getDeltaMovement().y, dir.z);
             return;
          }
       }
@@ -1346,7 +1345,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          : false;
    }
 
-   private void startStagger(ServerWorld level, @Nullable LivingEntity target) {
+   private void startStagger(ServerLevel level, @Nullable LivingEntity target) {
       this.poiseBroken = false;
       this.stopMobility();
       this.startAction(level, this.staggerMove, target);
@@ -1371,13 +1370,13 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return 0.18F + 0.08F * this.phase() + (this.enraged() ? 0.1F : 0.0F);
    }
 
-   private Vec3d[] dodgeDirs() {
-      Vec3d fwd = Vec3d.fromPolar(0.0F, this.getYaw());
-      Vec3d left = Vec3d.fromPolar(0.0F, this.getYaw() - 90.0F);
-      return new Vec3d[]{fwd.multiply(-1.0), left, left.multiply(-1.0)};
+   private Vec3[] dodgeDirs() {
+      Vec3 fwd = Vec3.directionFromRotation(0.0F, this.getYRot());
+      Vec3 left = Vec3.directionFromRotation(0.0F, this.getYRot() - 90.0F);
+      return new Vec3[]{fwd.scale(-1.0), left, left.scale(-1.0)};
    }
 
-   private boolean tryDodge(ServerWorld level, @Nullable LivingEntity target) {
+   private boolean tryDodge(ServerLevel level, @Nullable LivingEntity target) {
       int pending = this.pendingDodge;
       this.pendingDodge = -1;
       if (pending >= 0 && this.dodgeDir != null) {
@@ -1393,13 +1392,13 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
                return false;
             }
 
-            Vec3d[] dirs = this.dodgeDirs();
+            Vec3[] dirs = this.dodgeDirs();
             int[] order;
             if (c.projectileVelocity != null && c.projectilePos != null) {
-               Vec3d v = c.projectileVelocity.getHorizontal();
-               Vec3d rel = this.getEntityPos().subtract(c.projectilePos).getHorizontal();
-               Vec3d off = v.lengthSquared() > 1.0E-4 ? rel.subtract(v.multiply(rel.dotProduct(v) / v.lengthSquared())) : rel;
-               boolean goLeft = off.lengthSquared() < 1.0E-4 ? this.random.nextBoolean() : off.dotProduct(dirs[1]) > 0.0;
+               Vec3 v = c.projectileVelocity.horizontal();
+               Vec3 rel = this.position().subtract(c.projectilePos).horizontal();
+               Vec3 off = v.lengthSqr() > 1.0E-4 ? rel.subtract(v.scale(rel.dot(v) / v.lengthSqr())) : rel;
+               boolean goLeft = off.lengthSqr() < 1.0E-4 ? this.random.nextBoolean() : off.dot(dirs[1]) > 0.0;
                order = goLeft ? new int[]{1, 2, 0} : new int[]{2, 1, 0};
             } else {
                order = this.random.nextBoolean() ? new int[]{0, 1, 2} : new int[]{0, 2, 1};
@@ -1421,7 +1420,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void startDodge(ServerWorld level, int k, Vec3d dir, @Nullable LivingEntity target) {
+   private void startDodge(ServerLevel level, int k, Vec3 dir, @Nullable LivingEntity target) {
       this.dodgeDir = dir;
       this.dodgeCooldown = Math.max(20, 70 - 10 * this.phase());
       this.startAction(level, this.dodgeMoves[k], target);
@@ -1429,9 +1428,9 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       this.setState(16, true);
    }
 
-   private boolean evadeMelee(ServerWorld level, DamageSource source) {
+   private boolean evadeMelee(ServerLevel level, DamageSource source) {
       if (this.freeToDodge
-         && !this.isDead()
+         && !this.isDeadOrDying()
          && this.current == null
          && this.leapLength <= 0
          && this.dashTicks <= 0
@@ -1439,11 +1438,11 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          && !this.poiseBroken
          && this.pendingDodge < 0
          && this.dodgeCooldown <= 0
-         && this.timeUntilRegen <= 10
+         && this.getInvulnerableTime() <= 10
          && this.canDodge()) {
-         if (source.getAttacker() instanceof ServerPlayerEntity p && source.getSource() == p && !p.isCreative() && !p.isSpectator()) {
-            boolean swing = (source.isOf(DamageTypes.PLAYER_ATTACK) || source.isOf(DamageTypes.MACE_SMASH)) && p.getAttackCooldownProgress(0.0F) <= 0.0F;
-            if (!swing && !source.isOf(DamageTypes.SPEAR)) {
+         if (source.getEntity() instanceof ServerPlayer p && source.getDirectEntity() == p && !p.isCreative() && !p.isSpectator()) {
+            boolean swing = (source.is(DamageTypes.PLAYER_ATTACK) || source.is(DamageTypes.MACE_SMASH)) && p.getAttackStrengthScale(0.0F) <= 0.0F;
+            if (!swing && !source.is(DamageTypes.SPEAR)) {
                return false;
             }
 
@@ -1451,17 +1450,17 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
                return false;
             }
 
-            Vec3d[] dirs = this.dodgeDirs();
-            Vec3d away = this.getEntityPos().subtract(p.getEntityPos()).getHorizontal();
-            Vec3d from = away.lengthSquared() > 1.0E-4 ? away.normalize() : dirs[0];
+            Vec3[] dirs = this.dodgeDirs();
+            Vec3 away = this.position().subtract(p.position()).horizontal();
+            Vec3 from = away.lengthSqr() > 1.0E-4 ? away.normalize() : dirs[0];
             Integer[] order = new Integer[]{0, 1, 2};
-            Arrays.sort(order, (a, b) -> Double.compare(dirs[b].dotProduct(from), dirs[a].dotProduct(from)));
+            Arrays.sort(order, (a, b) -> Double.compare(dirs[b].dot(from), dirs[a].dot(from)));
             Integer[] var9 = order;
             int var10 = var9.length;
 
             for (int var11 = 0; var11 < var10; var11++) {
                int k = var9[var11];
-               if (dirs[k].dotProduct(from) > -0.5 && this.safeDodge(level, dirs[k])) {
+               if (dirs[k].dot(from) > -0.5 && this.safeDodge(level, dirs[k])) {
                   this.pendingDodge = k;
                   this.dodgeDir = dirs[k];
                   this.dodgeCooldown = Math.max(20, 70 - 10 * this.phase());
@@ -1479,43 +1478,43 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private boolean safeDodge(ServerWorld level, Vec3d dir) {
+   private boolean safeDodge(ServerLevel level, Vec3 dir) {
       double dist = 3.5;
 
       for (double k = 1.0; k <= dist; k += 1.25) {
-         if (!level.isSpaceEmpty(this, this.getBoundingBox().offset(dir.x * k, this.hovers() ? 0.0 : 0.6, dir.z * k))) {
+         if (!level.noCollision(this, this.getBoundingBox().move(dir.x * k, this.hovers() ? 0.0 : 0.6, dir.z * k))) {
             return false;
          }
       }
 
-      return this.hovers() || BossFx.safeGround(level, this.getEntityPos().add(dir.multiply(dist)), 3.0);
+      return this.hovers() || BossFx.safeGround(level, this.position().add(dir.scale(dist)), 3.0);
    }
 
-   private void dodgeHop(ServerWorld level) {
-      Vec3d d = this.dodgeDir;
+   private void dodgeHop(ServerLevel level) {
+      Vec3 d = this.dodgeDir;
       if (d != null) {
          if (this.hovers()) {
-            this.setVelocity(d.x * 0.9, this.getVelocity().y * 0.3, d.z * 0.9);
+            this.setDeltaMovement(d.x * 0.9, this.getDeltaMovement().y * 0.3, d.z * 0.9);
          } else {
-            this.setVelocity(d.x * 0.9, 0.25, d.z * 0.9);
+            this.setDeltaMovement(d.x * 0.9, 0.25, d.z * 0.9);
          }
 
-         Vfx.smoke(level, this.getEntityPos(), this.palette().smoke(), 4, this.getWidth() * 0.5 + 0.3, 1.0);
-         Vfx.trail(level, this.getEntityPos().add(0.0, this.getHeight() * 0.5, 0.0), this.palette(), 0.6 + this.getWidth() * 0.3);
+         Vfx.smoke(level, this.position(), this.palette().smoke(), 4, this.getBbWidth() * 0.5 + 0.3, 1.0);
+         Vfx.trail(level, this.position().add(0.0, this.getBbHeight() * 0.5, 0.0), this.palette(), 0.6 + this.getBbWidth() * 0.3);
       }
    }
 
-   private boolean tryRecover(ServerWorld level, @Nullable LivingEntity target) {
+   private boolean tryRecover(ServerLevel level, @Nullable LivingEntity target) {
       if (target != null && this.unreachableFor > 80 && this.recoverCooldown <= 0) {
          this.unreachableFor = 0;
          this.recoverCooldown = 160;
          this.recoverBlink = this.preferBlink();
-         Vec3d at = this.recoverPoint(level, target);
+         Vec3 at = this.recoverPoint(level, target);
          this.recoverAt = at;
          this.recoverTicks = 14;
          this.getNavigation().stop();
-         Vfx.warn(level, at, this.palette(), 1.5 + this.getWidth() * 0.5, 14);
-         Vfx.gather(level, this.getEntityPos().add(0.0, this.getHeight() * 0.5, 0.0), this.palette(), 2.0F + this.getWidth(), 14);
+         Vfx.warn(level, at, this.palette(), 1.5 + this.getBbWidth() * 0.5, 14);
+         Vfx.gather(level, this.position().add(0.0, this.getBbHeight() * 0.5, 0.0), this.palette(), 2.0F + this.getBbWidth(), 14);
          this.voice(level, "dodge", 4.0F);
          return true;
       } else {
@@ -1523,45 +1522,45 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private Vec3d recoverPoint(ServerWorld level, LivingEntity target) {
+   private Vec3 recoverPoint(ServerLevel level, LivingEntity target) {
       if (this.recoverBlink) {
-         Vec3d at = BossFx.around(level, this, target.getEntityPos(), 2.5, 4.5);
+         Vec3 at = BossFx.around(level, this, target.position(), 2.5, 4.5);
          return this.hovers() ? at.add(0.0, this.hoverHeight(), 0.0) : at;
       }
 
-      Vec3d to = target.getEntityPos();
-      if (!target.isOnGround()) {
-         Vec3d g = BossFx.ground(level, to.x, to.y, to.z);
+      Vec3 to = target.position();
+      if (!target.onGround()) {
+         Vec3 g = BossFx.ground(level, to.x, to.y, to.z);
          if (g != null) {
             to = g;
          }
       }
 
-      Vec3d off = this.getEntityPos().subtract(to).getHorizontal();
-      if (off.lengthSquared() > 0.01) {
-         to = to.add(off.normalize().multiply(1.5 + this.getWidth() * 0.5));
+      Vec3 off = this.position().subtract(to).horizontal();
+      if (off.lengthSqr() > 0.01) {
+         to = to.add(off.normalize().scale(1.5 + this.getBbWidth() * 0.5));
       }
 
-      Vec3d d = to.subtract(this.getEntityPos());
+      Vec3 d = to.subtract(this.position());
       if (d.length() > 24.0) {
-         to = this.getEntityPos().add(d.normalize().multiply(24.0));
+         to = this.position().add(d.normalize().scale(24.0));
       }
 
       return to;
    }
 
-   private void tickRecover(ServerWorld level, @Nullable LivingEntity target) {
+   private void tickRecover(ServerLevel level, @Nullable LivingEntity target) {
       this.getNavigation().stop();
       if (target != null) {
          this.faceTarget(target, 15.0F);
       }
 
       if (!this.hovers()) {
-         this.setVelocity(this.getVelocity().multiply(0.3, 1.0, 0.3));
+         this.setDeltaMovement(this.getDeltaMovement().multiply(0.3, 1.0, 0.3));
       }
 
       if (--this.recoverTicks <= 0) {
-         Vec3d at = this.recoverAt;
+         Vec3 at = this.recoverAt;
          this.recoverAt = null;
          if (at != null) {
             if (this.recoverBlink) {
@@ -1575,29 +1574,29 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   protected void move(ServerWorld level, @Nullable LivingEntity target) {
+   protected void move(ServerLevel level, @Nullable LivingEntity target) {
       if (target != null) {
-         double dist = Math.sqrt(this.squaredDistanceTo(target));
+         double dist = Math.sqrt(this.distanceToSqr(target));
          if (this.hovers()) {
-            Vec3d to = target.getEntityPos().subtract(this.getEntityPos());
-            Vec3d flat = new Vec3d(to.x, 0.0, to.z);
-            Vec3d want = this.getEntityPos();
+            Vec3 to = target.position().subtract(this.position());
+            Vec3 flat = new Vec3(to.x, 0.0, to.z);
+            Vec3 want = this.position();
             if (flat.length() > 0.01) {
-               want = target.getEntityPos().subtract(flat.normalize().multiply(this.preferredDistance()));
+               want = target.position().subtract(flat.normalize().scale(this.preferredDistance()));
             }
 
-            want = new Vec3d(want.x, target.getY() + this.hoverHeight() + MathHelper.sin(this.age * 0.05F) * 0.6, want.z);
-            Vec3d step = want.subtract(this.getEntityPos());
-            double speed = this.getAttributeValue(EntityAttributes.MOVEMENT_SPEED) * 1.6;
+            want = new Vec3(want.x, target.getY() + this.hoverHeight() + Mth.sin(this.tickCount * 0.05F) * 0.6, want.z);
+            Vec3 step = want.subtract(this.position());
+            double speed = this.getAttributeValue(Attributes.MOVEMENT_SPEED) * 1.6;
             if (step.length() > speed) {
-               step = step.normalize().multiply(speed);
+               step = step.normalize().scale(speed);
             }
 
-            this.setVelocity(this.getVelocity().multiply(0.7).add(step.multiply(0.3)));
+            this.setDeltaMovement(this.getDeltaMovement().scale(0.7).add(step.scale(0.3)));
             this.faceTarget(target, 10.0F);
          } else if (dist > this.preferredDistance()) {
-            if (this.age % 5 == 0) {
-               this.getNavigation().startMovingTo(target, 1.0);
+            if (this.tickCount % 5 == 0) {
+               this.getNavigation().moveTo(target, 1.0);
             }
          } else {
             this.getNavigation().stop();
@@ -1606,7 +1605,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private boolean moveV2(ServerWorld level, @Nullable LivingEntity target) {
+   private boolean moveV2(ServerLevel level, @Nullable LivingEntity target) {
       if (target == null) {
          return false;
       }
@@ -1619,13 +1618,13 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       double dist = this.ctx.dist;
       double pref = this.preferredDistance();
       if (dist > pref + 6.0) {
-         if (this.age % 5 == 0) {
+         if (this.tickCount % 5 == 0) {
             this.pathTo(target, this.runSpeed());
          }
 
-         return !this.getNavigation().isIdle();
+         return !this.getNavigation().isDone();
       } else if (dist > pref + 2.0) {
-         if (this.age % 5 == 0) {
+         if (this.tickCount % 5 == 0) {
             this.pathTo(target, 1.0);
          }
 
@@ -1635,7 +1634,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          if (pref >= 6.0 && dist < pref - 3.0) {
             this.strafe(level, target, -0.8F, 0.35F);
          } else {
-            this.strafe(level, target, (float)MathHelper.clamp((dist - pref) * 0.5, -0.6, 0.6), 0.9F);
+            this.strafe(level, target, (float)Mth.clamp((dist - pref) * 0.5, -0.6, 0.6), 0.9F);
          }
 
          return false;
@@ -1643,29 +1642,29 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    }
 
    private void pathTo(LivingEntity target, double speed) {
-      Path path = this.getNavigation().findPathTo(target, 1);
-      this.ctx.notePath(path != null && path.reachesTarget());
-      this.getNavigation().startMovingAlong(path, speed);
+      Path path = this.getNavigation().createPath(target, 1);
+      this.ctx.notePath(path != null && path.canReach());
+      this.getNavigation().moveTo(path, speed);
    }
 
-   private void strafe(ServerWorld level, LivingEntity target, float forward, float side) {
+   private void strafe(ServerLevel level, LivingEntity target, float forward, float side) {
       this.getNavigation().stop();
       this.faceTarget(target, 10.0F);
       if (--this.strafeTimer <= 0 || this.horizontalCollision && this.strafeFlipGuard <= 0) {
          this.flipStrafe();
       }
 
-      Vec3d sideDir = Vec3d.fromPolar(0.0F, this.getYaw() - 90 * this.strafeDir);
-      if (this.strafeFlipGuard <= 0 && !BossFx.safeGround(level, this.getEntityPos().add(sideDir.multiply(this.getWidth() * 0.5 + 1.2)), 2.0)) {
+      Vec3 sideDir = Vec3.directionFromRotation(0.0F, this.getYRot() - 90 * this.strafeDir);
+      if (this.strafeFlipGuard <= 0 && !BossFx.safeGround(level, this.position().add(sideDir.scale(this.getBbWidth() * 0.5 + 1.2)), 2.0)) {
          this.flipStrafe();
       }
 
       float fwd = forward;
-      if (fwd < 0.0F && !BossFx.safeGround(level, this.getEntityPos().add(Vec3d.fromPolar(0.0F, this.getYaw()).multiply(-(this.getWidth() * 0.5 + 1.2))), 2.0)) {
+      if (fwd < 0.0F && !BossFx.safeGround(level, this.position().add(Vec3.directionFromRotation(0.0F, this.getYRot()).scale(-(this.getBbWidth() * 0.5 + 1.2))), 2.0)) {
          fwd = 0.0F;
       }
 
-      this.getMoveControl().strafeTo(fwd, side * this.strafeDir);
+      this.getMoveControl().strafe(fwd, side * this.strafeDir);
       this.strafedNow = true;
    }
 
@@ -1675,7 +1674,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       this.strafeFlipGuard = 10;
    }
 
-   private void hoverMove(ServerWorld level, LivingEntity target) {
+   private void hoverMove(ServerLevel level, LivingEntity target) {
       if (this.closeInTicks > 0) {
          this.closeInTicks--;
       } else if (--this.closeInTimer <= 0) {
@@ -1693,28 +1692,28 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          this.orbitTimer = 60 + this.random.nextInt(81);
       }
 
-      Vec3d rel = this.getEntityPos().subtract(target.getEntityPos());
-      double angle = rel.horizontalLengthSquared() > 0.01 ? Math.atan2(rel.z, rel.x) : this.random.nextDouble() * Math.PI * 2.0;
+      Vec3 rel = this.position().subtract(target.position());
+      double angle = rel.horizontalDistanceSqr() > 0.01 ? Math.atan2(rel.z, rel.x) : this.random.nextDouble() * Math.PI * 2.0;
       angle += this.orbitDir * Math.min(0.12, 0.9 / Math.max(2.0, radius));
-      double alt = Math.max(0.8, this.hoverHeight() + MathHelper.sin(this.age * 0.035F) * 1.1 + MathHelper.sin(this.age * 0.013F + 1.7F) * 0.7);
-      Vec3d want = target.getEntityPos().add(Math.cos(angle) * radius, alt, Math.sin(angle) * radius);
-      Vec3d step = want.subtract(this.getEntityPos());
-      double speed = this.getAttributeValue(EntityAttributes.MOVEMENT_SPEED) * (this.closeInTicks > 0 ? 2.2 : 1.6);
+      double alt = Math.max(0.8, this.hoverHeight() + Mth.sin(this.tickCount * 0.035F) * 1.1 + Mth.sin(this.tickCount * 0.013F + 1.7F) * 0.7);
+      Vec3 want = target.position().add(Math.cos(angle) * radius, alt, Math.sin(angle) * radius);
+      Vec3 step = want.subtract(this.position());
+      double speed = this.getAttributeValue(Attributes.MOVEMENT_SPEED) * (this.closeInTicks > 0 ? 2.2 : 1.6);
       if (step.length() > speed) {
-         step = step.normalize().multiply(speed);
+         step = step.normalize().scale(speed);
       }
 
-      Vec3d v = this.getVelocity().multiply(0.7).add(step.multiply(0.3));
+      Vec3 v = this.getDeltaMovement().scale(0.7).add(step.scale(0.3));
       if (--this.dartTimer <= 0) {
          this.dartTimer = 60 + this.random.nextInt(61);
-         Vec3d tangent = new Vec3d(-Math.sin(angle), 0.0, Math.cos(angle)).multiply(this.orbitDir * 0.7);
-         if (level.isSpaceEmpty(this, this.getBoundingBox().offset(tangent.multiply(3.0)))) {
+         Vec3 tangent = new Vec3(-Math.sin(angle), 0.0, Math.cos(angle)).scale(this.orbitDir * 0.7);
+         if (level.noCollision(this, this.getBoundingBox().move(tangent.scale(3.0)))) {
             v = v.add(tangent);
-            Vfx.trail(level, this.getEntityPos().add(0.0, this.getHeight() * 0.5, 0.0), this.palette(), 0.9);
+            Vfx.trail(level, this.position().add(0.0, this.getBbHeight() * 0.5, 0.0), this.palette(), 0.9);
          }
       }
 
-      this.setVelocity(v);
+      this.setDeltaMovement(v);
       this.faceTarget(target, 10.0F);
    }
 
@@ -1734,11 +1733,11 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
 
    private void returnHome() {
       if (this.home != null && this.current == null) {
-         double d = this.home.getSquaredDistance(this.getEntityPos());
+         double d = this.home.distToCenterSqr(this.position());
          if (d > 4096.0) {
-            this.requestTeleport(this.home.getX() + 0.5, this.home.getY() + 1, this.home.getZ() + 0.5);
-         } else if (d > 144.0 && this.age % 20 == 0 && !this.hovers()) {
-            this.getNavigation().startMovingTo(this.home.getX() + 0.5, this.home.getY(), this.home.getZ() + 0.5, 0.8);
+            this.teleportTo(this.home.getX() + 0.5, this.home.getY() + 1, this.home.getZ() + 0.5);
+         } else if (d > 144.0 && this.tickCount % 20 == 0 && !this.hovers()) {
+            this.getNavigation().moveTo(this.home.getX() + 0.5, this.home.getY(), this.home.getZ() + 0.5, 0.8);
          }
       }
    }
@@ -1746,19 +1745,19 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    public void faceTarget(LivingEntity target, float maxTurn) {
       double dx = target.getX() - this.getX();
       double dz = target.getZ() - this.getZ();
-      float want = (float)(MathHelper.atan2(dz, dx) * 180.0F / (float)Math.PI) - 90.0F;
-      float yaw = MathHelper.stepUnwrappedAngleTowards(this.getYaw(), want, maxTurn);
-      this.setYaw(yaw);
-      this.setBodyYaw(yaw);
-      this.setHeadYaw(yaw);
-      this.getLookControl().lookAt(target, 30.0F, 30.0F);
+      float want = (float)(Mth.atan2(dz, dx) * 180.0F / (float)Math.PI) - 90.0F;
+      float yaw = Mth.approachDegrees(this.getYRot(), want, maxTurn);
+      this.setYRot(yaw);
+      this.setYBodyRot(yaw);
+      this.setYHeadRot(yaw);
+      this.getLookControl().setLookAt(target, 30.0F, 30.0F);
    }
 
-   public void leapTo(Vec3d to, double apex) {
-      this.leapFrom = this.getEntityPos();
+   public void leapTo(Vec3 to, double apex) {
+      this.leapFrom = this.position();
       this.leapTarget = to;
-      double d = to.subtract(this.leapFrom).horizontalLength();
-      this.leapLength = MathHelper.clamp((int)Math.round(12.0 + d * 0.6), 14, 26);
+      double d = to.subtract(this.leapFrom).horizontalDistance();
+      this.leapLength = Mth.clamp((int)Math.round(12.0 + d * 0.6), 14, 26);
       this.leapTick = 0;
       this.leapApex = Math.max(0.5, apex);
       this.dashTicks = 0;
@@ -1766,9 +1765,9 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       this.getNavigation().stop();
    }
 
-   public boolean blinkTo(Vec3d to) {
-      if (this.getEntityWorld() instanceof ServerWorld level) {
-         Vec3d at = this.freeSpot(level, to);
+   public boolean blinkTo(Vec3 to) {
+      if (this.level() instanceof ServerLevel level) {
+         Vec3 at = this.freeSpot(level, to);
          if (at == null) {
             return false;
          }
@@ -1779,9 +1778,9 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          }
 
          this.dashTicks = 0;
-         BossFx.blink(level, this, this.getEntityPos());
-         this.requestTeleport(at.x, at.y, at.z);
-         this.setVelocity(Vec3d.ZERO);
+         BossFx.blink(level, this, this.position());
+         this.teleportTo(at.x, at.y, at.z);
+         this.setDeltaMovement(Vec3.ZERO);
          this.getNavigation().stop();
          BossFx.blink(level, this, at);
          return true;
@@ -1790,13 +1789,13 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   public void dash(Vec3d dir, double speed) {
+   public void dash(Vec3 dir, double speed) {
       this.dash(dir, speed, 8);
    }
 
-   public void dash(Vec3d dir, double speed, int ticks) {
-      Vec3d h = dir.getHorizontal();
-      if (!(h.lengthSquared() < 1.0E-4)) {
+   public void dash(Vec3 dir, double speed, int ticks) {
+      Vec3 h = dir.horizontal();
+      if (!(h.lengthSqr() < 1.0E-4)) {
          this.dashDir = h.normalize();
          this.dashSpeed = speed;
          this.dashLength = Math.max(1, ticks);
@@ -1805,19 +1804,19 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   public Vec3d predict(LivingEntity target, double ticks) {
-      Vec3d v = target == this.ctx.target ? this.ctx.targetVelocity : target.getVelocity();
-      double t = MathHelper.clamp(ticks, 0.0, 40.0);
-      Vec3d lead = new Vec3d(v.x * t, 0.0, v.z * t);
+   public Vec3 predict(LivingEntity target, double ticks) {
+      Vec3 v = target == this.ctx.target ? this.ctx.targetVelocity : target.getDeltaMovement();
+      double t = Mth.clamp(ticks, 0.0, 40.0);
+      Vec3 lead = new Vec3(v.x * t, 0.0, v.z * t);
       if (lead.length() > 8.0) {
-         lead = lead.normalize().multiply(8.0);
+         lead = lead.normalize().scale(8.0);
       }
 
-      double dy = target.isOnGround() ? 0.0 : MathHelper.clamp(v.y * t, -3.0, 3.0);
-      return target.getEntityPos().add(lead.x, dy, lead.z);
+      double dy = target.onGround() ? 0.0 : Mth.clamp(v.y * t, -3.0, 3.0);
+      return target.position().add(lead.x, dy, lead.z);
    }
 
-   private void tickMobility(ServerWorld level) {
+   private void tickMobility(ServerLevel level) {
       if (this.leapLength > 0) {
          this.tickLeap(level);
       } else if (this.dashTicks > 0) {
@@ -1825,55 +1824,55 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void tickLeap(ServerWorld level) {
+   private void tickLeap(ServerLevel level) {
       this.leapTick++;
       double s = Math.min(1.0, (double)this.leapTick / this.leapLength);
-      Vec3d p = this.leapFrom.lerp(this.leapTarget, s).add(0.0, this.leapApex * 4.0 * s * (1.0 - s), 0.0);
-      Vec3d v = p.subtract(this.getEntityPos());
-      if (v.lengthSquared() > 9.0) {
-         v = v.normalize().multiply(3.0);
+      Vec3 p = this.leapFrom.lerp(this.leapTarget, s).add(0.0, this.leapApex * 4.0 * s * (1.0 - s), 0.0);
+      Vec3 v = p.subtract(this.position());
+      if (v.lengthSqr() > 9.0) {
+         v = v.normalize().scale(3.0);
       }
 
-      this.setVelocity(v);
-      if (this.current == null && v.horizontalLengthSquared() > 0.0025) {
-         float yaw = (float)(MathHelper.atan2(v.z, v.x) * 180.0F / (float)Math.PI) - 90.0F;
-         this.setYaw(yaw);
-         this.setBodyYaw(yaw);
-         this.setHeadYaw(yaw);
+      this.setDeltaMovement(v);
+      if (this.current == null && v.horizontalDistanceSqr() > 0.0025) {
+         float yaw = (float)(Mth.atan2(v.z, v.x) * 180.0F / (float)Math.PI) - 90.0F;
+         this.setYRot(yaw);
+         this.setYBodyRot(yaw);
+         this.setYHeadRot(yaw);
       }
 
       if (this.leapTick % 2 == 0) {
-         Vfx.trail(level, this.getEntityPos().add(0.0, this.getHeight() * 0.5, 0.0), this.palette(), 0.6 + this.getWidth() * 0.25);
+         Vfx.trail(level, this.position().add(0.0, this.getBbHeight() * 0.5, 0.0), this.palette(), 0.6 + this.getBbWidth() * 0.25);
       }
 
-      if (this.leapTick >= this.leapLength || s > 0.55 && this.isOnGround()) {
+      if (this.leapTick >= this.leapLength || s > 0.55 && this.onGround()) {
          this.land(level);
       }
    }
 
-   private void land(ServerWorld level) {
+   private void land(ServerLevel level) {
       this.leapLength = 0;
       this.leapTick = 0;
       this.setNoGravity(this.hovers());
-      Vec3d v = this.getVelocity();
-      this.setVelocity(v.x * 0.2, this.hovers() ? 0.0 : Math.min(0.0, v.y), v.z * 0.2);
+      Vec3 v = this.getDeltaMovement();
+      this.setDeltaMovement(v.x * 0.2, this.hovers() ? 0.0 : Math.min(0.0, v.y), v.z * 0.2);
       this.unstick(level);
       BossFx.current(this);
       if (!this.hovers()) {
-         BossFx.shockwave(level, this, this.getEntityPos(), 3.0 + this.getWidth() * 0.5, this.dmg(4.0F), 0.9);
+         BossFx.shockwave(level, this, this.position(), 3.0 + this.getBbWidth() * 0.5, this.dmg(4.0F), 0.9);
       } else {
-         Vfx.ring(level, this.getEntityPos(), this.palette().glow(), 2.5 + this.getWidth() * 0.5, 10);
+         Vfx.ring(level, this.position(), this.palette().glow(), 2.5 + this.getBbWidth() * 0.5, 10);
       }
 
       this.onLand(level);
    }
 
-   private void tickDash(ServerWorld level) {
+   private void tickDash(ServerLevel level) {
       this.dashTicks--;
       double s = this.dashSpeed * (0.55 + 0.45 * this.dashTicks / this.dashLength);
-      this.setVelocity(this.dashDir.x * s, this.getVelocity().y, this.dashDir.z * s);
-      if (this.age % 2 == 0) {
-         Vfx.trail(level, this.getEntityPos().add(0.0, this.getHeight() * 0.45, 0.0), this.palette(), 0.5 + this.getWidth() * 0.25);
+      this.setDeltaMovement(this.dashDir.x * s, this.getDeltaMovement().y, this.dashDir.z * s);
+      if (this.tickCount % 2 == 0) {
+         Vfx.trail(level, this.position().add(0.0, this.getBbHeight() * 0.45, 0.0), this.palette(), 0.5 + this.getBbWidth() * 0.25);
       }
    }
 
@@ -1889,32 +1888,32 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       this.recoverAt = null;
    }
 
-   private void unstick(ServerWorld level) {
-      if (!level.isSpaceEmpty(this, this.getBoundingBox())) {
+   private void unstick(ServerLevel level) {
+      if (!level.noCollision(this, this.getBoundingBox())) {
          for (int dy = 1; dy <= 4; dy++) {
-            if (level.isSpaceEmpty(this, this.getBoundingBox().offset(0.0, dy, 0.0))) {
-               this.setPosition(this.getX(), this.getY() + dy, this.getZ());
+            if (level.noCollision(this, this.getBoundingBox().move(0.0, dy, 0.0))) {
+               this.setPos(this.getX(), this.getY() + dy, this.getZ());
                return;
             }
          }
 
-         Vec3d spot = this.freeSpot(level, this.getEntityPos());
+         Vec3 spot = this.freeSpot(level, this.position());
          if (spot != null) {
-            this.setPosition(spot.x, spot.y, spot.z);
+            this.setPos(spot.x, spot.y, spot.z);
          }
       }
    }
 
-   private @Nullable Vec3d freeSpot(ServerWorld level, Vec3d to) {
+   private @Nullable Vec3 freeSpot(ServerLevel level, Vec3 to) {
       for (int dy = 0; dy <= 3; dy++) {
-         Vec3d p = to.add(0.0, dy, 0.0);
+         Vec3 p = to.add(0.0, dy, 0.0);
          if (this.fits(level, p)) {
             return p;
          }
       }
 
       for (int i = 0; i < 10; i++) {
-         Vec3d p = BossFx.around(level, this, to, 1.0, 3.5);
+         Vec3 p = BossFx.around(level, this, to, 1.0, 3.5);
          if (this.hovers()) {
             p = p.add(0.0, 1.0, 0.0);
          }
@@ -1927,18 +1926,18 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       return null;
    }
 
-   private boolean fits(ServerWorld level, Vec3d p) {
-      return !level.isSpaceEmpty(this, this.getBoundingBox().offset(p.x - this.getX(), p.y - this.getY(), p.z - this.getZ()))
+   private boolean fits(ServerLevel level, Vec3 p) {
+      return !level.noCollision(this, this.getBoundingBox().move(p.x - this.getX(), p.y - this.getY(), p.z - this.getZ()))
          ? false
          : this.hovers() || BossFx.safeGround(level, p, 6.0);
    }
 
-   private void updateBar(ServerWorld level, boolean players) {
+   private void updateBar(ServerLevel level, boolean players) {
       if (this.isBoss()) {
-         this.bar.setPercent(this.getHealth() / this.getMaxHealth());
+         this.bar.setProgress(this.getHealth() / this.getMaxHealth());
          if (players) {
-            for (ServerPlayerEntity p : level.getPlayers()) {
-               boolean near = p.squaredDistanceTo(this) < 4096.0 && this.isAlive();
+            for (ServerPlayer p : level.players()) {
+               boolean near = p.distanceToSqr(this) < 4096.0 && this.isAlive();
                if (near) {
                   this.bar.addPlayer(p);
                } else {
@@ -1951,7 +1950,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
 
    public BossStatePayload bossState() {
       float pm = this.isV2() ? this.poiseMax() : 0.0F;
-      float poiseFrac = pm > 0.0F ? MathHelper.clamp(this.poise < 0.0F ? 1.0F : this.poise / pm, 0.0F, 1.0F) : -1.0F;
+      float poiseFrac = pm > 0.0F ? Mth.clamp(this.poise < 0.0F ? 1.0F : this.poise / pm, 0.0F, 1.0F) : -1.0F;
       String cast = "";
       int castTick = 0;
       int castLength = 0;
@@ -1978,7 +1977,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
 
       return new BossStatePayload(
-         this.bar.getUuid(),
+         this.bar.getId(),
          this.id,
          this.bossLevel(),
          1.0F / Math.max(0.01F, this.defense()),
@@ -1997,29 +1996,29 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       );
    }
 
-   private void syncState(ServerWorld level) {
+   private void syncState(ServerLevel level) {
       if (this.isBoss()) {
          UUID markedId = null;
-         if (this.isAlive() && this.getTarget() instanceof ServerPlayerEntity sp && (this.markTicks > 0 || this.engaged.size() >= 2)) {
-            markedId = sp.getUuid();
+         if (this.isAlive() && this.getTarget() instanceof ServerPlayer sp && (this.markTicks > 0 || this.engaged.size() >= 2)) {
+            markedId = sp.getUUID();
          }
 
-         this.sync.tick(this.age, this.bar, this.bossState(), markedId);
+         this.sync.tick(this.tickCount, this.bar, this.bossState(), markedId);
       }
    }
 
-   public void onStoppedTrackingBy(ServerPlayerEntity player) {
-      super.onStoppedTrackingBy(player);
+   public void stopSeenByPlayer(ServerPlayer player) {
+      super.stopSeenByPlayer(player);
       this.bar.removePlayer(player);
    }
 
-   public void setCustomName(@Nullable Text name) {
+   public void setCustomName(@Nullable Component name) {
       super.setCustomName(name);
       this.bar.setName(this.getDisplayName());
    }
 
-   public boolean damage(ServerWorld world, DamageSource source, float amount) {
-      boolean bypass = source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY);
+   public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
+      boolean bypass = source.is(DamageTypeTags.BYPASSES_INVULNERABILITY);
       if (bypass || !this.inIntro() && (this.current == null || this.currentKind != 1) && this.dodgeFrames <= 0) {
          if (!bypass && this.isV2() && this.evadeMelee(world, source)) {
             return false;
@@ -2039,7 +2038,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          this.hitScale = scale > 1.0E-4F ? 1.0F / scale : 0.0F;
 
          try {
-            return super.damage(world, source, amount * scale);
+            return super.hurtServer(world, source, amount * scale);
          } finally {
             this.hitScale = 1.0F;
          }
@@ -2048,11 +2047,11 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   protected void applyDamage(ServerWorld world, DamageSource source, float amount) {
+   protected void actuallyHurt(ServerLevel world, DamageSource source, float amount) {
       if (!this.isBoss()) {
-         super.applyDamage(world, source, amount);
+         super.actuallyHurt(world, source, amount);
       } else {
-         boolean bypass = source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY);
+         boolean bypass = source.is(DamageTypeTags.BYPASSES_INVULNERABILITY);
          float raw = amount * this.hitScale;
          float absorbed = 0.0F;
          if (this.ward > 0.0F && !bypass && amount > 0.0F) {
@@ -2065,18 +2064,18 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          }
 
          float before = this.getHealth();
-         super.applyDamage(world, source, amount);
+         super.actuallyHurt(world, source, amount);
          float taken = Math.max(0.0F, before - this.getHealth()) + absorbed;
          if (taken > 0.0F) {
-            this.ctx.recordDamage(this.age, taken);
+            this.ctx.recordDamage(this.tickCount, taken);
          }
 
          if (!(raw <= 0.0F)) {
-            if (source.getAttacker() instanceof ServerPlayerEntity p && !p.isCreative() && !p.isSpectator()) {
-               boolean ranged = source.isIn(DamageTypeTags.IS_PROJECTILE)
-                  || source.getSource() != p
-                  || source.isOf(DamageTypes.MAGIC)
-                  || source.isOf(DamageTypes.INDIRECT_MAGIC);
+            if (source.getEntity() instanceof ServerPlayer p && !p.isCreative() && !p.isSpectator()) {
+               boolean ranged = source.is(DamageTypeTags.IS_PROJECTILE)
+                  || source.getDirectEntity() != p
+                  || source.is(DamageTypes.MAGIC)
+                  || source.is(DamageTypes.INDIRECT_MAGIC);
                this.threat.add(p, raw * (ranged ? 1.5F : 1.0F));
             }
 
@@ -2103,15 +2102,15 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    }
 
    private static float poiseMult(DamageSource source) {
-      ItemStack weapon = source.getWeaponStack();
-      if (weapon == null || !weapon.isIn(ItemTags.AXES) && !weapon.isOf(Items.MACE)) {
-         return source.getAttacker() instanceof PlayerEntity p
-               && source.getSource() == p
+      ItemStack weapon = source.getWeaponItem();
+      if (weapon == null || !weapon.is(ItemTags.AXES) && !weapon.is(Items.MACE)) {
+         return source.getEntity() instanceof Player p
+               && source.getDirectEntity() == p
                && p.fallDistance > 0.0
-               && !p.isOnGround()
-               && !p.isClimbing()
-               && !p.isTouchingWater()
-               && !p.hasVehicle()
+               && !p.onGround()
+               && !p.onClimbable()
+               && !p.isInWater()
+               && !p.isPassenger()
                && !p.isSprinting()
             ? 1.5F
             : 1.0F;
@@ -2120,7 +2119,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   private void breakWard(ServerWorld level) {
+   private void breakWard(ServerLevel level) {
       this.ward = 0.0F;
       this.wardMax = 0.0F;
       this.wardTicks = 0;
@@ -2135,51 +2134,51 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   public boolean isInvulnerableTo(ServerWorld world, DamageSource source) {
-      return source.isOf(DamageTypes.IN_WALL) || source.isOf(DamageTypes.DROWN) || source.isOf(DamageTypes.FALL) || super.isInvulnerableTo(world, source);
+   public boolean isInvulnerableTo(ServerLevel world, DamageSource source) {
+      return source.is(DamageTypes.IN_WALL) || source.is(DamageTypes.DROWN) || source.is(DamageTypes.FALL) || super.isInvulnerableTo(world, source);
    }
 
-   public void onDeath(DamageSource damageSource) {
-      super.onDeath(damageSource);
-      if (this.getEntityWorld() instanceof ServerWorld level) {
+   public void die(DamageSource damageSource) {
+      super.die(damageSource);
+      if (this.level() instanceof ServerLevel level) {
          this.interrupt(level);
       }
 
       this.current = null;
       this.currentKind = 0;
-      this.dataTracker.set(ACTION, -1);
+      this.entityData.set(ACTION, -1);
       this.stopMobility();
       this.dodgeFrames = 0;
       this.setState(19, false);
       this.stopTriggeredAnim("action", null);
-      this.bar.setPercent(0.0F);
+      this.bar.setProgress(0.0F);
    }
 
-   protected void drop(ServerWorld world, DamageSource damageSource) {
+   protected void dropAllDeathLoot(ServerLevel world, DamageSource damageSource) {
       this.deathSource = damageSource;
-      this.playerKill = this.playerHitTimer > 0;
+      this.playerKill = this.lastHurtByPlayerMemoryTime > 0;
    }
 
-   protected void updatePostDeath() {
+   protected void tickDeath() {
       this.deathTime++;
-      if (this.getEntityWorld() instanceof ServerWorld level) {
+      if (this.level() instanceof ServerLevel level) {
          this.syncState(level);
          if (this.playerKill) {
-            this.playerHitTimer = 100;
+            this.lastHurtByPlayerMemoryTime = 100;
          }
 
          this.onDeathTick(level, this.deathTime);
          if (this.deathTime >= this.deathTicks() && !this.isRemoved()) {
             if (this.deathSource != null) {
-               super.drop(level, this.deathSource);
+               super.dropAllDeathLoot(level, this.deathSource);
             }
 
             if (this.isBoss()) {
-               Vfx.explosion(level, this.getEntityPos().add(0.0, this.getHeight() * 0.5, 0.0), this.palette(), 4.5);
+               Vfx.explosion(level, this.position().add(0.0, this.getBbHeight() * 0.5, 0.0), this.palette(), 4.5);
             }
 
-            this.bar.clearPlayers();
-            level.sendEntityStatus(this, (byte)60);
+            this.bar.removeAllPlayers();
+            level.broadcastEntityEvent(this, (byte)60);
             this.remove(RemovalReason.KILLED);
          }
       }
@@ -2188,16 +2187,16 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    @Override
    public void remove(RemovalReason reason) {
       if (this.bar != null) {
-         this.bar.clearPlayers();
+         this.bar.removeAllPlayers();
       }
       super.remove(reason);
    }
 
-   public boolean canImmediatelyDespawn(double distanceSquared) {
-      return !this.isBoss() && super.canImmediatelyDespawn(distanceSquared);
+   public boolean removeWhenFarAway(double distanceSquared) {
+      return !this.isBoss() && super.removeWhenFarAway(distanceSquared);
    }
 
-   public boolean handleFallDamage(double fallDistance, float damagePerDistance, DamageSource damageSource) {
+   public boolean causeFallDamage(double fallDistance, float damagePerDistance, DamageSource damageSource) {
       return false;
    }
 
@@ -2207,12 +2206,12 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       }
    }
 
-   protected boolean canStartRiding(Entity entity) {
+   protected boolean canRide(Entity entity) {
       return false;
    }
 
-   protected void writeCustomData(WriteView view) {
-      super.writeCustomData(view);
+   protected void addAdditionalSaveData(ValueOutput view) {
+      super.addAdditionalSaveData(view);
       view.putInt("BossPhase", this.phase());
       if (this.home != null) {
          view.putLong("BossHome", this.home.asLong());
@@ -2227,37 +2226,37 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          view.putBoolean("BossDesperate", this.desperate);
          view.putInt("BossCombat", this.combatTicks);
          view.putInt("BossLastPhase", this.lastPhaseTicks);
-         view.putInt("BossIntro", (Integer)this.dataTracker.get(INTRO));
+         view.putInt("BossIntro", (Integer)this.entityData.get(INTRO));
       }
    }
 
-   protected void readCustomData(ReadView view) {
-      super.readCustomData(view);
-      this.dataTracker.set(PHASE, view.getInt("BossPhase", 0));
-      long home = view.getLong("BossHome", Long.MIN_VALUE);
-      this.home = home == Long.MIN_VALUE ? null : BlockPos.fromLong(home);
+   protected void readAdditionalSaveData(ValueInput view) {
+      super.readAdditionalSaveData(view);
+      this.entityData.set(PHASE, view.getIntOr("BossPhase", 0));
+      long home = view.getLongOr("BossHome", Long.MIN_VALUE);
+      this.home = home == Long.MIN_VALUE ? null : BlockPos.of(home);
       if (this.hasCustomName()) {
          this.bar.setName(this.getDisplayName());
       }
 
       this.setNoGravity(this.hovers());
       if (this.isBoss()) {
-         this.setState(4, view.getBoolean("BossEnraged", false));
-         float p = view.getFloat("BossPoise", -1.0F);
+         this.setState(4, view.getBooleanOr("BossEnraged", false));
+         float p = view.getFloatOr("BossPoise", -1.0F);
          this.poise = p <= 0.0F ? -1.0F : p;
-         this.ward = Math.max(0.0F, view.getFloat("BossWard", 0.0F));
-         this.wardMax = Math.max(this.ward, view.getFloat("BossWardMax", 0.0F));
-         this.wardTicks = view.getInt("BossWardTicks", 0);
+         this.ward = Math.max(0.0F, view.getFloatOr("BossWard", 0.0F));
+         this.wardMax = Math.max(this.ward, view.getFloatOr("BossWardMax", 0.0F));
+         this.wardTicks = view.getIntOr("BossWardTicks", 0);
          if (this.wardTicks <= 0) {
             this.ward = 0.0F;
             this.wardMax = 0.0F;
          }
 
          this.setState(8, this.ward > 0.0F);
-         this.desperate = view.getBoolean("BossDesperate", false);
-         this.combatTicks = view.getInt("BossCombat", 0);
-         this.lastPhaseTicks = view.getInt("BossLastPhase", 0);
-         this.dataTracker.set(INTRO, MathHelper.clamp(view.getInt("BossIntro", 0), 0, this.introTicks()));
+         this.desperate = view.getBooleanOr("BossDesperate", false);
+         this.combatTicks = view.getIntOr("BossCombat", 0);
+         this.lastPhaseTicks = view.getIntOr("BossLastPhase", 0);
+         this.entityData.set(INTRO, Mth.clamp(view.getIntOr("BossIntro", 0), 0, this.introTicks()));
       }
    }
 
@@ -2312,7 +2311,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       StringBuilder th = new StringBuilder("threat:");
 
       for (Entry<UUID, Float> e : this.threat.view().entrySet()) {
-         PlayerEntity p = this.getEntityWorld().getPlayerByUuid(e.getKey());
+         Player p = this.level().getPlayerByUUID(e.getKey());
          th.append(' ')
             .append(p == null ? e.getKey().toString().substring(0, 8) : p.getName().getString())
             .append('=')
@@ -2338,7 +2337,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
 
    public void tick() {
       MysticalBoss.DebugGuard guard = debugGuard;
-      if (guard != null && !this.getEntityWorld().isClient()) {
+      if (guard != null && !this.level().isClientSide()) {
          String before = this.currentAction();
 
          try {
@@ -2346,7 +2345,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
          } catch (RuntimeException | LinkageError e) {
             String now = this.currentAction();
             guard.failed(this, now.equals("-") ? before : now, e);
-            if (this.getEntityWorld() instanceof ServerWorld level) {
+            if (this.level() instanceof ServerLevel level) {
                try {
                   this.cancelMove(level, 20);
                } catch (RuntimeException | LinkageError var7) {
@@ -2360,17 +2359,17 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
 
    public void debugSkipIntro() {
       if (this.inIntro()) {
-         this.dataTracker.set(INTRO, 1);
+         this.entityData.set(INTRO, 1);
       }
    }
 
    public int debugSetPhase(int n) {
-      if (this.getEntityWorld() instanceof ServerWorld level && !this.isDead() && !this.inIntro()) {
+      if (this.level() instanceof ServerLevel level && !this.isDeadOrDying() && !this.inIntro()) {
          float[] t = this.thresholds();
-         int target = MathHelper.clamp(n, 0, t.length);
+         int target = Mth.clamp(n, 0, t.length);
          if (target < this.phase()) {
             this.interrupt(level);
-            this.dataTracker.set(PHASE, target);
+            this.entityData.set(PHASE, target);
             this.setHealth(target == 0 ? this.getMaxHealth() : Math.max(1.0F, this.getMaxHealth() * (t[target - 1] - 0.02F)));
             return target;
          }
@@ -2389,7 +2388,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
    }
 
    public boolean debugCast(String anim) {
-      if (this.getEntityWorld() instanceof ServerWorld level && !this.isDead() && !this.inIntro()) {
+      if (this.level() instanceof ServerLevel level && !this.isDeadOrDying() && !this.inIntro()) {
          int i = this.indexOf(anim);
          if (i >= 0) {
             this.choose(level, i, this.getTarget());
@@ -2466,7 +2465,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
       RawAnimation death = this.holdAnim("death");
       RawAnimation summon = this.holdAnim("summon");
       controllers.add(new AnimationController("main", 8, test -> {
-         if (this.isDead()) {
+         if (this.isDeadOrDying()) {
             return test.setAndContinue(death);
          }
 
@@ -2474,7 +2473,7 @@ public abstract class MysticalBoss extends HostileEntity implements GeoEntity {
             return test.setAndContinue(summon);
          }
 
-         boolean moving = test.isMoving() || this.hovers() && this.getVelocity().horizontalLengthSquared() > 0.002;
+         boolean moving = test.isMoving() || this.hovers() && this.getDeltaMovement().horizontalDistanceSqr() > 0.002;
          return test.setAndContinue(this.loopAnim(moving ? this.moveAnim() : this.idleAnim()));
       }));
       AnimationController<MysticalBoss> action = new AnimationController("action", 2, test -> PlayState.STOP);

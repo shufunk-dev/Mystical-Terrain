@@ -7,11 +7,12 @@ import com.vexira.mysticalterrain.tree.Growth;
 import com.vexira.mysticalterrain.tree.TreeParams;
 import com.vexira.mysticalterrain.tree.TreeStyle;
 import java.util.Locale;
-import net.minecraft.util.math.floatprovider.FloatProvider;
-import net.minecraft.util.math.intprovider.ConstantIntProvider;
-import net.minecraft.util.math.intprovider.IntProvider;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.gen.feature.FeatureConfig;
+import net.minecraft.util.RandomSource;
+import net.minecraft.util.valueproviders.ConstantInt;
+import net.minecraft.util.valueproviders.FloatProvider;
+import net.minecraft.util.valueproviders.FloatProviders;
+import net.minecraft.util.valueproviders.IntProvider;
+import net.minecraft.util.valueproviders.IntProviders;
 
 public record GrandTreeConfiguration(
     TreeStyle style,
@@ -30,7 +31,7 @@ public record GrandTreeConfiguration(
     boolean aquatic,
     TreeBlocks blocks,
     Growth growth
-) implements FeatureConfig {
+) {
     private static final Codec<TreeStyle> STYLE = Codec.STRING.comapFlatMap(name -> {
         try {
             return DataResult.success(TreeStyle.valueOf(name.toUpperCase(Locale.ROOT)));
@@ -64,16 +65,16 @@ public record GrandTreeConfiguration(
     public static final Codec<GrandTreeConfiguration> CODEC = RecordCodecBuilder.create(
         instance -> instance.group(
             STYLE.fieldOf("style").forGetter(GrandTreeConfiguration::style),
-            IntProvider.createValidatingCodec(4, 256).fieldOf("height").forGetter(GrandTreeConfiguration::height),
-            FloatProvider.createValidatedCodec(0.5F, 24.0F).fieldOf("trunk_radius").forGetter(GrandTreeConfiguration::trunkRadius),
-            FloatProvider.createValidatedCodec(1.0F, 100.0F).fieldOf("crown").forGetter(GrandTreeConfiguration::crown),
+            IntProviders.codec(4, 256).fieldOf("height").forGetter(GrandTreeConfiguration::height),
+            FloatProviders.codec(0.5F, 24.0F).fieldOf("trunk_radius").forGetter(GrandTreeConfiguration::trunkRadius),
+            FloatProviders.codec(1.0F, 100.0F).fieldOf("crown").forGetter(GrandTreeConfiguration::crown),
             Codec.floatRange(0.0F, 1.5F).optionalFieldOf("lean", 0.1F).forGetter(GrandTreeConfiguration::lean),
             Codec.floatRange(0.0F, 1.5F).optionalFieldOf("gnarl", 0.35F).forGetter(GrandTreeConfiguration::gnarl),
             Codec.floatRange(0.0F, 2.0F).optionalFieldOf("droop", 0.0F).forGetter(GrandTreeConfiguration::droop),
             Codec.floatRange(0.0F, 1.0F).optionalFieldOf("shape", 0.5F).forGetter(GrandTreeConfiguration::shape),
             Codec.floatRange(0.1F, 1.0F).optionalFieldOf("density", 0.85F).forGetter(GrandTreeConfiguration::density),
-            IntProvider.createValidatingCodec(-1, 32).optionalFieldOf("roots", ConstantIntProvider.create(-1)).forGetter(GrandTreeConfiguration::roots),
-            IntProvider.createValidatingCodec(-1, 32).optionalFieldOf("branches", ConstantIntProvider.create(-1)).forGetter(GrandTreeConfiguration::branches),
+            IntProviders.codec(-1, 32).optionalFieldOf("roots", ConstantInt.of(-1)).forGetter(GrandTreeConfiguration::roots),
+            IntProviders.codec(-1, 32).optionalFieldOf("branches", ConstantInt.of(-1)).forGetter(GrandTreeConfiguration::branches),
             Codec.intRange(0, 32).optionalFieldOf("veins", 0).forGetter(GrandTreeConfiguration::veins),
             Codec.intRange(4, 120).optionalFieldOf("reach", 14).forGetter(GrandTreeConfiguration::reach),
             Codec.BOOL.optionalFieldOf("aquatic", false).forGetter(GrandTreeConfiguration::aquatic),
@@ -82,16 +83,16 @@ public record GrandTreeConfiguration(
         ).apply(instance, GrandTreeConfiguration::new)
     );
 
-    public TreeParams sample(Random random, int reach, int ceiling) {
+    public TreeParams sample(RandomSource random, int reach, int ceiling) {
         return new TreeParams(
             this.style,
-            this.height.get(random),
-            this.trunkRadius.get(random),
-            this.crown.get(random),
+            this.height.sample(random),
+            this.trunkRadius.sample(random),
+            this.crown.sample(random),
             this.lean,
             this.gnarl,
-            this.roots.get(random),
-            this.branches.get(random),
+            this.roots.sample(random),
+            this.branches.sample(random),
             this.droop,
             this.shape,
             this.density,

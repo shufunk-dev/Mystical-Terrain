@@ -7,8 +7,8 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.LivingEntity;
 import org.jspecify.annotations.Nullable;
 
 public final class BossAction {
@@ -241,7 +241,7 @@ public final class BossAction {
 
    @FunctionalInterface
    public interface Hit {
-      void hit(MysticalBoss var1, ServerWorld var2, @Nullable LivingEntity var3, int var4);
+      void hit(MysticalBoss var1, ServerLevel var2, @Nullable LivingEntity var3, int var4);
    }
 
    public enum Tag {
@@ -261,7 +261,7 @@ public final class BossAction {
 
    @FunctionalInterface
    public interface Tick {
-      void tick(MysticalBoss var1, ServerWorld var2, @Nullable LivingEntity var3, int var4);
+      void tick(MysticalBoss var1, ServerLevel var2, @Nullable LivingEntity var3, int var4);
    }
 
    @FunctionalInterface

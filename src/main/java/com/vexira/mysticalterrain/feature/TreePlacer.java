@@ -7,41 +7,40 @@ import com.vexira.mysticalterrain.tree.Tree;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import net.minecraft.block.AbstractPlantStemBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.CaveVines;
-import net.minecraft.block.CaveVinesBodyBlock;
-import net.minecraft.block.CaveVinesHeadBlock;
-import net.minecraft.block.LeavesBlock;
-import net.minecraft.block.PillarBlock;
-import net.minecraft.block.VineBlock;
-import net.minecraft.registry.tag.BlockTags;
-import net.minecraft.registry.tag.FluidTags;
-import net.minecraft.state.property.Properties;
-import net.minecraft.util.math.BlockBox;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.StructureWorldAccess;
-import net.minecraft.world.gen.stateprovider.BlockStateProvider;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CaveVinesBlock;
+import net.minecraft.world.level.block.CaveVinesPlantBlock;
+import net.minecraft.world.level.block.GrowingPlantHeadBlock;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.RotatedPillarBlock;
+import net.minecraft.world.level.block.VineBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.levelgen.feature.stateproviders.BlockStateProvider;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 public final class TreePlacer implements Sink {
     private static final Direction.Axis[] AXES = new Direction.Axis[]{Direction.Axis.X, Direction.Axis.Y, Direction.Axis.Z};
-    private final StructureWorldAccess level;
+    private final WorldGenLevel level;
     private final TreeBlocks blocks;
     private final BlockPos base;
     private final long seed;
-    private final BlockBox box;
+    private final BoundingBox box;
     private final double foot;
     private final Map<Long, Integer> grounds = new HashMap<>();
-    private final Random random = Random.create();
-    private final BlockPos.Mutable pos = new BlockPos.Mutable();
+    private final RandomSource random = RandomSource.create();
+    private final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
     private long[] leaves = new long[512];
     private int leafCount;
 
-    private TreePlacer(StructureWorldAccess level, TreeBlocks blocks, BlockPos base, long seed, BlockBox box, double foot) {
+    private TreePlacer(WorldGenLevel level, TreeBlocks blocks, BlockPos base, long seed, BoundingBox box, double foot) {
         this.level = level;
         this.blocks = blocks;
         this.base = base;
@@ -50,15 +49,15 @@ public final class TreePlacer implements Sink {
         this.foot = foot;
     }
 
-    public static void place(StructureWorldAccess level, GrandTreeConfiguration config, Tree tree, BlockPos base, long seed, BlockBox box) {
+    public static void place(WorldGenLevel level, GrandTreeConfiguration config, Tree tree, BlockPos base, long seed, BoundingBox box) {
         TreePlacer placer = new TreePlacer(level, config.blocks(), base, seed, box, tree.foot());
         tree.rasterize(
-            box.getMinX() - base.getX(),
-            box.getMinY() - base.getY(),
-            box.getMinZ() - base.getZ(),
-            box.getMaxX() - base.getX(),
-            box.getMaxY() - base.getY(),
-            box.getMaxZ() - base.getZ(),
+            box.minX() - base.getX(),
+            box.minY() - base.getY(),
+            box.minZ() - base.getZ(),
+            box.maxX() - base.getX(),
+            box.maxY() - base.getY(),
+            box.maxZ() - base.getZ(),
             placer
         );
         placer.hang();
@@ -76,17 +75,17 @@ public final class TreePlacer implements Sink {
         }
 
         this.pos.set(this.base.getX() + x, this.base.getY() + y, this.base.getZ() + z);
-        if (!this.level.isOutOfHeightLimit(this.pos)) {
+        if (!this.level.isOutsideBuildHeight(this.pos)) {
             BlockState current = this.level.getBlockState(this.pos);
             switch (part) {
                 case ROOT:
                 case TRUNK:
                 case BRANCH:
                     boolean buried = part == Part.ROOT || (part == Part.TRUNK && y <= 1);
-                    if (isSoft(current) || current.isIn(BlockTags.LOGS) || (buried && current.isIn(BlockTags.BASE_STONE_OVERWORLD))) {
+                    if (isSoft(current) || current.is(BlockTags.LOGS) || (buried && current.is(BlockTags.BASE_STONE_OVERWORLD))) {
                         BlockState state = this.wood(part);
-                        if (state.contains(PillarBlock.AXIS)) {
-                            state = state.with(PillarBlock.AXIS, AXES[axis]);
+                        if (state.hasProperty(RotatedPillarBlock.AXIS)) {
+                            state = state.setValue(RotatedPillarBlock.AXIS, AXES[axis]);
                         }
                         this.set(state);
                     }
@@ -94,9 +93,9 @@ public final class TreePlacer implements Sink {
                 case VEIN:
                     if (this.blocks.vein().isPresent()
                         && !current.isAir()
-                        && (current.isOf(this.wood(Part.TRUNK).getBlock())
-                            || current.isOf(this.wood(Part.ROOT).getBlock())
-                            || current.isOf(this.wood(Part.BRANCH).getBlock()))) {
+                        && (current.is(this.wood(Part.TRUNK).getBlock())
+                            || current.is(this.wood(Part.ROOT).getBlock())
+                            || current.is(this.wood(Part.BRANCH).getBlock()))) {
                         this.set(this.pick(this.blocks.vein().get()));
                     }
                     break;
@@ -129,7 +128,7 @@ public final class TreePlacer implements Sink {
     }
 
     private int scan(int x, int z) {
-        BlockPos.Mutable at = new BlockPos.Mutable(x, this.base.getY() + 8, z);
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos(x, this.base.getY() + 8, z);
 
         while (at.getY() > this.base.getY() - 17) {
             BlockState state = this.level.getBlockState(at);
@@ -152,21 +151,21 @@ public final class TreePlacer implements Sink {
 
     private BlockState pick(BlockStateProvider provider) {
         this.random.setSeed(Noise.hash(this.seed, this.pos.getX(), this.pos.getY(), this.pos.getZ()));
-        return provider.get(this.random, this.pos);
+        return provider.getState(this.level, this.random, this.pos);
     }
 
     private BlockState settle(BlockState state, BlockState current) {
-        if (state.contains(LeavesBlock.PERSISTENT)) {
-            state = state.with(LeavesBlock.PERSISTENT, true);
+        if (state.hasProperty(LeavesBlock.PERSISTENT)) {
+            state = state.setValue(LeavesBlock.PERSISTENT, true);
         }
-        if (state.contains(Properties.WATERLOGGED)) {
-            state = state.with(Properties.WATERLOGGED, current.getFluidState().isIn(FluidTags.WATER) && current.getFluidState().isStill());
+        if (state.hasProperty(BlockStateProperties.WATERLOGGED)) {
+            state = state.setValue(BlockStateProperties.WATERLOGGED, current.getFluidState().is(FluidTags.WATER) && current.getFluidState().isSource());
         }
         return state;
     }
 
     private void set(BlockState state) {
-        this.level.setBlockState(this.pos, state, Block.NOTIFY_LISTENERS);
+        this.level.setBlock(this.pos, state, Block.UPDATE_CLIENTS);
     }
 
     private void remember(BlockPos leaf) {
@@ -182,12 +181,12 @@ public final class TreePlacer implements Sink {
                 this.pos.set(this.leaves[i]);
                 if (Noise.unit(this.seed + 7L, this.pos.getX(), this.pos.getY(), this.pos.getZ()) < this.blocks.hangingChance()) {
                     BlockState state = this.pick(this.blocks.hanging().get());
-                    int length = this.blocks.hangingLength().get(this.random);
-                    if (state.isOf(Blocks.VINE)) {
-                        Direction side = Direction.fromHorizontalQuarterTurns((int)(Noise.hash(this.seed + 8L, this.pos.getX(), this.pos.getY(), this.pos.getZ()) & 3L));
-                        this.chain(this.pos.offset(side), state.with(VineBlock.getFacingProperty(side.getOpposite()), true), length);
+                    int length = this.blocks.hangingLength().sample(this.random);
+                    if (state.is(Blocks.VINE)) {
+                        Direction side = Direction.from2DDataValue((int)(Noise.hash(this.seed + 8L, this.pos.getX(), this.pos.getY(), this.pos.getZ()) & 3L));
+                        this.chain(this.pos.relative(side), state.setValue(VineBlock.getPropertyForFace(side.getOpposite()), true), length);
                     } else {
-                        this.chain(this.pos.down(), state, length);
+                        this.chain(this.pos.below(), state, length);
                     }
                 }
             }
@@ -195,45 +194,45 @@ public final class TreePlacer implements Sink {
     }
 
     private void chain(BlockPos start, BlockState state, int length) {
-        BlockPos.Mutable at = start.mutableCopy();
+        BlockPos.MutableBlockPos at = start.mutable();
         int n = 0;
 
-        while (n < length && this.box.contains(at) && this.level.isAir(at)) {
+        while (n < length && this.box.isInside(at) && this.level.isEmptyBlock(at)) {
             n++;
             at.move(Direction.DOWN);
         }
 
-        if (n != 0 && (n == 1 ? tip(state) : body(state)).canPlaceAt(this.level, start)) {
+        if (n != 0 && (n == 1 ? tip(state) : body(state)).canSurvive(this.level, start)) {
             at.set(start);
 
             for (int i = 0; i < n; i++) {
-                this.level.setBlockState(at, i == n - 1 ? tip(state) : body(state), Block.NOTIFY_LISTENERS);
+                this.level.setBlock(at, i == n - 1 ? tip(state) : body(state), Block.UPDATE_CLIENTS);
                 at.move(Direction.DOWN);
             }
         }
     }
 
     private static BlockState body(BlockState state) {
-        if (state.isOf(Blocks.CAVE_VINES)) {
-            return Blocks.CAVE_VINES_PLANT.getDefaultState().with(CaveVinesBodyBlock.BERRIES, state.get(CaveVinesHeadBlock.BERRIES));
-        } else if (state.isOf(Blocks.WEEPING_VINES)) {
-            return Blocks.WEEPING_VINES_PLANT.getDefaultState();
+        if (state.is(Blocks.CAVE_VINES)) {
+            return Blocks.CAVE_VINES_PLANT.defaultBlockState().setValue(CaveVinesPlantBlock.BERRIES, state.getValue(CaveVinesBlock.BERRIES));
+        } else if (state.is(Blocks.WEEPING_VINES)) {
+            return Blocks.WEEPING_VINES_PLANT.defaultBlockState();
         } else {
-            return state.contains(AbstractPlantStemBlock.AGE) ? state.with(AbstractPlantStemBlock.AGE, 0) : state;
+            return state.hasProperty(GrowingPlantHeadBlock.AGE) ? state.setValue(GrowingPlantHeadBlock.AGE, 0) : state;
         }
     }
 
     private static BlockState tip(BlockState state) {
-        return state.contains(AbstractPlantStemBlock.AGE) ? state.with(AbstractPlantStemBlock.AGE, 25) : state;
+        return state.hasProperty(GrowingPlantHeadBlock.AGE) ? state.setValue(GrowingPlantHeadBlock.AGE, 25) : state;
     }
 
     private void cover(Tree tree) {
         if (this.blocks.cover().isPresent()) {
             int reach = tree.reach();
-            int x0 = Math.max(this.box.getMinX(), this.base.getX() - reach);
-            int x1 = Math.min(this.box.getMaxX(), this.base.getX() + reach);
-            int z0 = Math.max(this.box.getMinZ(), this.base.getZ() - reach);
-            int z1 = Math.min(this.box.getMaxZ(), this.base.getZ() + reach);
+            int x0 = Math.max(this.box.minX(), this.base.getX() - reach);
+            int x1 = Math.min(this.box.maxX(), this.base.getX() + reach);
+            int z0 = Math.max(this.box.minZ(), this.base.getZ() - reach);
+            int z1 = Math.min(this.box.maxZ(), this.base.getZ() + reach);
             double limit = reach * 0.85;
 
             for (int x = x0; x <= x1; x++) {
@@ -247,9 +246,9 @@ public final class TreePlacer implements Sink {
                             if (!isSoft(ground)) {
                                 this.pos.set(x, y, z);
                                 BlockState here = this.level.getBlockState(this.pos);
-                                if (here.isAir() && !ground.isIn(BlockTags.LOGS)) {
+                                if (here.isAir() && !ground.is(BlockTags.LOGS)) {
                                     BlockState state = this.pick(this.blocks.cover().get());
-                                    if (state.canPlaceAt(this.level, this.pos)) {
+                                    if (state.canSurvive(this.level, this.pos)) {
                                         this.set(state);
                                     }
                                 }
@@ -263,23 +262,23 @@ public final class TreePlacer implements Sink {
     }
 
     static boolean isTree(BlockState state) {
-        return state.isIn(BlockTags.LOGS)
-            || state.isIn(BlockTags.LEAVES)
-            || state.isOf(Blocks.BROWN_MUSHROOM_BLOCK)
-            || state.isOf(Blocks.RED_MUSHROOM_BLOCK)
-            || state.isOf(Blocks.MUSHROOM_STEM)
-            || state.isOf(Blocks.SHROOMLIGHT);
+        return state.is(BlockTags.LOGS)
+            || state.is(BlockTags.LEAVES)
+            || state.is(Blocks.BROWN_MUSHROOM_BLOCK)
+            || state.is(Blocks.RED_MUSHROOM_BLOCK)
+            || state.is(Blocks.MUSHROOM_STEM)
+            || state.is(Blocks.SHROOMLIGHT);
     }
 
     private static boolean isSoft(BlockState state) {
         return state.isAir()
-            || state.isIn(BlockTags.REPLACEABLE_BY_TREES)
-            || state.isIn(BlockTags.LEAVES)
-            || state.isIn(BlockTags.FLOWERS)
-            || state.isIn(BlockTags.DIRT)
-            || state.isOf(Blocks.BROWN_MUSHROOM_BLOCK)
-            || state.isOf(Blocks.RED_MUSHROOM_BLOCK)
-            || state.isOf(Blocks.MUSHROOM_STEM)
-            || state.isOf(Blocks.SHROOMLIGHT);
+            || state.is(BlockTags.REPLACEABLE_BY_TREES)
+            || state.is(BlockTags.LEAVES)
+            || state.is(BlockTags.FLOWERS)
+            || state.is(BlockTags.DIRT)
+            || state.is(Blocks.BROWN_MUSHROOM_BLOCK)
+            || state.is(Blocks.RED_MUSHROOM_BLOCK)
+            || state.is(Blocks.MUSHROOM_STEM)
+            || state.is(Blocks.SHROOMLIGHT);
     }
 }

@@ -12,8 +12,8 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.EndTick;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.minecraft.client.Minecraft;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.Disconnect;
-import net.minecraft.client.MinecraftClient;
 import org.jspecify.annotations.Nullable;
 
 @Environment(EnvType.CLIENT)
@@ -35,7 +35,7 @@ public final class BossBarState {
    }
 
    public static float now() {
-      return ticks + MinecraftClient.getInstance().getRenderTickCounter().getTickProgress(true);
+      return ticks + Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true);
    }
 
    public static BarAnim bar(UUID id) {

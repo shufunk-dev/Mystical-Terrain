@@ -5,25 +5,24 @@ import com.vexira.mysticalterrain.boss.vfx.VfxOptions;
 import com.vexira.mysticalterrain.boss.vfx.VfxParticles;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.particle.BillboardParticle;
-import net.minecraft.client.particle.BillboardParticleSubmittable;
-import net.minecraft.client.particle.ParticleTextureSheet;
-import net.minecraft.client.particle.SpriteProvider;
-import net.minecraft.client.particle.BillboardParticle.RenderType;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.Frustum;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ColorHelper;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Camera;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.particle.SingleQuadParticle;
+import net.minecraft.client.particle.SpriteSet;
+import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.state.level.QuadParticleRenderState;
+import net.minecraft.util.ARGB;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 @Environment(EnvType.CLIENT)
-public class VfxParticle extends BillboardParticle {
-   public static final ParticleTextureSheet GROUP = new ParticleTextureSheet("mysticalterrain:vfx");
+public class VfxParticle extends SingleQuadParticle {
+   public static final ParticleRenderType GROUP = new ParticleRenderType("mysticalterrain:vfx", "mt_vfx");
    private static final int LEGACY = 8;
    private static final int K_FLARE = 8;
    private static final int K_SLASH = 9;
@@ -40,7 +39,7 @@ public class VfxParticle extends BillboardParticle {
    private static final int F_SHOCK = 15;
    private static final int F_SCORCH = 16;
    private final VfxParticles.Kind kind;
-   private final SpriteProvider sprites;
+   private final SpriteSet sprites;
    private final int mode;
    private final int curve;
    private final int fade;
@@ -76,9 +75,9 @@ public class VfxParticle extends BillboardParticle {
    private final Quaternionf q = new Quaternionf();
 
    public VfxParticle(
-      ClientWorld level, double x, double y, double z, double dx, double dy, double dz, VfxOptions o, VfxParticles.Kind kind, SpriteProvider sprites
+      ClientLevel level, double x, double y, double z, double dx, double dy, double dz, VfxOptions o, VfxParticles.Kind kind, SpriteSet sprites
    ) {
-      super(level, x, y, z, sprites.getFirst());
+      super(level, x, y, z, sprites.first());
       this.kind = kind;
       this.sprites = sprites;
       this.mode = o.mode() == 0 ? autoMode(kind) : o.mode();
@@ -86,9 +85,9 @@ public class VfxParticle extends BillboardParticle {
       this.fade = o.fade() == 0 ? kindFade(kind) : o.fade();
       this.delay = Math.max(0, o.delay());
       this.life = Math.max(2, o.life());
-      this.maxAge = this.delay + this.life;
+      this.lifetime = this.delay + this.life;
       this.half = Math.max(0.005F, o.scale() * 0.5F);
-      this.scale = this.half;
+      this.quadSize = this.half;
       this.yawDeg = o.yaw();
       this.pitchDeg = o.pitch();
       this.phase = this.random.nextFloat() * (float) (Math.PI * 2);
@@ -106,15 +105,15 @@ public class VfxParticle extends BillboardParticle {
          this.sx = dx;
          this.sy = dy;
          this.sz = dz;
-         this.velocityX = this.velocityY = this.velocityZ = 0.0;
+         this.xd = this.yd = this.zd = 0.0;
       } else {
          this.sx = this.sy = this.sz = 0.0;
-         this.velocityX = dx;
-         this.velocityY = dy;
-         this.velocityZ = dz;
+         this.xd = dx;
+         this.yd = dy;
+         this.zd = dz;
       }
 
-      this.collidesWithWorld = this.mode != 6 && (o.has(512) || o.mode() == 0 && (kind == VfxParticles.Kind.SHARD || kind == VfxParticles.Kind.SPARK));
+      this.hasPhysics = this.mode != 6 && (o.has(512) || o.mode() == 0 && (kind == VfxParticles.Kind.SHARD || kind == VfxParticles.Kind.SPARK));
       float var10001;
       if (Float.isNaN(o.gravity())) {
          switch (kind) {
@@ -140,7 +139,7 @@ public class VfxParticle extends BillboardParticle {
          var10001 = o.gravity();
       }
 
-      this.gravityStrength = var10001;
+      this.gravity = var10001;
       if (Float.isNaN(o.drag())) {
          switch (kind) {
             case SPARK:
@@ -163,7 +162,7 @@ public class VfxParticle extends BillboardParticle {
          var10001 = o.drag();
       }
 
-      this.velocityMultiplier = var10001;
+      this.friction = var10001;
       float s = o.spin();
       if (s == 0.0F) {
          s = switch (kind) {
@@ -182,14 +181,14 @@ public class VfxParticle extends BillboardParticle {
       float startRoll = o.roll();
       if (this.mode == 4) {
          this.planeRoll = Float.isNaN(startRoll) ? 0.0F : startRoll;
-         this.zRotation = 0.0F;
+         this.roll = 0.0F;
       } else {
          this.planeRoll = 0.0F;
          boolean anyAngle = this.mode == 1 || this.mode == 2;
-         this.zRotation = Float.isNaN(startRoll) ? (anyAngle ? this.random.nextFloat() * (float) (Math.PI * 2) : 0.0F) : startRoll * (float) (Math.PI / 180.0);
+         this.roll = Float.isNaN(startRoll) ? (anyAngle ? this.random.nextFloat() * (float) (Math.PI * 2) : 0.0F) : startRoll * (float) (Math.PI / 180.0);
       }
 
-      this.lastZRotation = this.zRotation;
+      this.oRoll = this.roll;
       this.additive = kind.glow && VfxLayers.additiveUsable();
       this.soft = (kind == VfxParticles.Kind.SMOKE || kind == VfxParticles.Kind.SCORCH) && VfxLayers.softUsable();
       this.tumble = kind == VfxParticles.Kind.SHARD ? (0.18F + this.random.nextFloat() * 0.3F) * (this.random.nextBoolean() ? 1 : -1) : 0.0F;
@@ -198,11 +197,11 @@ public class VfxParticle extends BillboardParticle {
       this.variant = kind == VfxParticles.Kind.SMOKE ? 0 : v;
       this.flutter = kind == VfxParticles.Kind.DEBRIS && this.variant != Vfx.Debris.BONE.ordinal();
       if (kind == VfxParticles.Kind.SMOKE) {
-         this.setSprite(sprites.getSprite(0, this.life));
+         this.setSprite(sprites.get(0, this.life));
       } else {
          int count = kind.glow ? kind.variants * 2 : kind.variants;
          int idx = kind.glow && !this.additive ? this.variant + kind.variants : this.variant;
-         this.setSprite(count <= 1 ? sprites.getFirst() : sprites.getSprite(idx, count - 1));
+         this.setSprite(count <= 1 ? sprites.first() : sprites.get(idx, count - 1));
       }
    }
 
@@ -260,39 +259,39 @@ public class VfxParticle extends BillboardParticle {
    public void tick() {
       if (this.age < this.delay) {
          this.age++;
-         this.lastX = this.x;
-         this.lastY = this.y;
-         this.lastZ = this.z;
-         this.lastZRotation = this.zRotation;
+         this.xo = this.x;
+         this.yo = this.y;
+         this.zo = this.z;
+         this.oRoll = this.roll;
          this.oTurn = this.turn;
       } else {
          if (this.curl != 0.0F) {
-            float c = MathHelper.cos(this.curl);
-            float s = MathHelper.sin(this.curl);
-            double nx = this.velocityX * c - this.velocityZ * s;
-            this.velocityZ = this.velocityX * s + this.velocityZ * c;
-            this.velocityX = nx;
+            float c = Mth.cos(this.curl);
+            float s = Mth.sin(this.curl);
+            double nx = this.xd * c - this.zd * s;
+            this.zd = this.xd * s + this.zd * c;
+            this.xd = nx;
          }
 
          if (this.flutter && !this.onGround) {
-            this.velocityX = this.velocityX + MathHelper.sin(this.age * 0.25F + this.phase) * 0.004F;
-            this.velocityZ = this.velocityZ + MathHelper.cos(this.age * 0.21F + this.phase) * 0.004F;
+            this.xd = this.xd + Mth.sin(this.age * 0.25F + this.phase) * 0.004F;
+            this.zd = this.zd + Mth.cos(this.age * 0.21F + this.phase) * 0.004F;
          }
 
-         this.lastZRotation = this.zRotation;
+         this.oRoll = this.roll;
          this.oTurn = this.turn;
          super.tick();
          if (this.kind != VfxParticles.Kind.SHARD || !this.onGround) {
-            this.zRotation = this.zRotation + this.spin;
+            this.roll = this.roll + this.spin;
             this.turn = this.turn + this.tumble;
          }
 
          if (this.flutter && !this.onGround) {
-            this.zRotation = this.zRotation + MathHelper.sin(this.age * 0.3F + this.phase) * 0.06F;
+            this.roll = this.roll + Mth.sin(this.age * 0.3F + this.phase) * 0.06F;
          }
 
-         if (this.kind == VfxParticles.Kind.SMOKE && !this.dead) {
-            this.setSprite(this.sprites.getSprite(Math.min(this.age - this.delay, this.life), this.life));
+         if (this.kind == VfxParticles.Kind.SMOKE && !this.removed) {
+            this.setSprite(this.sprites.get(Math.min(this.age - this.delay, this.life), this.life));
          }
       }
    }
@@ -301,7 +300,7 @@ public class VfxParticle extends BillboardParticle {
       return switch (this.curve) {
          case 1 -> 0.2F + 0.8F * (1.0F - (1.0F - t) * (1.0F - t));
          case 2 -> 1.0F - t;
-         case 3 -> 1.0F + 0.12F * MathHelper.sin(time * 0.45F + this.phase);
+         case 3 -> 1.0F + 0.12F * Mth.sin(time * 0.45F + this.phase);
          case 4 -> t < 0.12F ? 1.15F * t / 0.12F : 1.15F - 0.15F * Math.min(1.0F, (t - 0.12F) / 0.2F);
          default -> 1.0F;
          case 6 -> 0.15F + 0.85F * (1.0F - (1.0F - t) * (1.0F - t) * (1.0F - t));
@@ -309,7 +308,7 @@ public class VfxParticle extends BillboardParticle {
          case 8 -> 0.55F + 0.45F * Math.min(1.0F, t / 0.15F);
          case 9 -> 0.7F + 0.3F * (1.0F - (1.0F - t) * (1.0F - t));
          case 10 -> 0.7F + 0.8F * t;
-         case 11 -> (float)Math.pow(Math.max(0.0F, MathHelper.sin((float) Math.PI * Math.min(1.0F, t * 1.1F))), 0.7);
+         case 11 -> (float)Math.pow(Math.max(0.0F, Mth.sin((float) Math.PI * Math.min(1.0F, t * 1.1F))), 0.7);
          case 12 -> t < 0.1F ? 0.6F + 0.4F * (1.0F - (1.0F - t / 0.1F) * (1.0F - t / 0.1F)) : 1.0F;
       };
    }
@@ -319,13 +318,13 @@ public class VfxParticle extends BillboardParticle {
          case 1 -> 1.0F - t;
          case 2 -> t < 0.7F ? 1.0F : (1.0F - t) / 0.3F;
          case 3 -> Math.min(1.0F, t / 0.12F) * Math.min(1.0F, (1.0F - t) / 0.3F);
-         case 4 -> (0.55F + 0.45F * MathHelper.sin(time * 2.3F + this.phase) * MathHelper.cos(time * 0.9F)) * MathHelper.sqrt(1.0F - t);
+         case 4 -> (0.55F + 0.45F * Mth.sin(time * 2.3F + this.phase) * Mth.cos(time * 0.9F)) * Mth.sqrt(1.0F - t);
          case 5 -> Math.min(1.0F, t / 0.1F);
          default -> 1.0F;
          case 8 -> (1.0F - t) * (1.0F - t);
          case 9 -> t < 0.15F ? 1.0F : (1.0F - t) / 0.85F;
          case 10 -> 1.0F - t * t;
-         case 11 -> Math.min(1.0F, (1.0F - t) * 1.5F) * (0.65F + 0.35F * MathHelper.sin(time * 0.9F + this.half * 80.0F));
+         case 11 -> Math.min(1.0F, (1.0F - t) * 1.5F) * (0.65F + 0.35F * Mth.sin(time * 0.9F + this.half * 80.0F));
          case 12 -> 0.55F * (1.0F - t) * Math.min(1.0F, t * 6.0F);
          case 13 -> t > 0.8F ? (1.0F - t) / 0.2F : 1.0F;
          case 14 -> 1.0F - t * t * t;
@@ -341,32 +340,32 @@ public class VfxParticle extends BillboardParticle {
 
       double r = this.half * 1.3 + 0.25;
       if (this.mode == 6) {
-         return frustum.isVisible(new Box(this.x, this.y, this.z, this.x + this.sx, this.y + this.sy, this.z + this.sz).expand(r));
+         return frustum.isVisible(new AABB(this.x, this.y, this.z, this.x + this.sx, this.y + this.sy, this.z + this.sz).inflate(r));
       }
 
       if (this.mode == 5) {
-         r += Math.sqrt(this.velocityX * this.velocityX + this.velocityY * this.velocityY + this.velocityZ * this.velocityZ) * this.stretch;
+         r += Math.sqrt(this.xd * this.xd + this.yd * this.yd + this.zd * this.zd) * this.stretch;
       }
 
-      return frustum.isVisible(new Box(this.x - r, this.y - r, this.z - r, this.x + r, this.y + r, this.z + r));
+      return frustum.isVisible(new AABB(this.x - r, this.y - r, this.z - r, this.x + r, this.y + r, this.z + r));
    }
 
-   public void render(BillboardParticleSubmittable submittable, Camera camera, float tickProgress) {
+   public void extract(QuadParticleRenderState submittable, Camera camera, float tickProgress) {
       if (this.age >= this.delay) {
          float time = this.age - this.delay + tickProgress;
-         float t = MathHelper.clamp(time / this.life, 0.0F, 1.0F);
-         float b = MathHelper.clamp(this.bright(t, time), 0.0F, 1.0F);
+         float t = Mth.clamp(time / this.life, 0.0F, 1.0F);
+         float b = Mth.clamp(this.bright(t, time), 0.0F, 1.0F);
          if (!(b <= 0.004F)) {
-            Vec3d cam = camera.getCameraPos();
-            float px = (float)(MathHelper.lerp(tickProgress, this.lastX, this.x) - cam.x);
-            float py = (float)(MathHelper.lerp(tickProgress, this.lastY, this.y) - cam.y);
-            float pz = (float)(MathHelper.lerp(tickProgress, this.lastZ, this.z) - cam.z);
+            Vec3 cam = camera.position();
+            float px = (float)(Mth.lerp(tickProgress, this.xo, this.x) - cam.x);
+            float py = (float)(Mth.lerp(tickProgress, this.yo, this.y) - cam.y);
+            float pz = (float)(Mth.lerp(tickProgress, this.zo, this.z) - cam.z);
             float c = this.size(t, time);
             float size = this.half * c;
             if (this.kind == VfxParticles.Kind.SMOKE || this.kind == VfxParticles.Kind.SHARD || this.kind == VfxParticles.Kind.DEBRIS) {
-               float dist = MathHelper.sqrt(px * px + py * py + pz * pz);
+               float dist = Mth.sqrt(px * px + py * py + pz * pz);
                if (this.kind == VfxParticles.Kind.SMOKE) {
-                  b *= MathHelper.clamp((dist - 0.3F) / (0.8F + size), 0.0F, 1.0F);
+                  b *= Mth.clamp((dist - 0.3F) / (0.8F + size), 0.0F, 1.0F);
                   if (b <= 0.004F) {
                      return;
                   }
@@ -384,31 +383,31 @@ public class VfxParticle extends BillboardParticle {
             float bl = this.b0;
             if (this.shift) {
                float k = Math.min(1.0F, t / 0.6F);
-               r = MathHelper.lerp(k, this.r0, this.r1);
-               g = MathHelper.lerp(k, this.g0, this.g1);
-               bl = MathHelper.lerp(k, this.b0, this.b1);
+               r = Mth.lerp(k, this.r0, this.r1);
+               g = Mth.lerp(k, this.g0, this.g1);
+               bl = Mth.lerp(k, this.b0, this.b1);
             }
 
             int color;
             if (!this.kind.glow) {
-               color = ColorHelper.fromFloats(b, r, g, bl);
+               color = ARGB.colorFromFloat(b, r, g, bl);
             } else if (this.additive) {
-               color = ColorHelper.fromFloats(1.0F, r * b, g * b, bl * b);
+               color = ARGB.colorFromFloat(1.0F, r * b, g * b, bl * b);
             } else {
                float m = Math.max(r, Math.max(g, bl));
                if (m < 0.004F) {
                   return;
                }
 
-               color = ColorHelper.fromFloats(b * Math.min(1.0F, m), r / m, g / m, bl / m);
+               color = ARGB.colorFromFloat(b * Math.min(1.0F, m), r / m, g / m, bl / m);
             }
 
-            int light = this.getBrightness(tickProgress);
-            float ang = MathHelper.lerp(tickProgress, this.lastZRotation, this.zRotation);
+            int light = this.getLightCoords(tickProgress);
+            float ang = Mth.lerp(tickProgress, this.oRoll, this.roll);
             Quaternionf q = this.q;
             if (this.kind == VfxParticles.Kind.SHARD && this.mode == 1) {
-               float across = MathHelper.cos(MathHelper.lerp(tickProgress, this.oTurn, this.turn));
-               q.set(camera.getRotation());
+               float across = Mth.cos(Mth.lerp(tickProgress, this.oTurn, this.turn));
+               q.set(camera.rotation());
                if (ang != 0.0F) {
                   q.rotateZ(ang);
                }
@@ -437,13 +436,13 @@ public class VfxParticle extends BillboardParticle {
                      this.quad(submittable, q, px, py, pz, size, size, color, light, true);
                      break;
                   case 5: {
-                     float speed = (float)Math.sqrt(this.velocityX * this.velocityX + this.velocityY * this.velocityY + this.velocityZ * this.velocityZ);
+                     float speed = (float)Math.sqrt(this.xd * this.xd + this.yd * this.yd + this.zd * this.zd);
                      if (speed < 0.001F) {
                         this.faceCamera(submittable, camera, px, py, pz, size, ang, color, light);
                         return;
                      }
 
-                     Vector3f axis = new Vector3f((float)this.velocityX, (float)this.velocityY, (float)this.velocityZ).div(speed);
+                     Vector3f axis = new Vector3f((float)this.xd, (float)this.yd, (float)this.zd).div(speed);
                      float halfLen = size + speed * this.stretch * 0.5F;
                      float back = halfLen - size;
                      float cx = px - axis.x * back;
@@ -474,7 +473,7 @@ public class VfxParticle extends BillboardParticle {
                      break;
                   }
                   case 7:
-                     Quaternionf cr = camera.getRotation();
+                     Quaternionf cr = camera.rotation();
                      if (cr.y * cr.y + cr.w * cr.w < 1.0E-6F) {
                         q.set(cr);
                      } else {
@@ -499,8 +498,8 @@ public class VfxParticle extends BillboardParticle {
       }
    }
 
-   private void faceCamera(BillboardParticleSubmittable state, Camera camera, float x, float y, float z, float size, float ang, int color, int light) {
-      this.q.set(camera.getRotation());
+   private void faceCamera(QuadParticleRenderState state, Camera camera, float x, float y, float z, float size, float ang, int color, int light) {
+      this.q.set(camera.rotation());
       if (ang != 0.0F) {
          this.q.rotateZ(ang);
       }
@@ -509,13 +508,13 @@ public class VfxParticle extends BillboardParticle {
    }
 
    private void quad(
-      BillboardParticleSubmittable state, Quaternionf q, float x, float y, float z, float halfLen, float halfWid, int color, int light, boolean twoSided
+      QuadParticleRenderState state, Quaternionf q, float x, float y, float z, float halfLen, float halfWid, int color, int light, boolean twoSided
    ) {
       this.quad(state, q, x, y, z, halfLen, halfWid, color, light, twoSided, false);
    }
 
    private void quad(
-      BillboardParticleSubmittable state,
+      QuadParticleRenderState state,
       Quaternionf q,
       float x,
       float y,
@@ -538,17 +537,17 @@ public class VfxParticle extends BillboardParticle {
          }
 
          float k = (float)Math.sqrt(halfLen / halfWid);
-         float u0 = this.getMinU();
-         float u1 = this.getMaxU();
+         float u0 = this.getU0();
+         float u1 = this.getU1();
          if (flipU) {
             float tmp = u0;
             u0 = u1;
             u1 = tmp;
          }
 
-         float v0 = flipV ? this.getMaxV() : this.getMinV();
-         float v1 = flipV ? this.getMinV() : this.getMaxV();
-         state.render(this.getRenderType(), x, y, z, q.x * k, q.y * k, q.z * k, q.w * k, halfWid, u0, u1, v0, v1, color, light);
+         float v0 = flipV ? this.getV1() : this.getV0();
+         float v1 = flipV ? this.getV0() : this.getV1();
+         state.add(this.getLayer(), x, y, z, q.x * k, q.y * k, q.z * k, q.w * k, halfWid, u0, u1, v0, v1, color, light);
       }
    }
 
@@ -579,11 +578,11 @@ public class VfxParticle extends BillboardParticle {
    private static void facing(Quaternionf q, float yawDeg, float pitchDeg) {
       float yr = yawDeg * (float) (Math.PI / 180.0);
       float pr = pitchDeg * (float) (Math.PI / 180.0);
-      float cp = MathHelper.cos(pr);
-      Vector3f n = new Vector3f(-MathHelper.sin(yr) * cp, -MathHelper.sin(pr), MathHelper.cos(yr) * cp);
+      float cp = Mth.cos(pr);
+      Vector3f n = new Vector3f(-Mth.sin(yr) * cp, -Mth.sin(pr), Mth.cos(yr) * cp);
       Vector3f y = new Vector3f(-n.x * n.y, 1.0F - n.y * n.y, -n.z * n.y);
       if (y.lengthSquared() < 1.0E-4F) {
-         y.set(-MathHelper.sin(yr), 0.0F, MathHelper.cos(yr));
+         y.set(-Mth.sin(yr), 0.0F, Mth.cos(yr));
       }
 
       y.normalize();
@@ -594,12 +593,12 @@ public class VfxParticle extends BillboardParticle {
    private static void plane(Quaternionf q, float yawDeg, float pitchDeg, float rollDeg) {
       float yr = yawDeg * (float) (Math.PI / 180.0);
       float pr = pitchDeg * (float) (Math.PI / 180.0);
-      float cp = MathHelper.cos(pr);
-      Vector3f f = new Vector3f(-MathHelper.sin(yr) * cp, -MathHelper.sin(pr), MathHelper.cos(yr) * cp);
-      Vector3f right = new Vector3f(-MathHelper.cos(yr), 0.0F, -MathHelper.sin(yr));
+      float cp = Mth.cos(pr);
+      Vector3f f = new Vector3f(-Mth.sin(yr) * cp, -Mth.sin(pr), Mth.cos(yr) * cp);
+      Vector3f right = new Vector3f(-Mth.cos(yr), 0.0F, -Mth.sin(yr));
       Vector3f up = new Vector3f(right).cross(f);
       float rr = rollDeg * (float) (Math.PI / 180.0);
-      Vector3f x = right.mul(MathHelper.cos(rr)).add(up.mul(MathHelper.sin(rr))).normalize();
+      Vector3f x = right.mul(Mth.cos(rr)).add(up.mul(Mth.sin(rr))).normalize();
       Vector3f n = new Vector3f(x).cross(f);
       basis(q, x, f, n);
    }
@@ -608,19 +607,20 @@ public class VfxParticle extends BillboardParticle {
       q.setFromNormalized(new Matrix3f(x, y, z));
    }
 
-   public ParticleTextureSheet textureSheet() {
+   public ParticleRenderType getGroup() {
       return GROUP;
    }
 
-   protected RenderType getRenderType() {
+   protected Layer getLayer() {
       if (this.additive) {
          return VfxLayers.additive();
       } else {
-         return this.soft ? VfxLayers.soft() : RenderType.PARTICLE_ATLAS_TRANSLUCENT;
+         return this.soft ? VfxLayers.soft() : Layer.TRANSLUCENT;
       }
    }
 
-   protected int getBrightness(float tint) {
-      return this.kind.glow ? 15728880 : super.getBrightness(tint);
+   @Override
+   protected int getLightCoords(float tint) {
+      return this.kind.glow ? 15728880 : super.getLightCoords(tint);
    }
 }

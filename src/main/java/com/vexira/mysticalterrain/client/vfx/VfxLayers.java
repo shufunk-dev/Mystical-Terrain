@@ -1,22 +1,23 @@
 package com.vexira.mysticalterrain.client.vfx;
 
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.pipeline.RenderPipeline.Builder;
-import com.mojang.blaze3d.pipeline.RenderPipeline.Snippet;
-import com.mojang.blaze3d.pipeline.RenderPipeline.UniformDescription;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline.Builder;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline.Snippet;
+import com.mojang.renderpearl.api.pipeline.ShaderType;
 import com.vexira.mysticalterrain.MysticalTerrain;
 import java.lang.reflect.Method;
+import java.util.Optional;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.client.gl.RenderPipelines;
-import net.minecraft.client.particle.BillboardParticle.RenderType;
+import net.minecraft.client.particle.SingleQuadParticle.Layer;
+import net.minecraft.client.renderer.RenderPipelines;
 
 @Environment(EnvType.CLIENT)
 public final class VfxLayers {
-   private static RenderType additive;
-   private static RenderType soft;
+   private static Layer additive;
+   private static Layer soft;
    private static boolean additiveFailed;
    private static boolean softFailed;
    private static Method shaderPackInUse;
@@ -51,14 +52,14 @@ public final class VfxLayers {
    }
 
    public static boolean additiveUsable() {
-      return !additiveFailed && !Boolean.getBoolean("mysticalterrain.vfx.soft") && !shaderPack() ? additive() != RenderType.PARTICLE_ATLAS_TRANSLUCENT : false;
+      return !additiveFailed && !Boolean.getBoolean("mysticalterrain.vfx.soft") && !shaderPack() ? additive() != Layer.TRANSLUCENT : false;
    }
 
    public static boolean softUsable() {
-      return !softFailed && !shaderPack() && soft() != RenderType.PARTICLE_ATLAS_TRANSLUCENT;
+      return !softFailed && !shaderPack() && soft() != Layer.TRANSLUCENT;
    }
 
-   public static RenderType additive() {
+   public static Layer additive() {
       if (additive == null && !additiveFailed) {
          try {
             additive = layer("vfx_additive", BlendFunction.ADDITIVE);
@@ -68,10 +69,10 @@ public final class VfxLayers {
          }
       }
 
-      return additiveFailed ? RenderType.PARTICLE_ATLAS_TRANSLUCENT : additive;
+      return additiveFailed ? Layer.TRANSLUCENT : additive;
    }
 
-   public static RenderType soft() {
+   public static Layer soft() {
       if (soft == null && !softFailed) {
          try {
             soft = layer("vfx_soft", BlendFunction.TRANSLUCENT);
@@ -81,10 +82,10 @@ public final class VfxLayers {
          }
       }
 
-      return softFailed ? RenderType.PARTICLE_ATLAS_TRANSLUCENT : soft;
+      return softFailed ? Layer.TRANSLUCENT : soft;
    }
 
-   static int order(RenderType layer) {
+   static int order(Layer layer) {
       if (additive != null && additive.equals(layer)) {
          return 2;
       } else {
@@ -92,28 +93,24 @@ public final class VfxLayers {
       }
    }
 
-   private static RenderType layer(String name, BlendFunction blend) {
+   private static Layer layer(String name, BlendFunction blend) {
       RenderPipeline base = RenderPipelines.TRANSLUCENT_PARTICLE;
       Builder b = RenderPipeline.builder(new Snippet[0])
          .withLocation(MysticalTerrain.id("pipeline/" + name))
-         .withVertexShader(base.getVertexShader())
+         .withVertexShader(base.getShaders().get(ShaderType.VERTEX))
          .withFragmentShader(MysticalTerrain.id("core/" + name))
-         .withVertexFormat(base.getVertexFormat(), base.getVertexFormatMode())
-         .withDepthTestFunction(base.getDepthTestFunction())
+         .withDepthStencilState(base.getDepthStencilState())
+         .withPolygonMode(base.getPolygonMode())
+         .withPrimitiveTopology(base.getPrimitiveTopology())
          .withCull(false)
-         .withBlend(blend)
-         .withDepthWrite(false);
+         .withColorTargetState(new ColorTargetState(blend));
 
-      for (String s : base.getSamplers()) {
-         b.withSampler(s);
+      for (int i = 0; i < base.getVertexFormatBindings().size(); i++) {
+         b.withVertexBinding(i, base.getVertexFormatBinding(i));
       }
 
-      for (UniformDescription u : base.getUniforms()) {
-         if (u.textureFormat() != null) {
-            b.withUniform(u.name(), u.type(), u.textureFormat());
-         } else {
-            b.withUniform(u.name(), u.type());
-         }
+      for (var layout : base.getBindGroupLayouts()) {
+         b.withBindGroupLayout(layout);
       }
 
       base.getShaderDefines().values().forEach((k, v) -> {
@@ -125,10 +122,6 @@ public final class VfxLayers {
       });
       base.getShaderDefines().flags().forEach(b::withShaderDefine);
       RenderPipeline pipeline = b.build();
-      if (!RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
-         throw new IllegalStateException("the " + name + " shader didn't compile");
-      } else {
-         return new RenderType(true, RenderType.PARTICLE_ATLAS_TRANSLUCENT.textureAtlasLocation(), pipeline);
-      }
+      return new Layer(true, Layer.TRANSLUCENT.textureAtlasLocation(), pipeline);
    }
 }

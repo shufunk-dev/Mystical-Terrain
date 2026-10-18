@@ -17,22 +17,22 @@ import java.util.Map.Entry;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gl.RenderPipelines;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.option.AttackIndicator;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.render.RenderTickCounter;
-import net.minecraft.client.texture.Sprite;
-import net.minecraft.client.texture.SpriteAtlasTexture;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Arm;
-import net.minecraft.util.Atlases;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.client.AttackIndicatorStatus;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.data.AtlasIds;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 @Environment(EnvType.CLIENT)
@@ -40,14 +40,14 @@ final class GearHud implements HudElement {
    private static final int SLOT = 18;
    private static final int GAP = 2;
    private static final Identifier GENERIC = MysticalTerrain.id("gear/generic");
-   private final KeyBinding setKey;
+   private final KeyMapping setKey;
 
-   GearHud(KeyBinding setKey) {
+   GearHud(KeyMapping setKey) {
       this.setKey = setKey;
    }
 
-   static @Nullable WeaponKit held(PlayerEntity p) {
-      for (ItemStack stack : new ItemStack[]{p.getMainHandStack(), p.getOffHandStack()}) {
+   static @Nullable WeaponKit held(Player p) {
+      for (ItemStack stack : new ItemStack[]{p.getMainHandItem(), p.getOffhandItem()}) {
          if (stack.getItem() instanceof MysticWeapon w) {
             return w.kit();
          }
@@ -56,7 +56,7 @@ final class GearHud implements HudElement {
       return null;
    }
 
-   static @Nullable ArmorKit activeSet(PlayerEntity p) {
+   static @Nullable ArmorKit activeSet(Player p) {
       for (Entry<String, Integer> e : MysticArmor.worn(p).entrySet()) {
          Arsenal a = Arsenals.of(e.getKey());
          if (a != null && a.armorKit().active() != null && e.getValue() >= a.armorKit().activePieces()) {
@@ -76,14 +76,14 @@ final class GearHud implements HudElement {
    }
 
    private static int alpha(int a, int rgb) {
-      return MathHelper.clamp(a, 0, 255) << 24 | rgb & 16777215;
+      return Mth.clamp(a, 0, 255) << 24 | rgb & 16777215;
    }
 
-   public void render(DrawContext g, RenderTickCounter delta) {
-      MinecraftClient mc = MinecraftClient.getInstance();
-      ClientPlayerEntity p = mc.player;
-      if (p != null && !mc.options.hudHidden && !p.isSpectator()) {
-         float partial = delta.getTickProgress(false);
+   public void extractRenderState(GuiGraphicsExtractor g, DeltaTracker delta) {
+      Minecraft mc = Minecraft.getInstance();
+      LocalPlayer p = mc.player;
+      if (p != null && !mc.gui.hud.isHidden() && !p.isSpectator()) {
+         float partial = delta.getGameTimeDeltaPartialTick(false);
          WeaponKit kit = held(p);
          List<GearHud.Widget> widgets = new ArrayList<>(4);
          if (kit != null) {
@@ -104,7 +104,7 @@ final class GearHud implements HudElement {
 
          ArmorKit set = activeSet(p);
          if (set != null) {
-            String label = this.setKey.getBoundKeyLocalizedText().getString();
+            String label = this.setKey.getTranslatedKeyMessage().getString();
             widgets.add(
                new GearHud.Widget(
                   icon("set_" + set.arsenal().boss()), set.key(), set.arsenal().palette(), set.active(), 0.0F, label.length() <= 2 ? label : null
@@ -114,15 +114,15 @@ final class GearHud implements HudElement {
 
          if (!widgets.isEmpty()) {
             int w = widgets.size() * 18 + (widgets.size() - 1) * 2;
-            int cx = g.getScaledWindowWidth() / 2;
-            int pad = 6 + (mc.options.getAttackIndicator().getValue() == AttackIndicator.HOTBAR ? 22 : 0);
-            int x0 = p.getMainArm() == Arm.RIGHT ? cx + 91 + pad : cx - 91 - pad - w;
-            int y0 = g.getScaledWindowHeight() - 18 - 2;
-            float time = p.age + partial;
-            SpriteAtlasTexture atlas = mc.getAtlasManager().getAtlasTexture(Atlases.GUI);
+            int cx = g.guiWidth() / 2;
+            int pad = 6 + (mc.options.attackIndicator().get() == AttackIndicatorStatus.HOTBAR ? 22 : 0);
+            int x0 = p.getMainArm() == HumanoidArm.RIGHT ? cx + 91 + pad : cx - 91 - pad - w;
+            int y0 = g.guiHeight() - 18 - 2;
+            float time = p.tickCount + partial;
+            TextureAtlas atlas = mc.getAtlasManager().getAtlasOrThrow(AtlasIds.GUI);
 
             for (int i = 0; i < widgets.size(); i++) {
-               this.widget(g, mc.textRenderer, atlas, x0 + i * 20, y0, widgets.get(i), partial, time);
+               this.widget(g, mc.font, atlas, x0 + i * 20, y0, widgets.get(i), partial, time);
             }
 
             int top = y0;
@@ -131,15 +131,15 @@ final class GearHud implements HudElement {
                resonance(g, x0, top, w, kit, time);
             }
 
-            if (kit != null && kit.charge() != null && p.isUsingItem() && p.getActiveItem().getItem() instanceof MysticWeapon used && used.kit() == kit) {
+            if (kit != null && kit.charge() != null && p.isUsingItem() && p.getUseItem().getItem() instanceof MysticWeapon used && used.kit() == kit) {
                top -= 7;
-               charge(g, x0, top, w, kit.charge(), p.getItemUseTime(partial), kit.arsenal().palette(), time);
+               charge(g, x0, top, w, kit.charge(), p.getTicksUsingItem(partial), kit.arsenal().palette(), time);
             }
          }
       }
    }
 
-   private void widget(DrawContext g, TextRenderer font, SpriteAtlasTexture atlas, int x, int y, GearHud.Widget w, float partial, float time) {
+   private void widget(GuiGraphicsExtractor g, Font font, TextureAtlas atlas, int x, int y, GearHud.Widget w, float partial, float time) {
       float cooling = GearClientState.fraction(w.key(), partial);
       int remaining = GearClientState.remaining(w.key());
       float flash = GearClientState.flash(w.key(), partial);
@@ -147,41 +147,41 @@ final class GearHud implements HudElement {
       g.fill(x, y, x + 18, y + 18, -1072952302);
       int border = ready ? opaque(w.palette().glow()) : -13355970;
       if (ready && w.empowerReady()) {
-         float k = 0.5F + 0.5F * MathHelper.sin(time * 0.35F);
+         float k = 0.5F + 0.5F * Mth.sin(time * 0.35F);
          border = opaque(lerp(k, w.palette().glow(), w.palette().core()));
       }
 
-      g.drawStrokedRectangle(x, y, 18, 18, border);
+      g.outline(x, y, 18, 18, border);
       g.fill(x + 1, y + 1, x + 18 - 1, y + 2, 687865855);
-      Sprite sprite = atlas.getSprite(w.icon());
-      if (sprite == atlas.getMissingSprite()) {
+      TextureAtlasSprite sprite = atlas.getSprite(w.icon());
+      if (sprite == atlas.missingSprite()) {
          sprite = atlas.getSprite(GENERIC);
       }
 
-      g.drawSpriteStretched(RenderPipelines.GUI_TEXTURED, sprite, x + 1, y + 1, 16, 16, ready ? -1 : -8618876);
+      g.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x + 1, y + 1, 16, 16, ready ? -1 : -8618876);
       if (!ready) {
          sweep(g, x + 1, y + 1, 16, 16, cooling, -1476395008);
          if (remaining >= 20) {
             String s = Integer.toString((remaining + 19) / 20);
-            g.drawText(font, s, x + (18 - font.getWidth(s)) / 2 + 1, y + 5, -855310, true);
+            g.text(font, s, x + (18 - font.width(s)) / 2 + 1, y + 5, -855310, true);
          }
       }
 
       if (flash > 0.0F) {
          g.fill(x + 1, y + 1, x + 18 - 1, y + 18 - 1, alpha((int)(flash * 120.0F), 16777215));
-         g.drawStrokedRectangle(x, y, 18, 18, alpha((int)(flash * 255.0F), 16777215));
+         g.outline(x, y, 18, 18, alpha((int)(flash * 255.0F), 16777215));
       }
 
       if (w.label() != null && (ready || remaining < 20)) {
-         g.getMatrices().pushMatrix();
-         g.getMatrices().translate(x + 18 - 1.5F - font.getWidth(w.label()) * 0.5F, y + 18 - 5.5F);
-         g.getMatrices().scale(0.5F, 0.5F);
-         g.drawText(font, w.label(), 0, 0, -1513240, true);
-         g.getMatrices().popMatrix();
+         g.pose().pushMatrix();
+         g.pose().translate(x + 18 - 1.5F - font.width(w.label()) * 0.5F, y + 18 - 5.5F);
+         g.pose().scale(0.5F, 0.5F);
+         g.text(font, w.label(), 0, 0, -1513240, true);
+         g.pose().popMatrix();
       }
    }
 
-   private static void sweep(DrawContext g, int x, int y, int w, int h, float fraction, int color) {
+   private static void sweep(GuiGraphicsExtractor g, int x, int y, int w, int h, float fraction, int color) {
       if (fraction >= 0.999F) {
          g.fill(x, y, x + w, y + h, color);
       } else {
@@ -210,7 +210,7 @@ final class GearHud implements HudElement {
       }
    }
 
-   private static void resonance(DrawContext g, int x, int y, int w, WeaponKit kit, float time) {
+   private static void resonance(GuiGraphicsExtractor g, int x, int y, int w, WeaponKit kit, float time) {
       Vfx.Palette pal = kit.arsenal().palette();
       float value = GearClientState.resonance(kit.id());
       g.fill(x - 1, y - 1, x + w + 1, y + 4, -1073741824);
@@ -230,11 +230,11 @@ final class GearHud implements HudElement {
       }
 
       if (value >= 100.0F) {
-         g.fill(x, y, x + w, y + 3, alpha((int)(60.0F + 50.0F * MathHelper.sin(time * 0.3F)), 16777215));
+         g.fill(x, y, x + w, y + 3, alpha((int)(60.0F + 50.0F * Mth.sin(time * 0.3F)), 16777215));
       }
    }
 
-   private static void charge(DrawContext g, int x, int y, int w, Charge charge, float held, Vfx.Palette pal, float time) {
+   private static void charge(GuiGraphicsExtractor g, int x, int y, int w, Charge charge, float held, Vfx.Palette pal, float time) {
       int levels = charge.levels();
       float progress = Math.min(levels, held / charge.ticksPerLevel());
       int seg = Math.max(2, (w - (levels - 1)) / levels);
@@ -245,7 +245,7 @@ final class GearHud implements HudElement {
       for (int i = 0; i < levels; i++) {
          int sx = sx0 + i * (seg + 1);
          g.fill(sx, y, sx + seg, y + 4, -15066588);
-         float f = MathHelper.clamp(progress - i, 0.0F, 1.0F);
+         float f = Mth.clamp(progress - i, 0.0F, 1.0F);
          if (f >= 1.0F) {
             g.fill(sx, y, sx + seg, y + 4, opaque(pal.core()));
             g.fill(sx, y + 3, sx + seg, y + 4, opaque(pal.glow()));
@@ -255,14 +255,14 @@ final class GearHud implements HudElement {
       }
 
       if (progress >= levels) {
-         g.fill(sx0, y, sx0 + span, y + 4, alpha((int)(70.0F + 60.0F * MathHelper.sin(time * 0.6F)), 16777215));
+         g.fill(sx0, y, sx0 + span, y + 4, alpha((int)(70.0F + 60.0F * Mth.sin(time * 0.6F)), 16777215));
       }
    }
 
    private static int lerp(float k, int a, int b) {
-      int r = (int)MathHelper.lerp(k, a >> 16 & 0xFF, b >> 16 & 0xFF);
-      int gr = (int)MathHelper.lerp(k, a >> 8 & 0xFF, b >> 8 & 0xFF);
-      int bl = (int)MathHelper.lerp(k, a & 0xFF, b & 0xFF);
+      int r = (int)Mth.lerpInt(k, a >> 16 & 0xFF, b >> 16 & 0xFF);
+      int gr = (int)Mth.lerpInt(k, a >> 8 & 0xFF, b >> 8 & 0xFF);
+      int bl = (int)Mth.lerpInt(k, a & 0xFF, b & 0xFF);
       return r << 16 | gr << 8 | bl;
    }
 

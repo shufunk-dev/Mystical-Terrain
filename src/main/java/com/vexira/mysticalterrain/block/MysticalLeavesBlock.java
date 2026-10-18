@@ -1,28 +1,14 @@
 package com.vexira.mysticalterrain.block;
 
-import com.mojang.serialization.MapCodec;
-import net.minecraft.block.LeavesBlock;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.world.World;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.sounds.AmbientLeavesBlockSoundPlayer;
 
 public class MysticalLeavesBlock extends LeavesBlock {
-    public static final MapCodec<MysticalLeavesBlock> CODEC = createCodec(settings -> new MysticalLeavesBlock(0.01f, settings));
-
-    public MysticalLeavesBlock(float leafParticleChance, Settings settings) {
-        super(leafParticleChance, settings);
+    public MysticalLeavesBlock(float leafParticleChance, Properties settings) {
+        super(AmbientLeavesBlockSoundPlayer.noAmbientSound(), settings);
     }
 
-    public MysticalLeavesBlock(Settings settings) {
+    public MysticalLeavesBlock(Properties settings) {
         this(0.01f, settings);
-    }
-
-    @Override
-    public MapCodec<? extends LeavesBlock> getCodec() {
-        return CODEC;
-    }
-
-    @Override
-    protected void spawnLeafParticle(World world, BlockPos pos, Random random) {
     }
 }

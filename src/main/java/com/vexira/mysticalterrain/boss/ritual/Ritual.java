@@ -2,9 +2,9 @@ package com.vexira.mysticalterrain.boss.ritual;
 
 import com.vexira.mysticalterrain.boss.BossEntities;
 import com.vexira.mysticalterrain.boss.MysticalBoss;
-import net.minecraft.entity.EntityType;
-import net.minecraft.particle.ParticleEffect;
-import net.minecraft.particle.ParticleTypes;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.world.entity.EntityType;
 
 public enum Ritual {
    PYRAXIS("pyraxis", ParticleTypes.FLAME, ParticleTypes.LAVA),
@@ -19,10 +19,10 @@ public enum Ritual {
    ASTRAEL("astrael", ParticleTypes.END_ROD, ParticleTypes.FIREWORK);
 
    private final String id;
-   private final ParticleEffect particle;
-   private final ParticleEffect accent;
+   private final ParticleOptions particle;
+   private final ParticleOptions accent;
 
-   Ritual(String id, ParticleEffect particle, ParticleEffect accent) {
+   Ritual(String id, ParticleOptions particle, ParticleOptions accent) {
       this.id = id;
       this.particle = particle;
       this.accent = accent;
@@ -32,11 +32,11 @@ public enum Ritual {
       return this.id;
    }
 
-   public ParticleEffect particle() {
+   public ParticleOptions particle() {
       return this.particle;
    }
 
-   public ParticleEffect accent() {
+   public ParticleOptions accent() {
       return this.accent;
    }
 

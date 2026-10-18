@@ -4,19 +4,19 @@ import com.vexira.mysticalterrain.boss.BossBolt;
 import com.vexira.mysticalterrain.boss.vfx.Vfx;
 import com.vexira.mysticalterrain.gear.arsenal.Arsenal;
 import java.util.List;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 public final class GearUse {
-   private final ServerWorld level;
-   private final PlayerEntity player;
+   private final ServerLevel level;
+   private final Player player;
    private final ItemStack stack;
-   private final @Nullable Hand hand;
+   private final @Nullable InteractionHand hand;
    private final Arsenal arsenal;
    private final @Nullable WeaponKit weapon;
    private final GearUse.Slot slot;
@@ -26,10 +26,10 @@ public final class GearUse {
    private final float power;
 
    GearUse(
-      ServerWorld level,
-      PlayerEntity player,
+      ServerLevel level,
+      Player player,
       ItemStack stack,
-      @Nullable Hand hand,
+      @Nullable InteractionHand hand,
       Arsenal arsenal,
       @Nullable WeaponKit weapon,
       GearUse.Slot slot,
@@ -51,11 +51,11 @@ public final class GearUse {
       this.power = power;
    }
 
-   public ServerWorld level() {
+   public ServerLevel level() {
       return this.level;
    }
 
-   public PlayerEntity player() {
+   public Player player() {
       return this.player;
    }
 
@@ -63,7 +63,7 @@ public final class GearUse {
       return this.stack;
    }
 
-   public @Nullable Hand hand() {
+   public @Nullable InteractionHand hand() {
       return this.hand;
    }
 
@@ -123,7 +123,7 @@ public final class GearUse {
       return GearKit.bolt(this.level, this.player, style, speed, damage * this.power);
    }
 
-   public List<LivingEntity> enemies(Vec3d at, double radius) {
+   public List<LivingEntity> enemies(Vec3 at, double radius) {
       return GearKit.enemies(this.level, this.player, at, radius);
    }
 

@@ -5,9 +5,9 @@ import java.util.HashMap;
 import java.util.Map;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.ColorHelper;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
 import org.jspecify.annotations.Nullable;
 
 @Environment(EnvType.CLIENT)
@@ -26,7 +26,7 @@ public final class BarStyle {
    final String movePrefix;
    int textGen = -1;
    BarText.@Nullable Line title;
-   Text titleText = Text.empty();
+   Component titleText = Component.empty();
    final Map<String, BarText.Line> moves = new HashMap<>();
    public static final BarStyle GENERIC = new BarStyle("generic", 16748672, 16732240, 16769232, false, 0.66F, 0.33F);
 
@@ -34,8 +34,8 @@ public final class BarStyle {
       this.id = id;
       this.sheet = MysticalTerrain.id("textures/gui/boss_bar/" + id + ".png");
       this.nameColor = 0xFF000000 | nameColor;
-      int muted = ColorHelper.scaleRgb(ColorHelper.lerp(0.55F, 0xFF000000 | nameColor, -7435642), 0.95F);
-      this.titleColor = mono ? ColorHelper.grayscale(muted) : muted;
+      int muted = ARGB.scaleRGB(ARGB.srgbLerp(0.55F, 0xFF000000 | nameColor, -7435642), 0.95F);
+      this.titleColor = mono ? ARGB.greyscale(muted) : muted;
       this.accent = 0xFF000000 | accent;
       this.chip = 0xFF000000 | chip;
       this.mono = mono;
@@ -69,9 +69,9 @@ public final class BarStyle {
          return c;
       }
 
-      int grey = ColorHelper.getRed(ColorHelper.grayscale(c));
+      int grey = ARGB.red(ARGB.greyscale(c));
       grey = Math.min(255, 90 + grey);
-      return ColorHelper.getArgb(255, grey, grey, grey);
+      return ARGB.color(255, grey, grey, grey);
    }
 
    static {

@@ -31,44 +31,44 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.ServerStopped;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.attribute.EntityAttributeInstance;
-import net.minecraft.entity.attribute.EntityAttributeModifier;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.attribute.EntityAttributeModifier.Operation;
-import net.minecraft.entity.boss.WitherEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.decoration.ArmorStandEntity;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.mob.Monster;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.s2c.play.PositionFlag;
-import net.minecraft.registry.tag.DamageTypeTags;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.BlockPos.MutableBlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Direction.Axis;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult.Type;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.BlockPos.Mutable;
-import net.minecraft.util.math.Direction.Axis;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.RaycastContext.FluidHandling;
-import net.minecraft.world.RaycastContext.ShapeType;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.Relative;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.ClipContext.Block;
+import net.minecraft.world.level.ClipContext.Fluid;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult.Type;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jspecify.annotations.Nullable;
 
 public final class HollowWardenArsenal extends Arsenal {
@@ -133,19 +133,19 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   private static long now(ServerWorld level) {
-      return level.getServer().getTicks();
+   private static long now(ServerLevel level) {
+      return level.getServer().getTickCount();
    }
 
    private static long now(Entity e) {
-      return e.getEntityWorld() instanceof ServerWorld level ? now(level) : 0L;
+      return e.level() instanceof ServerLevel level ? now(level) : 0L;
    }
 
-   static void later(ServerWorld level, int delay, Runnable run) {
+   static void later(ServerLevel level, int delay, Runnable run) {
       TASKS.add(new HollowWardenArsenal.Task(now(level) + Math.max(1, delay), run));
    }
 
-   static void soon(ServerWorld level, int delay, Runnable run) {
+   static void soon(ServerLevel level, int delay, Runnable run) {
       if (delay <= 0) {
          run.run();
       } else {
@@ -153,14 +153,14 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   static void every(ServerWorld level, int delay, int period, int count, IntConsumer step) {
+   static void every(ServerLevel level, int delay, int period, int count, IntConsumer step) {
       for (int i = 0; i < count; i++) {
          int k = i;
          later(level, delay + i * period, () -> step.accept(k));
       }
    }
 
-   static void track(ServerWorld level, int delay, IntPredicate step) {
+   static void track(ServerLevel level, int delay, IntPredicate step) {
       int[] t = new int[]{0};
       Runnable[] self = new Runnable[1];
       self[0] = () -> {
@@ -180,7 +180,7 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    private static void tickAll(MinecraftServer server) {
-      long now = server.getTicks();
+      long now = server.getTickCount();
       if (!TASKS.isEmpty()) {
          List<HollowWardenArsenal.Task> due = new ArrayList<>();
          Iterator<HollowWardenArsenal.Task> it = TASKS.iterator();
@@ -259,7 +259,7 @@ public final class HollowWardenArsenal extends Arsenal {
 
          for (LivingEntity t : ended) {
             HollowWardenArsenal.Mark m = MARKS.get(t);
-            if (m != null && t.getEntityWorld() instanceof ServerWorld level) {
+            if (m != null && t.level() instanceof ServerLevel level) {
                m.condemnedUntil = 0L;
                m.paroledUntil = now + (heavy(t) ? 160 : 60);
                Vfx.shards(level, center(t), SOUL.core(), 5, 0.25);
@@ -270,14 +270,14 @@ public final class HollowWardenArsenal extends Arsenal {
          if (!refresh.isEmpty()) {
             refresh.sort(Comparator.comparingDouble(tx -> {
                HollowWardenArsenal.Mark mx = MARKS.get(tx);
-               PlayerEntity by = mx == null ? null : mx.by;
-               return by != null && by.getEntityWorld() == tx.getEntityWorld() ? by.squaredDistanceTo(tx) : 1.0E9;
+               Player by = mx == null ? null : mx.by;
+               return by != null && by.level() == tx.level() ? by.distanceToSqr(tx) : 1.0E9;
             }));
-            Map<PlayerEntity, Integer> per = new HashMap<>();
+            Map<Player, Integer> per = new HashMap<>();
 
             for (LivingEntity t : refresh) {
                HollowWardenArsenal.Mark m = MARKS.get(t);
-               if (m != null && t.getEntityWorld() instanceof ServerWorld level && per.merge(m.by, 1, Integer::sum) <= 8) {
+               if (m != null && t.level() instanceof ServerLevel level && per.merge(m.by, 1, Integer::sum) <= 8) {
                   lockChains(level, t, m);
                }
             }
@@ -285,9 +285,9 @@ public final class HollowWardenArsenal extends Arsenal {
 
          for (LivingEntity t : burning) {
             HollowWardenArsenal.Mark m = MARKS.get(t);
-            if (m != null && t.getEntityWorld() instanceof ServerWorld level && t.isAlive()) {
+            if (m != null && t.level() instanceof ServerLevel level && t.isAlive()) {
                m.burnNext = now + 20L;
-               PlayerEntity by = m.burnBy;
+               Player by = m.burnBy;
                if (by != null && alive(by, level)) {
                   soft(level, by, t, amp(t));
                   Vfx.embers(level, center(t), SOUL.glow(), 3, 0.3);
@@ -303,7 +303,7 @@ public final class HollowWardenArsenal extends Arsenal {
       while (it.hasNext()) {
          Entry<UUID, HollowWardenArsenal.Warden> en = it.next();
          HollowWardenArsenal.Warden w = en.getValue();
-         ServerPlayerEntity p = server.getPlayerManager().getPlayer(en.getKey());
+         ServerPlayer p = server.getPlayerList().getPlayer(en.getKey());
          if (p == null) {
             it.remove();
          } else {
@@ -329,7 +329,7 @@ public final class HollowWardenArsenal extends Arsenal {
       while (keeperIt.hasNext()) {
          Entry<UUID, HollowWardenArsenal.Keeper> en = keeperIt.next();
          if (now - en.getValue().seen > 2L) {
-            ServerPlayerEntity p = server.getPlayerManager().getPlayer(en.getKey());
+            ServerPlayer p = server.getPlayerList().getPlayer(en.getKey());
             if (p != null) {
                wardCap(p, 0);
             }
@@ -340,9 +340,9 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    private static boolean allowDamage(LivingEntity entity, DamageSource source, float amount) {
-      if (entity instanceof PlayerEntity p && !WARDENS.isEmpty() && p.getEntityWorld() instanceof ServerWorld level) {
-         HollowWardenArsenal.Warden w = WARDENS.get(p.getUuid());
-         if (w != null && w.passageUntil > now(level) && !source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
+      if (entity instanceof Player p && !WARDENS.isEmpty() && p.level() instanceof ServerLevel level) {
+         HollowWardenArsenal.Warden w = WARDENS.get(p.getUUID());
+         if (w != null && w.passageUntil > now(level) && !source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
             return false;
          }
       }
@@ -351,15 +351,15 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    private static void died(LivingEntity e, DamageSource source) {
-      if (e.getEntityWorld() instanceof ServerWorld level) {
-         if (e instanceof PlayerEntity p) {
-            KEEPERS.remove(p.getUuid());
+      if (e.level() instanceof ServerLevel level) {
+         if (e instanceof Player p) {
+            KEEPERS.remove(p.getUUID());
          } else {
             HollowWardenArsenal.Mark m = MARKS.remove(e);
             if (m != null && m.condemnedUntil > now(level)) {
-               PlayerEntity by = m.by;
-               Vec3d c = center(e);
-               if (by != null && alive(by, level) && by.getEntityPos().distanceTo(c) <= 32.0) {
+               Player by = m.by;
+               Vec3 c = center(e);
+               if (by != null && alive(by, level) && by.position().distanceTo(c) <= 32.0) {
                   Vfx.shards(level, c, SOUL.core(), 8, 0.35);
                   Vfx.glint(level, top(e), SOUL.core(), 1.1);
                   freeSoul(level, by, c);
@@ -382,7 +382,7 @@ public final class HollowWardenArsenal extends Arsenal {
       return condemned(t) ? 1.25F : 1.0F;
    }
 
-   static int sentence(ServerWorld level, @Nullable PlayerEntity by, LivingEntity t, int n) {
+   static int sentence(ServerLevel level, @Nullable Player by, LivingEntity t, int n) {
       if (n > 0 && foe(t) && t != by) {
          long now = now(level);
          HollowWardenArsenal.Mark m = mark(t);
@@ -398,7 +398,7 @@ public final class HollowWardenArsenal extends Arsenal {
                return 5;
             }
 
-            Vfx.ring(level, under(level, t), SHADOW.glow(), 0.45 + 0.12 * m.stacks + t.getWidth() * 0.5, 10);
+            Vfx.ring(level, under(level, t), SHADOW.glow(), 0.45 + 0.12 * m.stacks + t.getBbWidth() * 0.5, 10);
             if (m.stacks >= 3) {
                Vfx.sparks(level, center(t), SOUL.glow(), m.stacks, 0.2, 0.3);
             }
@@ -412,7 +412,7 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   static void condemn(ServerWorld level, @Nullable PlayerEntity by, LivingEntity t) {
+   static void condemn(ServerLevel level, @Nullable Player by, LivingEntity t) {
       if (foe(t)) {
          long now = now(level);
          HollowWardenArsenal.Mark m = mark(t);
@@ -427,25 +427,25 @@ public final class HollowWardenArsenal extends Arsenal {
             m.by = by;
          }
 
-         t.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, d, heavy ? 0 : 1), by);
-         Vec3d g = under(level, t);
-         Vec3d c = center(t);
+         t.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, d, heavy ? 0 : 1), by);
+         Vec3 g = under(level, t);
+         Vec3 c = center(t);
          m.circle = g;
-         Vfx.runeCircle(level, g, 1.0 + 0.3 * t.getWidth(), SHADOW, d, 0.04F, Vfx.Rune.GLYPH);
+         Vfx.runeCircle(level, g, 1.0 + 0.3 * t.getBbWidth(), SHADOW, d, 0.04F, Vfx.Rune.GLYPH);
          Vfx.emit(
-            level, VfxOptions.of(VfxParticles.Kind.RUNE, SOUL.core(), 1.5, 8).variant(Vfx.Rune.GLYPH.ordinal()).face().curve(4).build(), top(t), Vec3d.ZERO
+            level, VfxOptions.of(VfxParticles.Kind.RUNE, SOUL.core(), 1.5, 8).variant(Vfx.Rune.GLYPH.ordinal()).face().curve(4).build(), top(t), Vec3.ZERO
          );
          Vfx.shards(level, c, SHADOW.core(), 8, 0.3);
-         Vfx.flare(level, c, SOUL.glow(), 1.4 + t.getWidth(), 6);
+         Vfx.flare(level, c, SOUL.glow(), 1.4 + t.getBbWidth(), 6);
          lockChains(level, t, m);
          soundAt(level, c, 1.0F, 0.9F + level.getRandom().nextFloat() * 0.1F, "weapon.lantern_of_souls.condemn", "weapon.lantern_of_souls.proc");
       }
    }
 
-   private static void lockChains(ServerWorld level, LivingEntity t, HollowWardenArsenal.Mark m) {
-      Vec3d c = center(t);
-      Vec3d g = under(level, t);
-      double r = 1.6 + t.getWidth() * 0.5;
+   private static void lockChains(ServerLevel level, LivingEntity t, HollowWardenArsenal.Mark m) {
+      Vec3 c = center(t);
+      Vec3 g = under(level, t);
+      double r = 1.6 + t.getBbWidth() * 0.5;
       double base = m.turn++ * 40.0;
 
       for (int j = 0; j < 3; j++) {
@@ -453,13 +453,13 @@ public final class HollowWardenArsenal extends Arsenal {
          Vfx.beam(level, c, ground(level, g.add(Math.cos(a) * r, 0.0, Math.sin(a) * r)), SOUL, 0.12, 12);
       }
 
-      Vfx.emit(level, VfxOptions.of(VfxParticles.Kind.RUNE, SOUL.glow(), 0.9, 12).variant(Vfx.Rune.GLYPH.ordinal()).face().curve(3).build(), top(t), Vec3d.ZERO);
+      Vfx.emit(level, VfxOptions.of(VfxParticles.Kind.RUNE, SOUL.glow(), 0.9, 12).variant(Vfx.Rune.GLYPH.ordinal()).face().curve(3).build(), top(t), Vec3.ZERO);
       if (flatDist(g, m.circle) > 1.2) {
-         Vfx.ring(level, g, SHADOW.glow(), 0.8 + 0.3 * t.getWidth(), 12);
+         Vfx.ring(level, g, SHADOW.glow(), 0.8 + 0.3 * t.getBbWidth(), 12);
       }
    }
 
-   static boolean reapSoul(ServerWorld level, PlayerEntity p, LivingEntity t, GearUse u) {
+   static boolean reapSoul(ServerLevel level, Player p, LivingEntity t, GearUse u) {
       long now = now(level);
       HollowWardenArsenal.Mark m = MARKS.get(t);
       if (m != null && m.condemnedUntil > now && t.isAlive()) {
@@ -468,10 +468,10 @@ public final class HollowWardenArsenal extends Arsenal {
          m.paroledUntil = now + (heavy ? 160 : 60);
          m.stacks = 0;
          float bonus = Math.min(heavy ? 8.0F : 24.0F, 0.2F * (t.getMaxHealth() - t.getHealth()));
-         Vec3d c = center(t);
+         Vec3 c = center(t);
          rehit(t);
          hex(u, t, 12.0F + bonus);
-         Vfx.slashArc(level, c.add(0.0, 1.2, 0.0), p.getYaw(), 0.0F, 90.0F, 2.2, SOUL, 140.0F);
+         Vfx.slashArc(level, c.add(0.0, 1.2, 0.0), p.getYRot(), 0.0F, 90.0F, 2.2, SOUL, 140.0F);
          Vfx.nova(level, c, SOUL, 1.6);
          Vfx.pillar(level, under(level, t), SOUL, 3.0, 0.6);
          Vfx.glint(level, top(t), SOUL.core(), 1.2);
@@ -487,23 +487,23 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   private static void freeSoul(ServerWorld level, PlayerEntity p, Vec3d from) {
+   private static void freeSoul(ServerLevel level, Player p, Vec3 from) {
       Vfx.dashTrail(level, from, chest(p), SOUL);
       Vfx.wisps(level, chest(p), SOUL, 1, 0.8, 30);
       p.heal(3.0F);
-      HollowWardenArsenal.Keeper k = KEEPERS.get(p.getUuid());
+      HollowWardenArsenal.Keeper k = KEEPERS.get(p.getUUID());
       if (k != null && now(level) - k.seen <= 2L) {
          addWard(level, p, k);
       }
    }
 
    static boolean reap(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      float yaw = p.getYaw();
-      float pitch = p.getPitch() * 0.3F;
-      Vec3d look = GearKit.flatLook(p);
-      Vec3d origin = GearKit.eye(p).add(0.0, -0.35, 0.0);
+      ServerLevel level = u.level();
+      Player p = u.player();
+      float yaw = p.getYRot();
+      float pitch = p.getXRot() * 0.3F;
+      Vec3 look = GearKit.flatLook(p);
+      Vec3 origin = GearKit.eye(p).add(0.0, -0.35, 0.0);
       int n = 0;
 
       for (LivingEntity e : reapTargets(u, p, look)) {
@@ -511,12 +511,12 @@ public final class HollowWardenArsenal extends Arsenal {
          sentence(level, p, e, 1);
          u.resonate(2.0F);
          if (e.isAlive() && !heavy(e)) {
-            Vec3d v = cap(p.getEntityPos().add(look.multiply(1.8)).subtract(e.getEntityPos()).multiply(0.35), 0.9);
-            e.setVelocity(v.x, v.y + 0.1, v.z);
-            e.knockedBack = true;
+            Vec3 v = cap(p.position().add(look.scale(1.8)).subtract(e.position()).scale(0.35), 0.9);
+            e.setDeltaMovement(v.x, v.y + 0.1, v.z);
+            e.syncVelocity = true;
          }
 
-         Vec3d c = center(e);
+         Vec3 c = center(e);
          Vfx.impact(level, c, SHADOW, 0.5);
          Vfx.beam(level, c, chest(p), SOUL, 0.12);
          n++;
@@ -544,10 +544,10 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    private static void returnCut(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       if (alive(p, level)) {
-         Vfx.slashArc(level, GearKit.eye(p).add(0.0, -0.35, 0.0), p.getYaw(), p.getPitch() * 0.3F, 15.0F, 5.5, SHADOW, -220.0F);
+         Vfx.slashArc(level, GearKit.eye(p).add(0.0, -0.35, 0.0), p.getYRot(), p.getXRot() * 0.3F, 15.0F, 5.5, SHADOW, -220.0F);
          Vfx.nova(level, chest(p), SOUL, 3.0);
 
          for (LivingEntity e : reapTargets(u, p, GearKit.flatLook(p))) {
@@ -565,14 +565,14 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   private static List<LivingEntity> reapTargets(GearUse u, PlayerEntity p, Vec3d look) {
+   private static List<LivingEntity> reapTargets(GearUse u, Player p, Vec3 look) {
       List<LivingEntity> out = new ArrayList<>();
       double cos = Math.cos(Math.toRadians(110.0));
 
-      for (LivingEntity e : u.enemies(p.getEntityPos(), 8.0)) {
-         Vec3d to = e.getEntityPos().subtract(p.getEntityPos());
+      for (LivingEntity e : u.enemies(p.position(), 8.0)) {
+         Vec3 to = e.position().subtract(p.position());
          double d = Math.sqrt(to.x * to.x + to.z * to.z);
-         if (!(d > 5.5 + e.getWidth() / 2.0F)
+         if (!(d > 5.5 + e.getBbWidth() / 2.0F)
             && !(e.getY() < p.getY() - 1.5)
             && !(e.getY() > p.getY() + 3.0)
             && (!(d > 0.8) || !((to.x * look.x + to.z * look.z) / d < cos))) {
@@ -584,8 +584,8 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    static boolean gallowsHook(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       LivingEntity e = GearKit.lookTarget(level, p, 16.0);
       if (e == null) {
          return false;
@@ -606,7 +606,7 @@ public final class HollowWardenArsenal extends Arsenal {
             }
          }
 
-         List<Vec3d> pts = new ArrayList<>();
+         List<Vec3> pts = new ArrayList<>();
          pts.add(GearKit.tip(p));
 
          for (LivingEntity x : bitten) {
@@ -646,28 +646,28 @@ public final class HollowWardenArsenal extends Arsenal {
       return true;
    }
 
-   private static void haul(ServerWorld level, PlayerEntity p, GearUse u, LivingEntity main, List<LivingEntity> bitten) {
-      Vec3d start = main.getEntityPos();
+   private static void haul(ServerLevel level, Player p, GearUse u, LivingEntity main, List<LivingEntity> bitten) {
+      Vec3 start = main.position();
       boolean[] self = new boolean[]{heavy(main)};
       double[] left = new double[]{-1.0};
       int[] pulled = new int[]{0};
-      Vec3d[] prev = new Vec3d[]{p.getEntityPos()};
+      Vec3[] prev = new Vec3[]{p.position()};
       IntPredicate step = t -> {
          if (alive(p, level) && main.isAlive()) {
-            Vec3d dest = p.getEntityPos().add(GearKit.flatLook(p).multiply(1.6));
+            Vec3 dest = p.position().add(GearKit.flatLook(p).scale(1.6));
 
             for (LivingEntity x : bitten) {
                if (x.isAlive() && !heavy(x) && (!self[0] || x != main)) {
-                  Vec3d v = cap(dest.subtract(x.getEntityPos()).multiply(0.25), 1.6);
-                  x.setVelocity(v.x, v.y + (t == 0 ? 0.25 : 0.0), v.z);
-                  x.knockedBack = true;
+                  Vec3 v = cap(dest.subtract(x.position()).scale(0.25), 1.6);
+                  x.setDeltaMovement(v.x, v.y + (t == 0 ? 0.25 : 0.0), v.z);
+                  x.syncVelocity = true;
                   Vfx.beam(level, GearKit.tip(p), center(x), SOUL, 0.25);
                }
             }
 
             if (self[0]) {
-               Vec3d d = main.getEntityPos().subtract(p.getEntityPos());
-               double gap = Math.max(0.0, d.length() - main.getWidth() / 2.0F);
+               Vec3 d = main.position().subtract(p.position());
+               double gap = Math.max(0.0, d.length() - main.getBbWidth() / 2.0F);
                if (left[0] < 0.0) {
                   left[0] = Math.max(0.0, gap - 2.0);
                }
@@ -675,27 +675,27 @@ public final class HollowWardenArsenal extends Arsenal {
                if (!(gap < 2.5) && !(left[0] <= 0.05) && pulled[0] < 10) {
                   double s = Math.min(1.6, left[0]);
                   left[0] -= s;
-                  Vec3d v = d.normalize().multiply(s);
-                  p.setVelocity(v.x, v.y + (pulled[0] == 0 ? 0.25 : 0.0), v.z);
-                  p.knockedBack = true;
-                  p.onLanding();
-                  Vfx.dashTrail(level, prev[0].add(0.0, 1.0, 0.0), p.getEntityPos().add(0.0, 1.0, 0.0), SOUL);
+                  Vec3 v = d.normalize().scale(s);
+                  p.setDeltaMovement(v.x, v.y + (pulled[0] == 0 ? 0.25 : 0.0), v.z);
+                  p.syncVelocity = true;
+                  p.resetFallDistance();
+                  Vfx.dashTrail(level, prev[0].add(0.0, 1.0, 0.0), p.position().add(0.0, 1.0, 0.0), SOUL);
                   Vfx.beam(level, GearKit.tip(p), center(main), SOUL, 0.25);
-                  prev[0] = p.getEntityPos();
+                  prev[0] = p.position();
                   pulled[0]++;
                   return true;
                }
 
-               p.setVelocity(p.getVelocity().multiply(0.15));
-               p.knockedBack = true;
+               p.setDeltaMovement(p.getDeltaMovement().scale(0.15));
+               p.syncVelocity = true;
                cushion(level, p);
                if (pulled[0] < 10 || gap < 6.0) {
                   gallowsSlam(level, p, u, main);
                }
 
                return false;
-            } else if (!(flatDist(main.getEntityPos(), p.getEntityPos()) < 2.2) && t < 6) {
-               if (t == 3 && main.getEntityPos().distanceTo(start) < 1.0) {
+            } else if (!(flatDist(main.position(), p.position()) < 2.2) && t < 6) {
+               if (t == 3 && main.position().distanceTo(start) < 1.0) {
                   self[0] = true;
                }
 
@@ -713,8 +713,8 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   private static void gallowsSlam(ServerWorld level, PlayerEntity p, GearUse u, LivingEntity main) {
-      Vec3d g = under(level, main);
+   private static void gallowsSlam(ServerLevel level, Player p, GearUse u, LivingEntity main) {
+      Vec3 g = under(level, main);
       List<LivingEntity> victims = new ArrayList<>();
       victims.add(main);
       if (u.empowered()) {
@@ -733,16 +733,16 @@ public final class HollowWardenArsenal extends Arsenal {
                if (heavy(x)) {
                   slow(x, p, 0, 30);
                } else {
-                  Vec3d v = x.getVelocity();
-                  x.setVelocity(v.x * 0.2, -1.2, v.z * 0.2);
-                  x.knockedBack = true;
+                  Vec3 v = x.getDeltaMovement();
+                  x.setDeltaMovement(v.x * 0.2, -1.2, v.z * 0.2);
+                  x.syncVelocity = true;
                   slow(x, p, 1, 40);
                }
             }
          }
       }
 
-      Vfx.slashArc(level, GearKit.eye(p).add(0.0, -0.3, 0.0), p.getYaw(), 20.0F, 90.0F, 3.5, SHADOW, 160.0F);
+      Vfx.slashArc(level, GearKit.eye(p).add(0.0, -0.3, 0.0), p.getYRot(), 20.0F, 90.0F, 3.5, SHADOW, 160.0F);
       if (u.empowered()) {
          Vfx.heavyImpact(level, g, SHADOW, 1.2);
          Vfx.runeCircle(level, g, 2.5, SOUL, 30, 0.08F, Vfx.Rune.GLYPH);
@@ -756,10 +756,10 @@ public final class HollowWardenArsenal extends Arsenal {
       GearKit.kick(level, p, 0.3);
    }
 
-   static void verdictLevel(ServerWorld level, PlayerEntity p, WeaponKit kit, int c, boolean max) {
-      Vec3d feet = p.getEntityPos();
-      Vec3d look = GearKit.flatLook(p);
-      Vec3d g = ground(level, feet);
+   static void verdictLevel(ServerLevel level, Player p, WeaponKit kit, int c, boolean max) {
+      Vec3 feet = p.position();
+      Vec3 look = GearKit.flatLook(p);
+      Vec3 g = ground(level, feet);
       Vfx.telegraphLine(level, ground(level, feet.add(look)), look, 6 + 2 * c, 2.4, 8, SHADOW);
       Vfx.gather(level, GearKit.tip(p), SOUL, 1.4, 6);
       Vfx.flare(level, GearKit.tip(p), SOUL.glow(), 0.8 + 0.3 * c, 6);
@@ -772,18 +772,18 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    static boolean headsmansVerdict(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      int lv = MathHelper.clamp(u.charge(), 1, 3);
-      float yaw = p.getYaw();
-      Vec3d feet = p.getEntityPos();
+      ServerLevel level = u.level();
+      Player p = u.player();
+      int lv = Mth.clamp(u.charge(), 1, 3);
+      float yaw = p.getYRot();
+      Vec3 feet = p.position();
       double len = 6 + 2 * lv;
       float[] offsets = u.empowered() ? new float[]{0.0F, 20.0F, -20.0F} : new float[]{0.0F};
-      List<Vec3d> starts = new ArrayList<>();
-      List<Vec3d> dirs = new ArrayList<>();
+      List<Vec3> starts = new ArrayList<>();
+      List<Vec3> dirs = new ArrayList<>();
 
       for (float o : offsets) {
-         Vec3d d = Vec3d.fromPolar(0.0F, yaw + o);
+         Vec3 d = Vec3.directionFromRotation(0.0F, yaw + o);
          starts.add(ground(level, feet.add(d)));
          dirs.add(d);
       }
@@ -806,38 +806,38 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    private static void bladeFall(
-      ServerWorld level, PlayerEntity p, GearUse u, List<Vec3d> starts, List<Vec3d> dirs, float yaw, float[] offsets, double len, int lv, boolean again
+      ServerLevel level, Player p, GearUse u, List<Vec3> starts, List<Vec3> dirs, float yaw, float[] offsets, double len, int lv, boolean again
    ) {
       Vfx.Palette pal = again ? VIOLET : SOUL;
       double s = again ? 0.7 : 1.0;
 
       for (int i = 0; i < starts.size(); i++) {
-         Vec3d st = starts.get(i);
-         Vec3d d = dirs.get(i);
+         Vec3 st = starts.get(i);
+         Vec3 d = dirs.get(i);
          Vfx.telegraphLine(level, st, d, len, 2.4, 4, again ? VIOLET : SHADOW);
-         Vfx.slashArc(level, st.add(d.multiply(len / 2.0)).add(0.0, 2.2, 0.0), yaw + offsets[i], 0.0F, 90.0F, len / 2.0 + 0.5, pal, 150.0F);
+         Vfx.slashArc(level, st.add(d.scale(len / 2.0)).add(0.0, 2.2, 0.0), yaw + offsets[i], 0.0F, 90.0F, len / 2.0 + 0.5, pal, 150.0F);
       }
 
       later(level, 4, () -> {
          if (alive(p, level)) {
             Set<LivingEntity> struck = new HashSet<>();
-            Vec3d first = null;
+            Vec3 first = null;
 
             for (int ix = 0; ix < starts.size(); ix++) {
-               Vec3d stx = starts.get(ix);
-               Vec3d dx = dirs.get(ix);
+               Vec3 stx = starts.get(ix);
+               Vec3 dx = dirs.get(ix);
 
                for (double k = 0.0; k <= len + 0.01; k += 2.0) {
-                  Vec3d q = ground(level, stx.add(dx.multiply(k)));
+                  Vec3 q = ground(level, stx.add(dx.scale(k)));
                   Vfx.beam(level, q.add(0.0, 7.0 * s, 0.0), q, pal, 0.7 * s, 4);
-                  Vfx.streaks(level, q.add(0.0, 3.0, 0.0), new Vec3d(0.0, -1.0, 0.0), pal, 4);
+                  Vfx.streaks(level, q.add(0.0, 3.0, 0.0), new Vec3(0.0, -1.0, 0.0), pal, 4);
                }
 
                for (double k = 1.5; k <= len; k += 3.0) {
-                  Vfx.groundCrack(level, ground(level, stx.add(dx.multiply(k))), 1.4 * s, SHADOW);
+                  Vfx.groundCrack(level, ground(level, stx.add(dx.scale(k))), 1.4 * s, SHADOW);
                }
 
-               Vec3d mid = ground(level, stx.add(dx.multiply(len / 2.0)));
+               Vec3 mid = ground(level, stx.add(dx.scale(len / 2.0)));
                double power = (0.6 + 0.3 * lv) * s;
                Vfx.heavyImpact(level, mid, SHADOW, ix == 0 ? power : Math.min(1.2, power));
                if (ix == 0) {
@@ -864,9 +864,9 @@ public final class HollowWardenArsenal extends Arsenal {
                            if (heavy(e)) {
                               slow(e, p, 0, 30);
                            } else {
-                              Vec3d v = e.getVelocity();
-                              e.setVelocity(v.x * 0.3, -0.6, v.z * 0.3);
-                              e.knockedBack = true;
+                              Vec3 v = e.getDeltaMovement();
+                              e.setDeltaMovement(v.x * 0.3, -0.6, v.z * 0.3);
+                              e.syncVelocity = true;
                               slow(e, p, 2, 30);
                            }
                         }
@@ -884,12 +884,12 @@ public final class HollowWardenArsenal extends Arsenal {
       });
    }
 
-   static void soulDrink(ServerWorld level, LivingEntity a, LivingEntity t, ItemStack s) {
-      if (!(t instanceof ArmorStandEntity)) {
+   static void soulDrink(ServerLevel level, LivingEntity a, LivingEntity t, ItemStack s) {
+      if (!(t instanceof ArmorStand)) {
          a.heal(condemned(t) ? 2.5F : 1.0F);
-         Vfx.beam(level, center(t), a.getEntityPos().add(0.0, 1.2, 0.0), SOUL, 0.12);
+         Vfx.beam(level, center(t), a.position().add(0.0, 1.2, 0.0), SOUL, 0.12);
          GearKit.hitSpark(level, t, SHADOW);
-         if (a instanceof PlayerEntity p && foe(t)) {
+         if (a instanceof Player p && foe(t)) {
             long now = now(level);
             HollowWardenArsenal.Mark m = mark(t);
             if (now - m.drinkLast > 80L) {
@@ -907,14 +907,14 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    static boolean shadowstep(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       LivingEntity e = markTarget(u, p, 18.0);
       if (e == null) {
          return false;
       }
 
-      Vec3d from = p.getEntityPos();
+      Vec3 from = p.position();
       if (!stepBehind(level, p, e)) {
          return false;
       }
@@ -922,7 +922,7 @@ public final class HollowWardenArsenal extends Arsenal {
       long now = now(level);
       stepOut(level, p, from);
       stepCut(level, p, u, e);
-      p.addStatusEffect(new StatusEffectInstance(StatusEffects.INVISIBILITY, 30, 0, true, false, true));
+      p.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, 30, 0, true, false, true));
       HollowWardenArsenal.Warden w = warden(p);
       w.invisUntil = now + 30L;
       w.shroudUntil = now + 60L;
@@ -945,7 +945,7 @@ public final class HollowWardenArsenal extends Arsenal {
                   }
 
                   if (next != null) {
-                     Vec3d at = p.getEntityPos();
+                     Vec3 at = p.position();
                      if (stepBehind(level, p, next)) {
                         cut.add(next);
                         last[0] = next;
@@ -961,30 +961,30 @@ public final class HollowWardenArsenal extends Arsenal {
       return true;
    }
 
-   private static @Nullable LivingEntity markTarget(GearUse u, PlayerEntity p, double range) {
-      Vec3d eye = GearKit.eye(p);
-      Vec3d look = p.getRotationVector();
-      Vec3d end = eye.add(look.multiply(range));
+   private static @Nullable LivingEntity markTarget(GearUse u, Player p, double range) {
+      Vec3 eye = GearKit.eye(p);
+      Vec3 look = p.getLookAngle();
+      Vec3 end = eye.add(look.scale(range));
       LivingEntity direct = null;
       double directD = Double.MAX_VALUE;
       LivingEntity near = null;
       double nearScore = Double.MAX_VALUE;
 
-      for (LivingEntity e : u.enemies(eye.add(look.multiply(range / 2.0)), range / 2.0 + 3.0)) {
-         Box box = e.getBoundingBox().expand(0.2);
-         Optional<Vec3d> through = box.contains(eye) ? Optional.of(eye) : box.raycast(eye, end);
+      for (LivingEntity e : u.enemies(eye.add(look.scale(range / 2.0)), range / 2.0 + 3.0)) {
+         AABB box = e.getBoundingBox().inflate(0.2);
+         Optional<Vec3> through = box.contains(eye) ? Optional.of(eye) : box.clip(eye, end);
          if (through.isPresent()) {
-            double d = through.get().squaredDistanceTo(eye);
-            if (d < directD && p.canSee(e)) {
+            double d = through.get().distanceToSqr(eye);
+            if (d < directD && p.hasLineOfSight(e)) {
                direct = e;
                directD = d;
             }
          } else {
-            double along = center(e).subtract(eye).dotProduct(look);
+            double along = center(e).subtract(eye).dot(look);
             if (hostile(e, p) && !(along < 0.5) && !(along > range)) {
-               double miss = Math.sqrt(box.squaredMagnitude(eye.add(look.multiply(along))));
+               double miss = Math.sqrt(box.distanceToSqr(eye.add(look.scale(along))));
                double score = miss / along;
-               if (miss <= 0.5 + 0.18 * along && score < nearScore && p.canSee(e)) {
+               if (miss <= 0.5 + 0.18 * along && score < nearScore && p.hasLineOfSight(e)) {
                   near = e;
                   nearScore = score;
                }
@@ -995,32 +995,32 @@ public final class HollowWardenArsenal extends Arsenal {
       return direct != null ? direct : near;
    }
 
-   private static boolean stepBehind(ServerWorld level, PlayerEntity p, LivingEntity e) {
-      Vec3d base = e.getEntityPos();
-      Vec3d c = center(e);
-      double back = Math.max(1.2, e.getWidth() / 2.0F + 0.8);
-      Vec3d behind = Vec3d.fromPolar(0.0F, e.getYaw()).multiply(-1.0);
-      Vec3d far = flat(base.subtract(p.getEntityPos()));
-      if (far.lengthSquared() < 1.0E-6) {
+   private static boolean stepBehind(ServerLevel level, Player p, LivingEntity e) {
+      Vec3 base = e.position();
+      Vec3 c = center(e);
+      double back = Math.max(1.2, e.getBbWidth() / 2.0F + 0.8);
+      Vec3 behind = Vec3.directionFromRotation(0.0F, e.getYRot()).scale(-1.0);
+      Vec3 far = flat(base.subtract(p.position()));
+      if (far.lengthSqr() < 1.0E-6) {
          far = behind;
       }
 
-      Vec3d[] dirs = new Vec3d[]{
-         behind, far, behind.rotateY(0.8F), behind.rotateY(-0.8F), far.rotateY(1.0F), far.rotateY(-1.0F), behind.rotateY(1.57F), behind.rotateY(-1.57F)
+      Vec3[] dirs = new Vec3[]{
+         behind, far, behind.yRot(0.8F), behind.yRot(-0.8F), far.yRot(1.0F), far.yRot(-1.0F), behind.yRot(1.57F), behind.yRot(-1.57F)
       };
 
-      for (Vec3d d : dirs) {
+      for (Vec3 d : dirs) {
          for (double dy : new double[]{0.0, 0.5, 1.0}) {
-            Vec3d at = base.add(d.x * back, dy, d.z * back);
-            if (level.isSpaceEmpty(p, p.getBoundingBox().offset(at.subtract(p.getEntityPos())))
-               && level.raycast(new RaycastContext(c, at.add(0.0, 1.0, 0.0), ShapeType.COLLIDER, FluidHandling.NONE, p)).getType() == Type.MISS) {
+            Vec3 at = base.add(d.x * back, dy, d.z * back);
+            if (level.noCollision(p, p.getBoundingBox().move(at.subtract(p.position())))
+               && level.clip(new ClipContext(c, at.add(0.0, 1.0, 0.0), Block.COLLIDER, Fluid.NONE, p)).getType() == Type.MISS) {
                double dx = c.x - at.x;
                double dz = c.z - at.z;
-               float yaw = (float)(MathHelper.atan2(dz, dx) * 180.0F / (float)Math.PI) - 90.0F;
-               float pitch = (float)MathHelper.clamp(
-                  -MathHelper.atan2(c.y - (at.y + p.getStandingEyeHeight()), Math.sqrt(dx * dx + dz * dz)) * 180.0F / (float)Math.PI, -60.0, 60.0
+               float yaw = (float)(Mth.atan2(dz, dx) * 180.0F / (float)Math.PI) - 90.0F;
+               float pitch = (float)Mth.clamp(
+                  -Mth.atan2(c.y - (at.y + p.getEyeHeight()), Math.sqrt(dx * dx + dz * dz)) * 180.0F / (float)Math.PI, -60.0, 60.0
                );
-               p.teleport(level, at.x, at.y, at.z, Set.of(), yaw, pitch, false);
+               p.teleportTo(level, at.x, at.y, at.z, Set.of(), yaw, pitch, false);
                cushion(level, p);
                return true;
             }
@@ -1030,24 +1030,24 @@ public final class HollowWardenArsenal extends Arsenal {
       return false;
    }
 
-   private static void stepOut(ServerWorld level, PlayerEntity p, Vec3d from) {
-      Vfx.dashTrail(level, from.add(0.0, 1.0, 0.0), p.getEntityPos().add(0.0, 1.0, 0.0), SHADOW);
+   private static void stepOut(ServerLevel level, Player p, Vec3 from) {
+      Vfx.dashTrail(level, from.add(0.0, 1.0, 0.0), p.position().add(0.0, 1.0, 0.0), SHADOW);
       Vfx.smoke(level, from.add(0.0, 0.6, 0.0), SHADOW.smoke(), 8, 0.5, 1.4);
       Vfx.flare(level, from.add(0.0, 1.0, 0.0), SHADOW.glow(), 1.6, 6);
       Vfx.flare(level, chest(p), SOUL.glow(), 1.4, 6);
-      Vfx.ring(level, ground(level, p.getEntityPos()), SHADOW.glow(), 1.2, 8);
+      Vfx.ring(level, ground(level, p.position()), SHADOW.glow(), 1.2, 8);
    }
 
-   private static void stepCut(ServerWorld level, PlayerEntity p, GearUse u, LivingEntity e) {
+   private static void stepCut(ServerLevel level, Player p, GearUse u, LivingEntity e) {
       hit(u, e, 7.0F);
       backstabBurst(level, p, e, u.power());
-      Vfx.slashArc(level, chest(p), p.getYaw(), p.getPitch(), -35.0F, 2.6, SHADOW, 120.0F);
+      Vfx.slashArc(level, chest(p), p.getYRot(), p.getXRot(), -35.0F, 2.6, SHADOW, 120.0F);
       Vfx.glint(level, center(e), SHADOW.core(), 1.0);
    }
 
    static boolean turnTheKey(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       LivingEntity e = keyTarget(u, p);
       if (e == null) {
          return false;
@@ -1059,8 +1059,8 @@ public final class HollowWardenArsenal extends Arsenal {
       }
 
       hit(u, e, 6.0F);
-      Vfx.slashArc(level, chest(p), p.getYaw(), p.getPitch(), 0.0F, 2.2, SHADOW, 60.0F);
-      Vfx.streaks(level, chest(p), p.getRotationVector(), SHADOW, 4);
+      Vfx.slashArc(level, chest(p), p.getYRot(), p.getXRot(), 0.0F, 2.2, SHADOW, 60.0F);
+      Vfx.streaks(level, chest(p), p.getLookAngle(), SHADOW, 4);
       if (u.empowered()) {
          GearKit.empowerFlourish(level, p, SHADOW);
       }
@@ -1074,8 +1074,8 @@ public final class HollowWardenArsenal extends Arsenal {
                m.stacks = 0;
             }
 
-            Vec3d c = center(e);
-            Vec3d g = under(level, e);
+            Vec3 c = center(e);
+            Vec3 g = under(level, e);
             rehit(e);
             if (n >= 1) {
                hex(u, e, 4 * n);
@@ -1098,15 +1098,15 @@ public final class HollowWardenArsenal extends Arsenal {
             soundAt(level, c, 1.1F, 1.0F + 0.04F * n, "weapon.shadowstep_dagger.unlock", "weapon.shadowstep_dagger.proc");
             if (n >= 3) {
                u.state().cooldown("shadowstep_dagger.primary", 1);
-               p.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 40, 1));
+               p.addEffect(new MobEffectInstance(MobEffects.SPEED, 40, 1));
                Vfx.flare(level, chest(p), SHADOW.glow(), 1.2, 5);
             }
 
             if (u.empowered()) {
                float burst = n == 0 ? 3.0F : 2 * n;
 
-               for (LivingEntity x : u.enemies(e.getEntityPos(), 5.0)) {
-                  if (x != e && !(x.getEntityPos().distanceTo(e.getEntityPos()) > 3.5 + x.getWidth() / 2.0F)) {
+               for (LivingEntity x : u.enemies(e.position(), 5.0)) {
+                  if (x != e && !(x.position().distanceTo(e.position()) > 3.5 + x.getBbWidth() / 2.0F)) {
                      hex(u, x, burst);
                      sentence(level, p, x, 2);
                   }
@@ -1119,23 +1119,23 @@ public final class HollowWardenArsenal extends Arsenal {
       return true;
    }
 
-   private static @Nullable LivingEntity keyTarget(GearUse u, PlayerEntity p) {
+   private static @Nullable LivingEntity keyTarget(GearUse u, Player p) {
       LivingEntity e = markTarget(u, p, 7.5);
       if (e != null && gap(p, e) <= 6.0) {
          return e;
       }
 
-      Vec3d eye = GearKit.eye(p);
-      Vec3d look = p.getRotationVector();
+      Vec3 eye = GearKit.eye(p);
+      Vec3 look = p.getLookAngle();
       LivingEntity best = null;
       double bestGap = Double.MAX_VALUE;
 
-      for (LivingEntity x : u.enemies(p.getEntityPos(), 9.0)) {
+      for (LivingEntity x : u.enemies(p.position(), 9.0)) {
          double g = gap(p, x);
          HollowWardenArsenal.Mark m = MARKS.get(x);
          boolean quarry = hostile(x, p) || m != null && m.stacks > 0 || condemned(x);
-         Vec3d to = center(x).subtract(eye);
-         if (!(g > (quarry ? 6.0 : 3.0)) && !(g >= bestGap) && !(to.lengthSquared() < 1.0E-4) && !(to.normalize().dotProduct(look) < 0.5) && p.canSee(x)) {
+         Vec3 to = center(x).subtract(eye);
+         if (!(g > (quarry ? 6.0 : 3.0)) && !(g >= bestGap) && !(to.lengthSqr() < 1.0E-4) && !(to.normalize().dot(look) < 0.5) && p.hasLineOfSight(x)) {
             best = x;
             bestGap = g;
          }
@@ -1144,16 +1144,16 @@ public final class HollowWardenArsenal extends Arsenal {
       return best;
    }
 
-   private static double gap(PlayerEntity p, LivingEntity e) {
-      return !(e.getY() > p.getEyeY() + 1.5) && !(e.getY() + e.getHeight() < p.getY() - 1.5)
-         ? Math.max(0.0, flatDist(p.getEntityPos(), e.getEntityPos()) - e.getWidth() / 2.0F)
+   private static double gap(Player p, LivingEntity e) {
+      return !(e.getY() > p.getEyeY() + 1.5) && !(e.getY() + e.getBbHeight() < p.getY() - 1.5)
+         ? Math.max(0.0, flatDist(p.position(), e.position()) - e.getBbWidth() / 2.0F)
          : Double.MAX_VALUE;
    }
 
-   private static boolean lunge(ServerWorld level, PlayerEntity p, LivingEntity e) {
-      Vec3d from = p.getEntityPos();
-      Vec3d dir = flat(e.getEntityPos().subtract(from));
-      if (dir.lengthSquared() < 1.0E-6) {
+   private static boolean lunge(ServerLevel level, Player p, LivingEntity e) {
+      Vec3 from = p.position();
+      Vec3 dir = flat(e.position().subtract(from));
+      if (dir.lengthSqr() < 1.0E-6) {
          return false;
       }
 
@@ -1166,10 +1166,10 @@ public final class HollowWardenArsenal extends Arsenal {
          }
 
          for (double y : new double[]{e.getY(), from.y}) {
-            Vec3d at = new Vec3d(from.x + dir.x * go, y, from.z + dir.z * go);
-            if (level.isSpaceEmpty(p, p.getBoundingBox().offset(at.subtract(from)))
-               && level.raycast(new RaycastContext(chest(p), at.add(0.0, 1.2, 0.0), ShapeType.COLLIDER, FluidHandling.NONE, p)).getType() == Type.MISS) {
-               p.teleport(level, at.x, at.y, at.z, PositionFlag.ROT, 0.0F, 0.0F, false);
+            Vec3 at = new Vec3(from.x + dir.x * go, y, from.z + dir.z * go);
+            if (level.noCollision(p, p.getBoundingBox().move(at.subtract(from)))
+               && level.clip(new ClipContext(chest(p), at.add(0.0, 1.2, 0.0), Block.COLLIDER, Fluid.NONE, p)).getType() == Type.MISS) {
+               p.teleportTo(level, at.x, at.y, at.z, Relative.ROTATION, 0.0F, 0.0F, false);
                cushion(level, p);
                Vfx.dashTrail(level, from.add(0.0, 1.0, 0.0), at.add(0.0, 1.0, 0.0), SHADOW);
                Vfx.smoke(level, from.add(0.0, 0.6, 0.0), SHADOW.smoke(), 6, 0.4, 1.2);
@@ -1181,8 +1181,8 @@ public final class HollowWardenArsenal extends Arsenal {
       return false;
    }
 
-   static void passageLevel(ServerWorld level, PlayerEntity p, WeaponKit kit, int c, boolean max) {
-      Vec3d feet = p.getEntityPos();
+   static void passageLevel(ServerLevel level, Player p, WeaponKit kit, int c, boolean max) {
+      Vec3 feet = p.position();
       Vfx.telegraphLine(level, ground(level, feet), GearKit.flatLook(p), 6 + 3 * c, 1.6, 6, SHADOW);
       Vfx.smoke(level, feet.add(0.0, 0.3, 0.0), SHADOW.smoke(), 4, 0.4, 1.0);
       Vfx.flare(level, GearKit.tip(p), SHADOW.glow(), 0.7 + 0.3 * c, 6);
@@ -1192,25 +1192,25 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    static boolean phantomPassage(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      int lv = MathHelper.clamp(u.charge(), 1, 2);
-      Vec3d dir = GearKit.flatLook(p);
+      ServerLevel level = u.level();
+      Player p = u.player();
+      int lv = Mth.clamp(u.charge(), 1, 2);
+      Vec3 dir = GearKit.flatLook(p);
       double reach = 6 + 3 * lv;
       reach = Math.min(
-         clearance(level, p, p.getEntityPos().add(0.0, 0.7, 0.0), dir, reach), clearance(level, p, GearKit.eye(p).add(0.0, -0.1, 0.0), dir, reach)
+         clearance(level, p, p.position().add(0.0, 0.7, 0.0), dir, reach), clearance(level, p, GearKit.eye(p).add(0.0, -0.1, 0.0), dir, reach)
       );
       if (reach < 1.5) {
          return false;
       }
 
       double per = reach / 5.0;
-      float yaw = p.getYaw();
+      float yaw = p.getYRot();
       float dmg = 9 + 4 * lv;
-      Vec3d start = p.getEntityPos();
+      Vec3 start = p.position();
       warden(p).passageUntil = now(level) + 8L;
       Set<LivingEntity> cut = new HashSet<>();
-      Vec3d[] prev = new Vec3d[]{start};
+      Vec3[] prev = new Vec3[]{start};
       Vfx.smoke(level, chest(p), SHADOW.smoke(), 8, 0.5, 1.3);
       Vfx.flare(level, chest(p), SHADOW.glow(), 1.6, 5);
       if (u.empowered()) {
@@ -1222,24 +1222,24 @@ public final class HollowWardenArsenal extends Arsenal {
             return false;
          }
 
-         p.onLanding();
+         p.resetFallDistance();
          if (t < 5) {
-            p.setVelocity(dir.x * per, p.isOnGround() ? 0.05 : 0.0, dir.z * per);
-            p.knockedBack = true;
+            p.setDeltaMovement(dir.x * per, p.onGround() ? 0.05 : 0.0, dir.z * per);
+            p.syncVelocity = true;
          } else if (t == 5) {
-            p.setVelocity(dir.x * 0.15, 0.0, dir.z * 0.15);
-            p.knockedBack = true;
+            p.setDeltaMovement(dir.x * 0.15, 0.0, dir.z * 0.15);
+            p.syncVelocity = true;
          }
 
-         Vec3d at = p.getEntityPos();
-         Box box = p.getBoundingBox().expand(1.0).stretch(prev[0].subtract(at));
+         Vec3 at = p.position();
+         AABB box = p.getBoundingBox().inflate(1.0).expandTowards(prev[0].subtract(at));
 
          for (LivingEntity e : u.enemies(at, 6.0)) {
             if (e.getBoundingBox().intersects(box) && cut.add(e)) {
                hit(u, e, dmg);
                sentence(level, p, e, 1);
                if (e.isAlive() && !heavy(e)) {
-                  e.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 30, 0), p);
+                  e.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, 30, 0), p);
                }
 
                Vfx.slashArc(level, center(e), yaw + 90.0F, 0.0F, 0.0F, 1.8, SHADOW, 140.0F);
@@ -1247,7 +1247,7 @@ public final class HollowWardenArsenal extends Arsenal {
             }
          }
 
-         if (at.squaredDistanceTo(prev[0]) > 0.01) {
+         if (at.distanceToSqr(prev[0]) > 0.01) {
             Vfx.dashTrail(level, prev[0].add(0.0, 1.0, 0.0), at.add(0.0, 1.0, 0.0), SHADOW);
             Vfx.streaks(level, at.add(0.0, 1.0, 0.0), dir, SHADOW, 3);
          }
@@ -1267,15 +1267,15 @@ public final class HollowWardenArsenal extends Arsenal {
       return true;
    }
 
-   private static void passageEnd(ServerWorld level, PlayerEntity p, GearUse u, Vec3d start, Vec3d end, Vec3d dir, int lv, float dmg) {
-      Vec3d path = flat(end.subtract(start));
+   private static void passageEnd(ServerLevel level, Player p, GearUse u, Vec3 start, Vec3 end, Vec3 dir, int lv, float dmg) {
+      Vec3 path = flat(end.subtract(start));
       double len = flatDist(start, end);
-      if (len < 0.5 || path.lengthSquared() < 1.0E-6) {
+      if (len < 0.5 || path.lengthSqr() < 1.0E-6) {
          path = dir;
          len = 0.5;
       }
 
-      Vec3d pd = path;
+      Vec3 pd = path;
       double length = len;
       cushion(level, p);
       Vfx.telegraphLine(level, ground(level, start), pd, length, 1.6, 8, SHADOW);
@@ -1288,13 +1288,13 @@ public final class HollowWardenArsenal extends Arsenal {
       later(level, 8, () -> {
          if (alive(p, level)) {
             for (double kx = 0.0; kx <= length + 0.01; kx += 1.5) {
-               Vec3d q = ground(level, start.add(pd.multiply(kx)));
+               Vec3 q = ground(level, start.add(pd.scale(kx)));
                Vfx.pillar(level, q, SHADOW, 1.6, 0.4);
                Vfx.smoke(level, q, SHADOW.smoke(), 2, 0.4, 1.0);
             }
 
-            Vec3d a = start.add(0.0, 0.5, 0.0);
-            Vec3d b = end.add(0.0, 0.5, 0.0);
+            Vec3 a = start.add(0.0, 0.5, 0.0);
+            Vec3 b = end.add(0.0, 0.5, 0.0);
 
             for (LivingEntity e : segFoes(u, a, b, 1.5)) {
                rehit(e);
@@ -1304,8 +1304,8 @@ public final class HollowWardenArsenal extends Arsenal {
 
             soundAt(level, start.lerp(end, 0.5), 1.1F, 1.0F, "weapon.shadowstep_dagger.trail", "weapon.shadowstep_dagger.use");
             if (u.empowered()) {
-               Vec3d ca = start.add(0.0, 0.3, 0.0);
-               Vec3d cb = end.add(0.0, 0.3, 0.0);
+               Vec3 ca = start.add(0.0, 0.3, 0.0);
+               Vec3 cb = end.add(0.0, 0.3, 0.0);
                Vfx.beam(level, ca, cb, SOUL, 0.3, 60);
                Vfx.telegraphLine(level, ground(level, start), pd, length, 1.6, 2, SOUL);
                every(level, 10, 10, 6, kxx -> {
@@ -1323,10 +1323,10 @@ public final class HollowWardenArsenal extends Arsenal {
       });
    }
 
-   private static void phantom(ServerWorld level, PlayerEntity p, GearUse u, Vec3d start, Vec3d end, float dmg) {
+   private static void phantom(ServerLevel level, Player p, GearUse u, Vec3 start, Vec3 end, float dmg) {
       if (alive(p, level)) {
-         Vec3d a = start.add(0.0, 1.0, 0.0);
-         Vec3d b = end.add(0.0, 1.0, 0.0);
+         Vec3 a = start.add(0.0, 1.0, 0.0);
+         Vec3 b = end.add(0.0, 1.0, 0.0);
          Vfx.dashTrail(level, a, b, SOUL);
 
          for (int j = 0; j < 3; j++) {
@@ -1338,19 +1338,19 @@ public final class HollowWardenArsenal extends Arsenal {
             rehit(e);
             hit(u, e, 0.5F * dmg);
             if (e.isAlive() && !heavy(e)) {
-               e.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 30, 0), p);
+               e.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, 30, 0), p);
             }
          }
       }
    }
 
-   static void backstab(ServerWorld level, LivingEntity a, LivingEntity t, ItemStack s) {
-      if (a instanceof PlayerEntity p && foe(t)) {
+   static void backstab(ServerLevel level, LivingEntity a, LivingEntity t, ItemStack s) {
+      if (a instanceof Player p && foe(t)) {
          long now = now(level);
-         HollowWardenArsenal.Warden w = WARDENS.get(p.getUuid());
+         HollowWardenArsenal.Warden w = WARDENS.get(p.getUUID());
          boolean shroud = w != null && w.shroudUntil > now;
-         Vec3d facing = Vec3d.fromPolar(0.0F, t.getYaw());
-         Vec3d to = a.getEntityPos().subtract(t.getEntityPos());
+         Vec3 facing = Vec3.directionFromRotation(0.0F, t.getYRot());
+         Vec3 to = a.position().subtract(t.position());
          double d = Math.sqrt(to.x * to.x + to.z * to.z);
          boolean behind = d > 0.001 && (facing.x * to.x + facing.z * to.z) / d < -0.35;
          if (!shroud && !behind) {
@@ -1365,7 +1365,7 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   private static void backstabBurst(ServerWorld level, PlayerEntity p, LivingEntity t, float power) {
+   private static void backstabBurst(ServerLevel level, Player p, LivingEntity t, float power) {
       if (t.isAlive()) {
          mark(t).backstabLast = now(level);
          rehit(t);
@@ -1373,22 +1373,22 @@ public final class HollowWardenArsenal extends Arsenal {
          sentence(level, p, t, 1);
          GearState.of(p).addResonance("shadowstep_dagger", 4.0F);
          if (t.isAlive() && !heavy(t)) {
-            t.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 30, 0), p);
+            t.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, 30, 0), p);
          }
 
-         Vec3d c = center(t);
-         Vfx.slashArc(level, c, p.getYaw(), p.getPitch(), 45.0F, 1.6, SHADOW, 100.0F);
-         Vfx.slashArc(level, c, p.getYaw(), p.getPitch(), -45.0F, 1.6, SHADOW, 100.0F);
+         Vec3 c = center(t);
+         Vfx.slashArc(level, c, p.getYRot(), p.getXRot(), 45.0F, 1.6, SHADOW, 100.0F);
+         Vfx.slashArc(level, c, p.getYRot(), p.getXRot(), -45.0F, 1.6, SHADOW, 100.0F);
          Vfx.glint(level, c, SHADOW.core(), 0.9);
          GearKit.procSound(level, t, "shadowstep_dagger");
       }
    }
 
    static boolean soulVolley(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       LivingEntity target = GearKit.lookTarget(level, p, 32.0);
-      Vec3d aim = target == null ? aimPoint(level, p, 24.0) : null;
+      Vec3 aim = target == null ? aimPoint(level, p, 24.0) : null;
       int count = u.empowered() ? 5 : 3;
       int pierce = u.empowered() ? 1 : 0;
       GearKit.muzzle(level, p, SOUL, 0.8);
@@ -1400,12 +1400,12 @@ public final class HollowWardenArsenal extends Arsenal {
          int k = i;
          soon(level, 3 * i, () -> {
             if (alive(p, level)) {
-               Vec3d look = p.getRotationVector();
-               Vec3d side = look.crossProduct(new Vec3d(0.0, 1.0, 0.0));
-               side = side.lengthSquared() < 1.0E-4 ? new Vec3d(1.0, 0.0, 0.0) : side.normalize();
+               Vec3 look = p.getLookAngle();
+               Vec3 side = look.cross(new Vec3(0.0, 1.0, 0.0));
+               side = side.lengthSqr() < 1.0E-4 ? new Vec3(1.0, 0.0, 0.0) : side.normalize();
                double sp = SPREAD[k];
-               Vec3d vel = look.multiply(0.35).add(side.multiply(sp * 0.35)).add(0.0, sp == 0.0 ? 0.45 : 0.25, 0.0);
-               Vec3d from = GearKit.tip(p);
+               Vec3 vel = look.scale(0.35).add(side.scale(sp * 0.35)).add(0.0, sp == 0.0 ? 0.45 : 0.25, 0.0);
+               Vec3 from = GearKit.tip(p);
                MOTES.add(new HollowWardenArsenal.Mote(u, from, vel, target, aim, pierce));
                Vfx.flare(level, from, SOUL.glow(), 1.0, 5);
                soundAt(level, from, 0.6F, 1.2F + 0.1F * k, "bolt.shadow.launch");
@@ -1417,9 +1417,9 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    static boolean penance(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      Vec3d g = ground(level, aimPoint(level, p, 28.0));
+      ServerLevel level = u.level();
+      Player p = u.player();
+      Vec3 g = ground(level, aimPoint(level, p, 28.0));
       double r = u.empowered() ? 3.6 : 2.8;
       Vfx.telegraphCircle(level, g, r, 10, SOUL);
       Vfx.runeCircle(level, g, r, SHADOW, 80, 0.03F, Vfx.Rune.GLYPH);
@@ -1437,12 +1437,12 @@ public final class HollowWardenArsenal extends Arsenal {
       return true;
    }
 
-   private static void cell(ServerWorld level, PlayerEntity p, GearUse u, Vec3d g, double r) {
+   private static void cell(ServerLevel level, Player p, GearUse u, Vec3 g, double r) {
       Vfx.ward(level, g, r, SOUL, 60);
 
       for (int i = 0; i < 8; i++) {
          double a = i * Math.PI / 4.0;
-         Vec3d rim = g.add(Math.cos(a) * r, 0.0, Math.sin(a) * r);
+         Vec3 rim = g.add(Math.cos(a) * r, 0.0, Math.sin(a) * r);
          Vfx.beam(level, rim.add(0.0, 3.5, 0.0), rim, SHADOW, 0.2, 60);
       }
 
@@ -1466,12 +1466,12 @@ public final class HollowWardenArsenal extends Arsenal {
          }
 
          for (LivingEntity exxx : prisoners) {
-            if (exxx.isAlive() && exxx.getEntityWorld() == level && !heavy(exxx)) {
-               double d = flatDist(exxx.getEntityPos(), g);
+            if (exxx.isAlive() && exxx.level() == level && !heavy(exxx)) {
+               double d = flatDist(exxx.position(), g);
                if (d > r - 0.4 && d < r + 8.0) {
-                  Vec3d back = flat(g.subtract(exxx.getEntityPos())).multiply(0.25);
-                  exxx.setVelocity(back.x, exxx.getVelocity().y, back.z);
-                  exxx.knockedBack = true;
+                  Vec3 back = flat(g.subtract(exxx.position())).scale(0.25);
+                  exxx.setDeltaMovement(back.x, exxx.getDeltaMovement().y, back.z);
+                  exxx.syncVelocity = true;
                }
 
                if (t % 10 == 0) {
@@ -1484,7 +1484,7 @@ public final class HollowWardenArsenal extends Arsenal {
             int drained = 0;
 
             for (LivingEntity ex : prisoners) {
-               if (ex.isAlive() && ex.getEntityWorld() == level) {
+               if (ex.isAlive() && ex.level() == level) {
                   softHex(u, ex, 2.0F);
                   Vfx.beam(level, center(ex), chest(p), SOUL, 0.15);
                   drained++;
@@ -1514,31 +1514,31 @@ public final class HollowWardenArsenal extends Arsenal {
       });
    }
 
-   static void pyreLevel(ServerWorld level, PlayerEntity p, WeaponKit kit, int c, boolean max) {
+   static void pyreLevel(ServerLevel level, Player p, WeaponKit kit, int c, boolean max) {
       Vfx.gather(level, GearKit.tip(p), SOUL, 2.0, 8);
       Vfx.wisps(level, chest(p), SOUL, c + 1, 1.4, 20);
       Vfx.flare(level, GearKit.tip(p), SOUL.glow(), 0.8 + 0.3 * c, 6);
       if (max) {
          Vfx.chargeUp(level, GearKit.tip(p), SOUL, 10);
-         Vfx.runeCircle(level, ground(level, p.getEntityPos()), 2.0, SOUL, 30, 0.06F, Vfx.Rune.ARCANE);
+         Vfx.runeCircle(level, ground(level, p.position()), 2.0, SOUL, 30, 0.06F, Vfx.Rune.ARCANE);
       }
    }
 
    static boolean soulPyre(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
-      int lv = MathHelper.clamp(u.charge(), 1, 3);
+      ServerLevel level = u.level();
+      Player p = u.player();
+      int lv = Mth.clamp(u.charge(), 1, 3);
       int n = 2 + lv + (u.empowered() ? 2 : 0);
-      Vec3d c = ground(level, aimPoint(level, p, 28.0));
-      float yaw = p.getYaw();
-      List<Vec3d> spots = new ArrayList<>();
+      Vec3 c = ground(level, aimPoint(level, p, 28.0));
+      float yaw = p.getYRot();
+      List<Vec3> spots = new ArrayList<>();
 
       for (LivingEntity e : hostiles(u, p, c, 8.0)) {
          if (spots.size() >= n) {
             break;
          }
 
-         Vec3d q = under(level, e);
+         Vec3 q = under(level, e);
          if (far(spots, q, 1.0)) {
             spots.add(q);
          }
@@ -1550,7 +1550,7 @@ public final class HollowWardenArsenal extends Arsenal {
 
          for (int j = 0; j < 2 * k && spots.size() < n; j++) {
             float a = yaw + j % k * 360.0F / k + (j >= k ? 180.0F / k : 0.0F);
-            Vec3d q = ground(level, c.add(Vec3d.fromPolar(0.0F, a).multiply(radius)));
+            Vec3 q = ground(level, c.add(Vec3.directionFromRotation(0.0F, a).scale(radius)));
             if (far(spots, q, 2.5)) {
                spots.add(q);
             }
@@ -1569,7 +1569,7 @@ public final class HollowWardenArsenal extends Arsenal {
       float dmg = 12 + 3 * lv;
 
       for (int i = 0; i < spots.size(); i++) {
-         Vec3d q = spots.get(i);
+         Vec3 q = spots.get(i);
          int k = i;
          soon(level, 3 * i, () -> {
             if (alive(p, level)) {
@@ -1583,7 +1583,7 @@ public final class HollowWardenArsenal extends Arsenal {
       if (lv >= 3 && spots.size() >= 2) {
          later(level, 3 * (spots.size() - 1) + 16, () -> {
             if (alive(p, level)) {
-               List<Vec3d> pts = new ArrayList<>();
+               List<Vec3> pts = new ArrayList<>();
 
                for (int ixx = 0; ixx < Math.min(8, spots.size()); ixx++) {
                   pts.add(spots.get(ixx).add(0.0, 1.2, 0.0));
@@ -1610,7 +1610,7 @@ public final class HollowWardenArsenal extends Arsenal {
       return true;
    }
 
-   private static void pyre(ServerWorld level, PlayerEntity p, GearUse u, Vec3d q, int i, float dmg, int zone) {
+   private static void pyre(ServerLevel level, Player p, GearUse u, Vec3 q, int i, float dmg, int zone) {
       if (alive(p, level)) {
          Vfx.pillar(level, q, SOUL, 6.0, 1.1);
          Vfx.nova(level, q.add(0.0, 0.5, 0.0), SOUL, 1.8);
@@ -1640,11 +1640,11 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   static void soulBrand(ServerWorld level, LivingEntity a, LivingEntity t, ItemStack s) {
-      if (!(t instanceof ArmorStandEntity)) {
+   static void soulBrand(ServerLevel level, LivingEntity a, LivingEntity t, ItemStack s) {
+      if (!(t instanceof ArmorStand)) {
          GearKit.hitSpark(level, t, SOUL);
          Vfx.embers(level, center(t), SOUL.glow(), 4, 0.3);
-         if (a instanceof PlayerEntity p && foe(t)) {
+         if (a instanceof Player p && foe(t)) {
             sentence(level, p, t, 1);
             long now = now(level);
             HollowWardenArsenal.Mark m = mark(t);
@@ -1659,37 +1659,37 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   static void gloomsight(ServerWorld level, PlayerEntity p, int pieces) {
+   static void gloomsight(ServerLevel level, Player p, int pieces) {
       long now = now(level);
       HollowWardenArsenal.Warden w = warden(p);
       w.gloomSeen = now;
-      if (level.getTime() % 20L == 0L) {
-         p.addStatusEffect(new StatusEffectInstance(StatusEffects.NIGHT_VISION, 260, 0, true, false, true));
+      if (level.getGameTime() % 20L == 0L) {
+         p.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, 260, 0, true, false, true));
       }
 
-      if (p.hasStatusEffect(StatusEffects.DARKNESS)) {
-         p.removeStatusEffect(StatusEffects.DARKNESS);
+      if (p.hasEffect(MobEffects.DARKNESS)) {
+         p.removeEffect(MobEffects.DARKNESS);
       }
 
-      if (p.hasStatusEffect(StatusEffects.BLINDNESS)) {
-         p.removeStatusEffect(StatusEffects.BLINDNESS);
+      if (p.hasEffect(MobEffects.BLINDNESS)) {
+         p.removeEffect(MobEffects.BLINDNESS);
       }
 
-      boolean sneak = p.isSneaking() && !p.isSpectator();
+      boolean sneak = p.isShiftKeyDown() && !p.isSpectator();
       if (sneak) {
          if (!w.sneaking) {
             Vfx.smoke(level, chest(p), SHADOW.smoke(), 6, 0.4, 1.2);
             Vfx.flare(level, chest(p), SHADOW.glow(), 0.8, 4);
          }
 
-         StatusEffectInstance inv = p.getStatusEffect(StatusEffects.INVISIBILITY);
-         if (inv == null || inv.getDuration() < 40 && !inv.shouldShowParticles()) {
-            GearKit.keep(p, StatusEffects.INVISIBILITY, 0);
+         MobEffectInstance inv = p.getEffect(MobEffects.INVISIBILITY);
+         if (inv == null || inv.getDuration() < 40 && !inv.isVisible()) {
+            GearKit.keep(p, MobEffects.INVISIBILITY, 0);
          }
 
          w.gloomed = true;
          if (now % 20L == 0L) {
-            Vfx.smoke(level, p.getEntityPos().add(0.0, 0.2, 0.0), SHADOW.smoke(), 1, 0.3, 0.8);
+            Vfx.smoke(level, p.position().add(0.0, 0.2, 0.0), SHADOW.smoke(), 1, 0.3, 0.8);
          }
       } else if (w.gloomed) {
          w.gloomed = false;
@@ -1701,9 +1701,9 @@ public final class HollowWardenArsenal extends Arsenal {
       w.sneaking = sneak;
    }
 
-   static void keeperTick(ServerWorld level, PlayerEntity p, int pieces) {
+   static void keeperTick(ServerLevel level, Player p, int pieces) {
       long now = now(level);
-      HollowWardenArsenal.Keeper k = KEEPERS.computeIfAbsent(p.getUuid(), id -> new HollowWardenArsenal.Keeper());
+      HollowWardenArsenal.Keeper k = KEEPERS.computeIfAbsent(p.getUUID(), id -> new HollowWardenArsenal.Keeper());
       k.seen = now;
       if (!k.souls.isEmpty()) {
          boolean changed = false;
@@ -1733,7 +1733,7 @@ public final class HollowWardenArsenal extends Arsenal {
       }
    }
 
-   static void shroudHurt(ServerWorld level, PlayerEntity p, @Nullable LivingEntity attacker, DamageSource source, float taken, int pieces) {
+   static void shroudHurt(ServerLevel level, Player p, @Nullable LivingEntity attacker, DamageSource source, float taken, int pieces) {
       if (pieces >= 4) {
          long now = now(level);
          boolean foeHit = attacker != null && attacker != p && foe(attacker);
@@ -1746,7 +1746,7 @@ public final class HollowWardenArsenal extends Arsenal {
             }
          }
 
-         HollowWardenArsenal.Keeper k = KEEPERS.get(p.getUuid());
+         HollowWardenArsenal.Keeper k = KEEPERS.get(p.getUUID());
          if (k != null && !k.souls.isEmpty()) {
             int keep = Math.max(0, (int)Math.ceil(p.getAbsorptionAmount() / 4.0F - 0.01F));
 
@@ -1765,7 +1765,7 @@ public final class HollowWardenArsenal extends Arsenal {
 
             if (burst != 0) {
                wardCap(p, k.souls.size());
-               Vec3d c = chest(p);
+               Vec3 c = chest(p);
                Vfx.nova(level, c, SOUL, 2.0);
                Vfx.shards(level, c, SOUL.core(), 8 * burst, 0.4);
                if (foeHit && attacker.isAlive() && attacker.distanceTo(p) <= 6.0F) {
@@ -1786,16 +1786,16 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    static boolean lifeSentence(GearUse u) {
-      ServerWorld level = u.level();
-      PlayerEntity p = u.player();
+      ServerLevel level = u.level();
+      Player p = u.player();
       List<LivingEntity> chained = new ArrayList<>();
 
-      for (LivingEntity e : hostiles(u, p, p.getEntityPos(), 12.0)) {
+      for (LivingEntity e : hostiles(u, p, p.position(), 12.0)) {
          if (chained.size() >= 6) {
             break;
          }
 
-         if (p.canSee(e)) {
+         if (p.hasLineOfSight(e)) {
             chained.add(e);
          }
       }
@@ -1804,11 +1804,11 @@ public final class HollowWardenArsenal extends Arsenal {
          return false;
       }
 
-      Vec3d feet = p.getEntityPos();
+      Vec3 feet = p.position();
       Vfx.runeCircle(level, ground(level, feet), 3.0, SOUL, 66, 0.05F, Vfx.Rune.GLYPH);
       Vfx.auraRing(level, feet, SHADOW, 1.6);
       Vfx.radialFlash(level, feet, 10.0, SHADOW.glow(), 0.35F);
-      p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 70, 0));
+      p.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 70, 0));
       double[] leash = new double[chained.size()];
 
       for (int i = 0; i < chained.size(); i++) {
@@ -1826,22 +1826,22 @@ public final class HollowWardenArsenal extends Arsenal {
             return false;
          }
 
-         Vec3d me = chest(p);
-         Vec3d dest = p.getEntityPos().add(GearKit.flatLook(p).multiply(1.5));
+         Vec3 me = chest(p);
+         Vec3 dest = p.position().add(GearKit.flatLook(p).scale(1.5));
 
          for (int ix = 0; ix < chained.size(); ix++) {
             LivingEntity exxx = chained.get(ix);
-            if (exxx.isAlive() && exxx.getEntityWorld() == level) {
-               Vec3d c = center(exxx);
+            if (exxx.isAlive() && exxx.level() == level) {
+               Vec3 c = center(exxx);
                if (tick <= 60 && tick % 2 == 0) {
                   Vfx.beam(level, me, c, SOUL, 0.3, 3);
                }
 
                boolean light = !heavy(exxx);
                if (tick < 60 && light && p.distanceTo(exxx) > leash[ix]) {
-                  Vec3d back = flat(p.getEntityPos().subtract(exxx.getEntityPos())).multiply(0.3);
-                  exxx.setVelocity(back.x, exxx.getVelocity().y, back.z);
-                  exxx.knockedBack = true;
+                  Vec3 back = flat(p.position().subtract(exxx.position())).scale(0.3);
+                  exxx.setDeltaMovement(back.x, exxx.getDeltaMovement().y, back.z);
+                  exxx.syncVelocity = true;
                }
 
                if (tick % 20 == 0 && tick <= 60) {
@@ -1849,10 +1849,10 @@ public final class HollowWardenArsenal extends Arsenal {
                   Vfx.sparks(level, me.lerp(c, 0.5), SOUL.glow(), 4, 0.2, 0.3);
                }
 
-               if (light && exxx.isAlive() && tick >= 60 && tick < 66 && flatDist(exxx.getEntityPos(), dest) > 1.5) {
-                  Vec3d v = cap(dest.subtract(exxx.getEntityPos()).multiply(0.22), tick == 60 ? 1.8 : 1.2);
-                  exxx.setVelocity(v.x, v.y + (tick == 60 ? 0.3 : 0.0), v.z);
-                  exxx.knockedBack = true;
+               if (light && exxx.isAlive() && tick >= 60 && tick < 66 && flatDist(exxx.position(), dest) > 1.5) {
+                  Vec3 v = cap(dest.subtract(exxx.position()).scale(0.22), tick == 60 ? 1.8 : 1.2);
+                  exxx.setDeltaMovement(v.x, v.y + (tick == 60 ? 0.3 : 0.0), v.z);
+                  exxx.syncVelocity = true;
                   if (tick == 60) {
                      Vfx.streaks(level, c, me.subtract(c).normalize(), SOUL, 6);
                   }
@@ -1861,15 +1861,15 @@ public final class HollowWardenArsenal extends Arsenal {
          }
 
          if (tick == 60) {
-            soundAt(level, p.getEntityPos(), 1.3F, 0.9F, "weapon.lantern_of_souls.condemn", "weapon.lantern_of_souls.alt");
+            soundAt(level, p.position(), 1.3F, 0.9F, "weapon.lantern_of_souls.condemn", "weapon.lantern_of_souls.alt");
          }
 
          if (tick < 66) {
             return true;
          }
 
-         Vec3d f = p.getEntityPos();
-         Vec3d g = ground(level, f);
+         Vec3 f = p.position();
+         Vec3 g = ground(level, f);
          Vfx.nova(level, chest(p), SHADOW, 5.0);
          Vfx.heavyImpact(level, g, SHADOW, 1.6);
          Vfx.runeCircle(level, g, 4.5, SOUL, 30, 0.1F, Vfx.Rune.GLYPH);
@@ -1883,7 +1883,7 @@ public final class HollowWardenArsenal extends Arsenal {
          }
 
          for (LivingEntity ex : chained) {
-            if (ex.isAlive() && ex.getEntityWorld() == level) {
+            if (ex.isAlive() && ex.level() == level) {
                condemn(level, p, ex);
             }
          }
@@ -1894,7 +1894,7 @@ public final class HollowWardenArsenal extends Arsenal {
       return true;
    }
 
-   private static void addWard(ServerWorld level, PlayerEntity p, HollowWardenArsenal.Keeper k) {
+   private static void addWard(ServerLevel level, Player p, HollowWardenArsenal.Keeper k) {
       long exp = now(level) + 600L;
       if (k.souls.size() < 3) {
          k.souls.add(exp);
@@ -1913,51 +1913,51 @@ public final class HollowWardenArsenal extends Arsenal {
       wardCap(p, k.souls.size());
       p.setAbsorptionAmount(Math.max(p.getAbsorptionAmount(), 4.0F * k.souls.size()));
       Vfx.flare(level, chest(p), SOUL.glow(), 1.4, 6);
-      Vfx.ring(level, p.getEntityPos(), SOUL.glow(), 1.2, 10);
+      Vfx.ring(level, p.position(), SOUL.glow(), 1.2, 10);
    }
 
-   private static void wardCap(PlayerEntity p, int souls) {
-      EntityAttributeInstance max = p.getAttributeInstance(EntityAttributes.MAX_ABSORPTION);
+   private static void wardCap(Player p, int souls) {
+      AttributeInstance max = p.getAttribute(Attributes.MAX_ABSORPTION);
       if (max != null) {
          if (souls <= 0) {
             max.removeModifier(WARDS);
          } else {
-            EntityAttributeModifier cur = max.getModifier(WARDS);
-            if (cur == null || cur.value() != 4.0 * souls) {
-               max.updateModifier(new EntityAttributeModifier(WARDS, 4.0 * souls, Operation.ADD_VALUE));
+            AttributeModifier cur = max.getModifier(WARDS);
+            if (cur == null || cur.amount() != 4.0 * souls) {
+               max.addOrUpdateTransientModifier(new AttributeModifier(WARDS, 4.0 * souls, Operation.ADD_VALUE));
             }
          }
       }
    }
 
-   private static void dropShroud(PlayerEntity p) {
-      StatusEffectInstance inv = p.getStatusEffect(StatusEffects.INVISIBILITY);
-      if (inv != null && inv.getDuration() <= 70 && !inv.shouldShowParticles()) {
-         p.removeStatusEffect(StatusEffects.INVISIBILITY);
+   private static void dropShroud(Player p) {
+      MobEffectInstance inv = p.getEffect(MobEffects.INVISIBILITY);
+      if (inv != null && inv.getDuration() <= 70 && !inv.isVisible()) {
+         p.removeEffect(MobEffects.INVISIBILITY);
       }
    }
 
-   private static HollowWardenArsenal.Warden warden(PlayerEntity p) {
-      return WARDENS.computeIfAbsent(p.getUuid(), id -> new HollowWardenArsenal.Warden());
+   private static HollowWardenArsenal.Warden warden(Player p) {
+      return WARDENS.computeIfAbsent(p.getUUID(), id -> new HollowWardenArsenal.Warden());
    }
 
-   private static boolean alive(PlayerEntity p, ServerWorld level) {
-      return p.isAlive() && !p.isRemoved() && p.getEntityWorld() == level;
+   private static boolean alive(Player p, ServerLevel level) {
+      return p.isAlive() && !p.isRemoved() && p.level() == level;
    }
 
    private static boolean heavy(LivingEntity e) {
-      return e instanceof MysticalBoss b && b.isBoss() || e instanceof EnderDragonEntity || e instanceof WitherEntity;
+      return e instanceof MysticalBoss b && b.isBoss() || e instanceof EnderDragon || e instanceof WitherBoss;
    }
 
    private static boolean foe(LivingEntity e) {
-      return e.isAlive() && !(e instanceof PlayerEntity) && !(e instanceof ArmorStandEntity);
+      return e.isAlive() && !(e instanceof Player) && !(e instanceof ArmorStand);
    }
 
-   private static boolean hostile(LivingEntity e, PlayerEntity p) {
-      return e instanceof Monster || e instanceof MysticalBoss || e instanceof EnderDragonEntity || e instanceof MobEntity m && m.getTarget() == p;
+   private static boolean hostile(LivingEntity e, Player p) {
+      return e instanceof Enemy || e instanceof MysticalBoss || e instanceof EnderDragon || e instanceof Mob m && m.getTarget() == p;
    }
 
-   private static List<LivingEntity> hostiles(GearUse u, PlayerEntity p, Vec3d at, double r) {
+   private static List<LivingEntity> hostiles(GearUse u, Player p, Vec3 at, double r) {
       List<LivingEntity> out = new ArrayList<>();
 
       for (LivingEntity e : u.enemies(at, r)) {
@@ -1966,12 +1966,12 @@ public final class HollowWardenArsenal extends Arsenal {
          }
       }
 
-      out.sort(Comparator.comparingDouble(ex -> ex.squaredDistanceTo(at)));
+      out.sort(Comparator.comparingDouble(ex -> ex.distanceToSqr(at)));
       return out;
    }
 
    private static void rehit(LivingEntity e) {
-      e.timeUntilRegen = 0;
+      e.setInvulnerableTime(0);
    }
 
    private static void hit(GearUse u, LivingEntity e, float base) {
@@ -1990,27 +1990,27 @@ public final class HollowWardenArsenal extends Arsenal {
       soft(u.level(), u.player(), e, base * u.power() * amp(e));
    }
 
-   private static void soft(ServerWorld level, PlayerEntity p, LivingEntity e, float dmg) {
+   private static void soft(ServerLevel level, Player p, LivingEntity e, float dmg) {
       if (e.isAlive()) {
-         int inv = e.timeUntilRegen;
-         Vec3d v = e.getVelocity();
-         e.timeUntilRegen = 0;
+         int inv = e.getInvulnerableTime();
+         Vec3 v = e.getDeltaMovement();
+         e.setInvulnerableTime(0);
          GearKit.magic(level, p, e, dmg);
          if (e.isAlive()) {
-            e.timeUntilRegen = inv;
-            e.setVelocity(v);
+            e.setInvulnerableTime(inv);
+            e.setDeltaMovement(v);
          }
       }
    }
 
-   private static void slow(LivingEntity e, PlayerEntity p, int amplifier, int ticks) {
+   private static void slow(LivingEntity e, Player p, int amplifier, int ticks) {
       if (e.isAlive()) {
-         e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, ticks, amplifier), p);
+         e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, ticks, amplifier), p);
       }
    }
 
-   private static Vec3d ground(ServerWorld level, Vec3d v) {
-      Mutable q = BlockPos.ofFloored(v.x, v.y + 1.5, v.z).mutableCopy();
+   private static Vec3 ground(ServerLevel level, Vec3 v) {
+      MutableBlockPos q = BlockPos.containing(v.x, v.y + 1.5, v.z).mutable();
       boolean open = empty(level, q);
 
       for (int i = 0; i < 16; i++) {
@@ -2019,7 +2019,7 @@ public final class HollowWardenArsenal extends Arsenal {
          VoxelShape shape = state.getCollisionShape(level, q);
          if (!shape.isEmpty()) {
             if (open) {
-               return new Vec3d(v.x, q.getY() + shape.getMax(Axis.Y), v.z);
+               return new Vec3(v.x, q.getY() + shape.max(Axis.Y), v.z);
             }
          } else {
             open = true;
@@ -2029,65 +2029,65 @@ public final class HollowWardenArsenal extends Arsenal {
       return v;
    }
 
-   private static boolean empty(ServerWorld level, BlockPos pos) {
+   private static boolean empty(ServerLevel level, BlockPos pos) {
       return level.getBlockState(pos).getCollisionShape(level, pos).isEmpty();
    }
 
-   private static Vec3d under(ServerWorld level, LivingEntity e) {
-      Vec3d g = ground(level, e.getEntityPos());
-      return g.y < e.getY() - 2.5 ? e.getEntityPos() : g;
+   private static Vec3 under(ServerLevel level, LivingEntity e) {
+      Vec3 g = ground(level, e.position());
+      return g.y < e.getY() - 2.5 ? e.position() : g;
    }
 
-   private static Vec3d aimPoint(ServerWorld level, PlayerEntity p, double range) {
-      return GearKit.lookPoint(level, p, range).subtract(p.getRotationVector().multiply(0.3));
+   private static Vec3 aimPoint(ServerLevel level, Player p, double range) {
+      return GearKit.lookPoint(level, p, range).subtract(p.getLookAngle().scale(0.3));
    }
 
-   private static double clearance(ServerWorld level, PlayerEntity p, Vec3d from, Vec3d dir, double dist) {
-      BlockHitResult hr = level.raycast(new RaycastContext(from, from.add(dir.multiply(dist)), ShapeType.COLLIDER, FluidHandling.NONE, p));
-      return hr.getType() == Type.MISS ? dist : Math.max(0.0, hr.getPos().distanceTo(from) - 0.6);
+   private static double clearance(ServerLevel level, Player p, Vec3 from, Vec3 dir, double dist) {
+      BlockHitResult hr = level.clip(new ClipContext(from, from.add(dir.scale(dist)), Block.COLLIDER, Fluid.NONE, p));
+      return hr.getType() == Type.MISS ? dist : Math.max(0.0, hr.getLocation().distanceTo(from) - 0.6);
    }
 
-   private static void cushion(ServerWorld level, PlayerEntity p) {
+   private static void cushion(ServerLevel level, Player p) {
       track(level, 1, t -> {
          if (!alive(p, level)) {
             return false;
          }
 
-         p.onLanding();
-         return t < 40 && (t < 3 || !p.isOnGround());
+         p.resetFallDistance();
+         return t < 40 && (t < 3 || !p.onGround());
       });
    }
 
-   private static Vec3d chest(PlayerEntity p) {
-      return p.getEntityPos().add(0.0, 1.2, 0.0);
+   private static Vec3 chest(Player p) {
+      return p.position().add(0.0, 1.2, 0.0);
    }
 
-   private static Vec3d center(LivingEntity e) {
+   private static Vec3 center(LivingEntity e) {
       return e.getBoundingBox().getCenter();
    }
 
-   private static Vec3d top(LivingEntity e) {
-      return e.getEntityPos().add(0.0, e.getHeight() + 0.6, 0.0);
+   private static Vec3 top(LivingEntity e) {
+      return e.position().add(0.0, e.getBbHeight() + 0.6, 0.0);
    }
 
-   private static Vec3d flat(Vec3d v) {
-      Vec3d f = new Vec3d(v.x, 0.0, v.z);
-      return f.lengthSquared() < 1.0E-6 ? Vec3d.ZERO : f.normalize();
+   private static Vec3 flat(Vec3 v) {
+      Vec3 f = new Vec3(v.x, 0.0, v.z);
+      return f.lengthSqr() < 1.0E-6 ? Vec3.ZERO : f.normalize();
    }
 
-   private static double flatDist(Vec3d a, Vec3d b) {
+   private static double flatDist(Vec3 a, Vec3 b) {
       double dx = a.x - b.x;
       double dz = a.z - b.z;
       return Math.sqrt(dx * dx + dz * dz);
    }
 
-   private static Vec3d cap(Vec3d v, double max) {
+   private static Vec3 cap(Vec3 v, double max) {
       double l = v.length();
-      return l > max ? v.multiply(max / l) : v;
+      return l > max ? v.scale(max / l) : v;
    }
 
-   private static boolean far(List<Vec3d> spots, Vec3d q, double min) {
-      for (Vec3d s : spots) {
+   private static boolean far(List<Vec3> spots, Vec3 q, double min) {
+      for (Vec3 s : spots) {
          if (flatDist(s, q) < min) {
             return false;
          }
@@ -2096,11 +2096,11 @@ public final class HollowWardenArsenal extends Arsenal {
       return true;
    }
 
-   private static List<LivingEntity> inCircle(GearUse u, Vec3d at, double r) {
+   private static List<LivingEntity> inCircle(GearUse u, Vec3 at, double r) {
       List<LivingEntity> out = new ArrayList<>();
 
       for (LivingEntity e : u.enemies(at, r + 3.0)) {
-         if (flatDist(e.getEntityPos(), at) <= r + e.getWidth() / 2.0F && e.getY() > at.y - 1.5 && e.getY() < at.y + 3.5) {
+         if (flatDist(e.position(), at) <= r + e.getBbWidth() / 2.0F && e.getY() > at.y - 1.5 && e.getY() < at.y + 3.5) {
             out.add(e);
          }
       }
@@ -2108,16 +2108,16 @@ public final class HollowWardenArsenal extends Arsenal {
       return out;
    }
 
-   private static List<LivingEntity> lineFoes(GearUse u, Vec3d start, Vec3d dir, double len, double half) {
+   private static List<LivingEntity> lineFoes(GearUse u, Vec3 start, Vec3 dir, double len, double half) {
       List<LivingEntity> out = new ArrayList<>();
 
-      for (LivingEntity e : u.enemies(start.add(dir.multiply(len / 2.0)), len / 2.0 + half + 3.0)) {
-         Vec3d to = e.getEntityPos().subtract(start);
+      for (LivingEntity e : u.enemies(start.add(dir.scale(len / 2.0)), len / 2.0 + half + 3.0)) {
+         Vec3 to = e.position().subtract(start);
          double along = to.x * dir.x + to.z * dir.z;
          if (!(along < -0.5) && !(along > len + 0.5)) {
             double px = to.x - dir.x * along;
             double pz = to.z - dir.z * along;
-            if (!(Math.sqrt(px * px + pz * pz) > half + e.getWidth() / 2.0F) && !(e.getY() > start.y + 4.0) && !(e.getY() + e.getHeight() < start.y - 1.5)) {
+            if (!(Math.sqrt(px * px + pz * pz) > half + e.getBbWidth() / 2.0F) && !(e.getY() > start.y + 4.0) && !(e.getY() + e.getBbHeight() < start.y - 1.5)) {
                out.add(e);
             }
          }
@@ -2126,12 +2126,12 @@ public final class HollowWardenArsenal extends Arsenal {
       return out;
    }
 
-   private static List<LivingEntity> segFoes(GearUse u, Vec3d a, Vec3d b, double w) {
+   private static List<LivingEntity> segFoes(GearUse u, Vec3 a, Vec3 b, double w) {
       List<LivingEntity> out = new ArrayList<>();
 
       for (LivingEntity e : u.enemies(a.lerp(b, 0.5), a.distanceTo(b) / 2.0 + w + 3.0)) {
-         Box box = e.getBoundingBox().expand(w);
-         if (box.contains(a) || box.raycast(a, b).isPresent()) {
+         AABB box = e.getBoundingBox().inflate(w);
+         if (box.contains(a) || box.clip(a, b).isPresent()) {
             out.add(e);
          }
       }
@@ -2139,11 +2139,11 @@ public final class HollowWardenArsenal extends Arsenal {
       return out;
    }
 
-   private static void soundAt(ServerWorld level, Vec3d at, float volume, float pitch, String... keys) {
+   private static void soundAt(ServerLevel level, Vec3 at, float volume, float pitch, String... keys) {
       for (String key : keys) {
          SoundEvent e = BossSounds.event(key);
          if (e != null) {
-            level.playSound(null, at.x, at.y, at.z, e, SoundCategory.PLAYERS, volume, pitch);
+            level.playSound(null, at.x, at.y, at.z, e, SoundSource.PLAYERS, volume, pitch);
             return;
          }
       }
@@ -2157,18 +2157,18 @@ public final class HollowWardenArsenal extends Arsenal {
    private static final class Mark {
       int stacks;
       long expires;
-      @Nullable PlayerEntity by;
+      @Nullable Player by;
       long condemnedAt;
       long condemnedUntil;
       long paroledUntil;
-      Vec3d circle = Vec3d.ZERO;
+      Vec3 circle = Vec3.ZERO;
       int turn;
       int drinkHits;
       long drinkLast = -1000L;
       long backstabLast = -1000L;
       long burnUntil = -1000L;
       long burnNext;
-      @Nullable PlayerEntity burnBy;
+      @Nullable Player burnBy;
       long keeperLast = -1000L;
 
       boolean idle(long now) {
@@ -2183,19 +2183,19 @@ public final class HollowWardenArsenal extends Arsenal {
    }
 
    private static final class Mote {
-      final ServerWorld level;
-      final PlayerEntity owner;
+      final ServerLevel level;
+      final Player owner;
       final GearUse u;
       final Set<LivingEntity> struck = new HashSet<>();
-      Vec3d pos;
-      Vec3d vel;
+      Vec3 pos;
+      Vec3 vel;
       @Nullable LivingEntity target;
-      @Nullable Vec3d aim;
+      @Nullable Vec3 aim;
       int age;
       int pierce;
       double travelled;
 
-      Mote(GearUse u, Vec3d pos, Vec3d vel, @Nullable LivingEntity target, @Nullable Vec3d aim, int pierce) {
+      Mote(GearUse u, Vec3 pos, Vec3 vel, @Nullable LivingEntity target, @Nullable Vec3 aim, int pierce) {
          this.level = u.level();
          this.owner = u.player();
          this.u = u;
@@ -2214,36 +2214,36 @@ public final class HollowWardenArsenal extends Arsenal {
          this.age++;
          double speed = Math.min(1.1, 0.5 + 0.08 * this.age);
          LivingEntity t = this.target;
-         if (t != null && (!t.isAlive() || t.getEntityWorld() != this.level)) {
+         if (t != null && (!t.isAlive() || t.level() != this.level)) {
             t = null;
             this.target = null;
          }
 
-         Vec3d goal = t != null ? HollowWardenArsenal.center(t) : this.aim;
+         Vec3 goal = t != null ? HollowWardenArsenal.center(t) : this.aim;
          if (this.age > 4 && goal != null) {
-            Vec3d want = goal.subtract(this.pos);
-            if (t == null && want.lengthSquared() < 2.25) {
+            Vec3 want = goal.subtract(this.pos);
+            if (t == null && want.lengthSqr() < 2.25) {
                this.aim = null;
-            } else if (want.lengthSquared() > 1.0E-4) {
-               this.vel = this.vel.lerp(want.normalize().multiply(speed), 0.2);
+            } else if (want.lengthSqr() > 1.0E-4) {
+               this.vel = this.vel.lerp(want.normalize().scale(speed), 0.2);
             }
          }
 
-         if (this.vel.lengthSquared() > 1.0E-6) {
-            this.vel = this.vel.normalize().multiply(speed);
+         if (this.vel.lengthSqr() > 1.0E-6) {
+            this.vel = this.vel.normalize().scale(speed);
          }
 
-         Vec3d next = this.pos.add(this.vel);
-         BlockHitResult block = this.level.raycast(new RaycastContext(this.pos, next, ShapeType.COLLIDER, FluidHandling.NONE, this.owner));
+         Vec3 next = this.pos.add(this.vel);
+         BlockHitResult block = this.level.clip(new ClipContext(this.pos, next, Block.COLLIDER, Fluid.NONE, this.owner));
          boolean wall = block.getType() != Type.MISS;
-         Vec3d end = wall ? block.getPos() : next;
+         Vec3 end = wall ? block.getLocation() : next;
 
          for (LivingEntity e : this.u.enemies(this.pos.lerp(end, 0.5), 3.5)) {
             if (!this.struck.contains(e)) {
-               Box box = e.getBoundingBox().expand(0.6);
-               if (box.contains(this.pos) || !box.raycast(this.pos, end).isEmpty()) {
+               AABB box = e.getBoundingBox().inflate(0.6);
+               if (box.contains(this.pos) || !box.clip(this.pos, end).isEmpty()) {
                   this.struck.add(e);
-                  Vec3d at = box.raycast(this.pos, end).orElse(HollowWardenArsenal.center(e));
+                  Vec3 at = box.clip(this.pos, end).orElse(HollowWardenArsenal.center(e));
                   HollowWardenArsenal.rehit(e);
                   HollowWardenArsenal.hex(this.u, e, 7.0F);
                   HollowWardenArsenal.sentence(this.level, this.owner, e, 1);

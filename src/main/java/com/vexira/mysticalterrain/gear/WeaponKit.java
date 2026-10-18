@@ -1,9 +1,9 @@
 package com.vexira.mysticalterrain.gear;
 
 import com.vexira.mysticalterrain.gear.arsenal.Arsenal;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import org.jspecify.annotations.Nullable;
 
 public final class WeaponKit {
@@ -138,6 +138,6 @@ public final class WeaponKit {
 
    @FunctionalInterface
    public interface OnHit {
-      void hit(ServerWorld var1, LivingEntity var2, LivingEntity var3, ItemStack var4);
+      void hit(ServerLevel var1, LivingEntity var2, LivingEntity var3, ItemStack var4);
    }
 }

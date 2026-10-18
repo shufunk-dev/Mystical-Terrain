@@ -6,13 +6,13 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 public record BossSounds(SoundEvent roar, SoundEvent ambient, SoundEvent hurt, SoundEvent death) {
@@ -33,9 +33,9 @@ public record BossSounds(SoundEvent roar, SoundEvent ambient, SoundEvent hurt, S
                String key = line.trim();
                if (!key.isEmpty()) {
                   Identifier id = MysticalTerrain.id(key);
-                  SoundEvent e = Registries.SOUND_EVENT
-                     .getOptionalValue(id)
-                     .orElseGet(() -> (SoundEvent)Registry.register(Registries.SOUND_EVENT, id, SoundEvent.of(id)));
+                  SoundEvent e = BuiltInRegistries.SOUND_EVENT
+                     .getOptional(id)
+                     .orElseGet(() -> (SoundEvent)Registry.register(BuiltInRegistries.SOUND_EVENT, id, SoundEvent.createVariableRangeEvent(id)));
                   EVENTS.put(key, e);
                }
             }
@@ -49,10 +49,10 @@ public record BossSounds(SoundEvent roar, SoundEvent ambient, SoundEvent hurt, S
       return EVENTS.get(key);
    }
 
-   public static void play(ServerWorld level, Vec3d at, String key, float volume, float pitch) {
+   public static void play(ServerLevel level, Vec3 at, String key, float volume, float pitch) {
       SoundEvent e = EVENTS.get(key);
       if (e != null) {
-         level.playSound(null, at.x, at.y, at.z, e, SoundCategory.HOSTILE, volume, pitch);
+         level.playSound(null, at.x, at.y, at.z, e, SoundSource.HOSTILE, volume, pitch);
       }
    }
 
@@ -67,6 +67,6 @@ public record BossSounds(SoundEvent roar, SoundEvent ambient, SoundEvent hurt, S
 
    private static SoundEvent sound(String boss, String kind) {
       Identifier id = MysticalTerrain.id("boss." + boss + "." + kind);
-      return Registries.SOUND_EVENT.getOptionalValue(id).orElseGet(() -> (SoundEvent)Registry.register(Registries.SOUND_EVENT, id, SoundEvent.of(id)));
+      return BuiltInRegistries.SOUND_EVENT.getOptional(id).orElseGet(() -> (SoundEvent)Registry.register(BuiltInRegistries.SOUND_EVENT, id, SoundEvent.createVariableRangeEvent(id)));
    }
 }

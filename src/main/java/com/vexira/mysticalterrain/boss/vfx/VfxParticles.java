@@ -6,9 +6,9 @@ import java.util.Map;
 import java.util.Map.Entry;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.particle.v1.FabricParticleTypes;
-import net.minecraft.particle.ParticleType;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
+import net.minecraft.core.Registry;
+import net.minecraft.core.particles.ParticleType;
+import net.minecraft.core.registries.BuiltInRegistries;
 import org.jspecify.annotations.Nullable;
 
 public final class VfxParticles {
@@ -42,11 +42,11 @@ public final class VfxParticles {
    public static void register() {
       for (VfxParticles.Kind k : VfxParticles.Kind.values()) {
          ParticleType<VfxOptions> type = FabricParticleTypes.complex(true, VfxOptions::codec, VfxOptions::streamCodec);
-         TYPES.put(k, (ParticleType<VfxOptions>)Registry.register(Registries.PARTICLE_TYPE, MysticalTerrain.id("vfx_" + k.name().toLowerCase()), type));
+         TYPES.put(k, (ParticleType<VfxOptions>)Registry.register(BuiltInRegistries.PARTICLE_TYPE, MysticalTerrain.id("vfx_" + k.name().toLowerCase()), type));
       }
 
-      PayloadTypeRegistry.playS2C().register(FxPayload.TYPE, FxPayload.CODEC);
-      PayloadTypeRegistry.playS2C().register(VfxCastPayload.TYPE, VfxCastPayload.CODEC);
+      PayloadTypeRegistry.clientboundPlay().register(FxPayload.TYPE, FxPayload.CODEC);
+      PayloadTypeRegistry.clientboundPlay().register(VfxCastPayload.TYPE, VfxCastPayload.CODEC);
    }
 
    public static ParticleType<VfxOptions> type(VfxParticles.Kind kind) {

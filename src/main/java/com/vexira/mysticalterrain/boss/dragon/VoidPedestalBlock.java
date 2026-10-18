@@ -3,100 +3,94 @@ package com.vexira.mysticalterrain.boss.dragon;
 import com.mojang.serialization.MapCodec;
 import com.vexira.mysticalterrain.boss.BossSounds;
 import com.vexira.mysticalterrain.boss.MysticalBosses;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.ShapeContext;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.state.StateManager.Builder;
-import net.minecraft.state.property.BooleanProperty;
-import net.minecraft.state.property.Property;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.random.Random;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
-import net.minecraft.world.BlockView;
-import net.minecraft.world.World;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition.Builder;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 public class VoidPedestalBlock extends Block {
-   public static final MapCodec<VoidPedestalBlock> CODEC = createCodec(VoidPedestalBlock::new);
-   public static final BooleanProperty EYE = BooleanProperty.of("eye");
-   private static final VoxelShape SHAPE = VoxelShapes.union(
-      Block.createColumnShape(14.0, 0.0, 3.0), new VoxelShape[]{Block.createColumnShape(10.0, 3.0, 11.0), Block.createColumnShape(14.0, 11.0, 14.0)}
+   public static final BooleanProperty EYE = BooleanProperty.create("eye");
+   private static final VoxelShape SHAPE = Shapes.or(
+      Block.column(14.0, 0.0, 3.0), new VoxelShape[]{Block.column(10.0, 3.0, 11.0), Block.column(14.0, 11.0, 14.0)}
    );
 
-   public VoidPedestalBlock(Settings properties) {
+   public VoidPedestalBlock(Properties properties) {
       super(properties);
-      this.setDefaultState((BlockState)((BlockState)this.stateManager.getDefaultState()).with(EYE, false));
+      this.registerDefaultState((BlockState)((BlockState)this.stateDefinition.any()).setValue(EYE, false));
    }
 
    @Override
-   protected MapCodec<? extends Block> getCodec() {
-      return CODEC;
-   }
-
-   @Override
-   protected void appendProperties(Builder<Block, BlockState> builder) {
+   protected void createBlockStateDefinition(Builder<Block, BlockState> builder) {
       builder.add(new Property[]{EYE});
    }
 
    @Override
-   protected VoxelShape getOutlineShape(BlockState state, BlockView world, BlockPos pos, ShapeContext context) {
+   protected VoxelShape getShape(BlockState state, BlockGetter world, BlockPos pos, CollisionContext context) {
       return SHAPE;
    }
 
    @Override
-   protected ActionResult onUseWithItem(ItemStack stack, BlockState state, World world, BlockPos pos, PlayerEntity player, Hand hand, BlockHitResult hit) {
-      if (stack.isOf(MysticalBosses.EYE_OF_THE_VOID) && !(Boolean)state.get(EYE)) {
-         if (world instanceof ServerWorld server) {
+   protected InteractionResult useItemOn(ItemStack stack, BlockState state, Level world, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
+      if (stack.is(MysticalBosses.EYE_OF_THE_VOID) && !(Boolean)state.getValue(EYE)) {
+         if (world instanceof ServerLevel server) {
             if (!DragonRitual.canBegin(server)) {
-               player.sendMessage(Text.literal("§c[Void Ritual] The Void Dragon is already awake!"), false);
-               return ActionResult.FAIL;
+               player.sendSystemMessage(Component.literal("§c[Void Ritual] The Void Dragon is already awake!"));
+               return InteractionResult.FAIL;
             }
 
-            world.setBlockState(pos, (BlockState)state.with(EYE, true), 3);
-            stack.decrementUnlessCreative(1, player);
+            world.setBlock(pos, (BlockState)state.setValue(EYE, true), 3);
+            stack.consume(1, player);
             SoundEvent sound = BossSounds.event("bolt.void.launch");
             if (sound == null) {
-               sound = SoundEvents.BLOCK_END_PORTAL_FRAME_FILL;
+               sound = SoundEvents.END_PORTAL_FRAME_FILL;
             }
-            world.playSound(null, pos, sound, SoundCategory.BLOCKS, 1.0F, 0.6F);
-            server.spawnParticles(ParticleTypes.END_ROD, pos.getX() + 0.5, pos.getY() + 1.1, pos.getZ() + 0.5, 40, 0.2, 0.3, 0.2, 0.08);
+            world.playSound(null, pos, sound, SoundSource.BLOCKS, 1.0F, 0.6F);
+            server.sendParticles(ParticleTypes.END_ROD, pos.getX() + 0.5, pos.getY() + 1.1, pos.getZ() + 0.5, 40, 0.2, 0.3, 0.2, 0.08);
             DragonRitual.onEyePlaced(server, player);
          }
 
-         return ActionResult.SUCCESS;
+         return InteractionResult.SUCCESS;
       } else {
-         return ActionResult.PASS_TO_DEFAULT_BLOCK_ACTION;
+         return InteractionResult.TRY_WITH_EMPTY_HAND;
       }
    }
 
    @Override
-   protected ActionResult onUse(BlockState state, World world, BlockPos pos, PlayerEntity player, BlockHitResult hit) {
-      if (!world.isClient()) {
-         if ((Boolean)state.get(EYE)) {
-            player.sendMessage(Text.literal("§7[Void Ritual] An Eye of the Void is already set in this pedestal."), false);
+   protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos, Player player, BlockHitResult hit) {
+      if (!world.isClientSide()) {
+         if ((Boolean)state.getValue(EYE)) {
+            player.sendSystemMessage(Component.literal("§7[Void Ritual] An Eye of the Void is already set in this pedestal."));
          } else {
-            player.sendMessage(Text.literal("§5[Void Ritual] §dRight-click with an Eye of the Void to empower this pedestal."), false);
+            player.sendSystemMessage(Component.literal("§5[Void Ritual] §dRight-click with an Eye of the Void to empower this pedestal."));
          }
       }
-      return ActionResult.SUCCESS;
+      return InteractionResult.SUCCESS;
    }
 
    @Override
-   public void randomDisplayTick(BlockState state, World world, BlockPos pos, Random random) {
-      if ((Boolean)state.get(EYE)) {
+   public void animateTick(BlockState state, Level world, BlockPos pos, RandomSource random) {
+      if ((Boolean)state.getValue(EYE)) {
          for (int i = 0; i < 2; i++) {
-            world.addParticleClient(
+            world.addParticle(
                ParticleTypes.WHITE_ASH,
                pos.getX() + 0.5,
                pos.getY() + 1.0,
@@ -107,7 +101,7 @@ public class VoidPedestalBlock extends Block {
             );
          }
       } else if (random.nextInt(4) == 0) {
-         world.addParticleClient(
+         world.addParticle(
             ParticleTypes.WHITE_ASH,
             pos.getX() + 0.3 + random.nextDouble() * 0.4,
             pos.getY() + 0.9,

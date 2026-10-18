@@ -6,53 +6,54 @@ import com.vexira.mysticalterrain.building.Blueprint;
 import com.vexira.mysticalterrain.building.BuildingBuilder;
 import com.vexira.mysticalterrain.building.BuildingParams;
 import java.util.Optional;
-import net.minecraft.block.BlockState;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.HeightLimitView;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.biome.source.BiomeCoords;
-import net.minecraft.world.gen.chunk.ChunkGenerator;
-import net.minecraft.world.gen.chunk.VerticalBlockSample;
-import net.minecraft.world.gen.feature.ConfiguredFeature;
-import net.minecraft.world.gen.noise.NoiseConfig;
-import net.minecraft.world.gen.structure.Structure;
-import net.minecraft.world.gen.structure.StructureType;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.QuartPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.LevelHeightAccessor;
+import net.minecraft.world.level.NoiseColumn;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.level.levelgen.feature.Feature;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureType;
 
 public class BuildingStructure extends Structure {
    public static final MapCodec<BuildingStructure> CODEC = RecordCodecBuilder.mapCodec(
-      instance -> instance.group(configCodecBuilder(instance), ConfiguredFeature.REGISTRY_CODEC.fieldOf("building").forGetter(structure -> structure.building))
+      instance -> instance.group(settingsCodec(instance), Feature.CODEC.fieldOf("building").forGetter(structure -> structure.building))
          .apply(instance, BuildingStructure::new)
    );
    public static final StructureType<BuildingStructure> TYPE = () -> CODEC;
-   private final RegistryEntry<ConfiguredFeature<?, ?>> building;
+   private final Holder<Feature> building;
 
-   public BuildingStructure(Structure.Config settings, RegistryEntry<ConfiguredFeature<?, ?>> building) {
+   public BuildingStructure(Structure.StructureSettings settings, Holder<Feature> building) {
       super(settings);
       this.building = building;
    }
 
    @Override
-   protected Optional<Structure.StructurePosition> getStructurePosition(Structure.Context context) {
-      if (this.building.value().config() instanceof BuildingConfiguration config && this.building.getKey().isPresent()) {
+   protected Optional<Structure.GenerationStub> findGenerationPoint(Structure.GenerationContext context) {
+      if (this.building.value() instanceof BuildingFeature bf && this.building.unwrapKey().isPresent()) {
+         BuildingConfiguration config = bf.config();
          ChunkPos chunk = context.chunkPos();
-         int x = chunk.getStartX();
-         int z = chunk.getStartZ();
+         int x = chunk.getMinBlockX();
+         int z = chunk.getMinBlockZ();
          ChunkGenerator generator = context.chunkGenerator();
-         HeightLimitView heights = context.world();
-         NoiseConfig randomState = context.noiseConfig();
+         LevelHeightAccessor heights = context.heightAccessor();
+         RandomState randomState = context.randomState();
 
          Optional<Integer> y = switch (config.anchor()) {
             case SURFACE -> dry(generator, heights, randomState, x, z);
             case SEABED -> seabed(generator, heights, randomState, x, z);
-            case FLOOR -> floor(generator.getColumnSample(x, z, heights, randomState), heights, config.elevation().get(context.random()));
+            case FLOOR -> floor(generator.getBaseColumn(x, z, heights, randomState), heights, config.elevation().sample(context.random()));
          };
          if (y.isPresent()
-            && context.biomePredicate()
+            && context.validBiome()
                .test(
                   context.biomeSource()
-                     .getBiome(BiomeCoords.fromBlock(x), BiomeCoords.fromBlock(y.get()), BiomeCoords.fromBlock(z), randomState.getMultiNoiseSampler())
+                     .createUncachedResolver(randomState).getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y.get()), QuartPos.fromBlock(z))
                )) {
             BuildingParams params = config.sample(context.random());
             Blueprint plan = BuildingBuilder.build(params);
@@ -62,9 +63,9 @@ public class BuildingStructure extends Structure {
 
             BlockPos base = new BlockPos(x, y.get(), z);
             return Optional.of(
-               new Structure.StructurePosition(
+               new Structure.GenerationStub(
                   base,
-                  builder -> builder.addPiece(new BuildingPiece(this.building.getKey().get(), config, base, params))
+                  builder -> builder.addPiece(new BuildingPiece(this.building.unwrapKey().get(), config, base, params))
                )
             );
          } else {
@@ -75,14 +76,14 @@ public class BuildingStructure extends Structure {
       }
    }
 
-   private static Optional<Integer> dry(ChunkGenerator generator, HeightLimitView heights, NoiseConfig randomState, int x, int z) {
-      int y = generator.getHeight(x, z, Heightmap.Type.WORLD_SURFACE_WG, heights, randomState);
-      return y == generator.getHeight(x, z, Heightmap.Type.OCEAN_FLOOR_WG, heights, randomState) && y > heights.getBottomY() + 8
+   private static Optional<Integer> dry(ChunkGenerator generator, LevelHeightAccessor heights, RandomState randomState, int x, int z) {
+      int y = generator.getBaseHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, heights, randomState);
+      return y == generator.getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, heights, randomState) && y > heights.getMinY() + 8
          ? Optional.of(y)
          : Optional.empty();
    }
 
-   private static boolean level(ChunkGenerator generator, HeightLimitView heights, NoiseConfig randomState, int x, int z, int y, Blueprint plan) {
+   private static boolean level(ChunkGenerator generator, LevelHeightAccessor heights, RandomState randomState, int x, int z, int y, Blueprint plan) {
       int spread = Math.max(3, plan.reach() * 2 / 3);
       int lo = y;
       int hi = y;
@@ -91,8 +92,8 @@ public class BuildingStructure extends Structure {
       };
 
       for (int[] offset : around) {
-         int h = generator.getHeight(x + offset[0], z + offset[1], Heightmap.Type.OCEAN_FLOOR_WG, heights, randomState);
-         if (h <= heights.getBottomY() + 8) {
+         int h = generator.getBaseHeight(x + offset[0], z + offset[1], Heightmap.Types.OCEAN_FLOOR_WG, heights, randomState);
+         if (h <= heights.getMinY() + 8) {
             return false;
          }
 
@@ -103,22 +104,22 @@ public class BuildingStructure extends Structure {
       return hi - lo <= 8 + spread / 3;
    }
 
-   private static Optional<Integer> seabed(ChunkGenerator generator, HeightLimitView heights, NoiseConfig randomState, int x, int z) {
-      int surface = generator.getHeight(x, z, Heightmap.Type.WORLD_SURFACE_WG, heights, randomState);
-      int floor = generator.getHeight(x, z, Heightmap.Type.OCEAN_FLOOR_WG, heights, randomState);
+   private static Optional<Integer> seabed(ChunkGenerator generator, LevelHeightAccessor heights, RandomState randomState, int x, int z) {
+      int surface = generator.getBaseHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, heights, randomState);
+      int floor = generator.getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, heights, randomState);
       return surface - floor >= 4 ? Optional.of(floor) : Optional.empty();
    }
 
-   private static Optional<Integer> floor(VerticalBlockSample column, HeightLimitView heights, int top) {
-      int start = Math.min(top, heights.getTopYInclusive() - 24);
+   private static Optional<Integer> floor(NoiseColumn column, LevelHeightAccessor heights, int top) {
+      int start = Math.min(top, heights.getMaxY() - 24);
 
-      for (int y = start; y > Math.max(32, heights.getBottomY()); y--) {
-         BlockState below = column.getState(y - 1);
-         if (column.getState(y).isAir() && !below.isAir() && below.getFluidState().isEmpty()) {
+      for (int y = start; y > Math.max(32, heights.getMinY()); y--) {
+         BlockState below = column.getBlock(y - 1);
+         if (column.getBlock(y).isAir() && !below.isAir() && below.getFluidState().isEmpty()) {
             boolean open = true;
 
             for (int dy = 1; dy < 10 && open; dy++) {
-               open = column.getState(y + dy).isAir();
+               open = column.getBlock(y + dy).isAir();
             }
 
             if (open) {
@@ -131,7 +132,7 @@ public class BuildingStructure extends Structure {
    }
 
    @Override
-   public StructureType<?> getType() {
+   public StructureType<?> type() {
       return TYPE;
    }
 }

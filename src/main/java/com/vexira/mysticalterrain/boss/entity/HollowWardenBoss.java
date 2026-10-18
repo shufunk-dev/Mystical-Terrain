@@ -17,34 +17,34 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.attribute.DefaultAttributeContainer.Builder;
-import net.minecraft.entity.boss.BossBar.Color;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.data.TrackedData;
-import net.minecraft.entity.data.TrackedDataHandlerRegistry;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.consume.UseAction;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.tag.DamageTypeTags;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.BossEvent.BossBarColor;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier.Builder;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
-import software.bernie.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.RawAnimation;
+import com.geckolib.animatable.manager.AnimatableManager.ControllerRegistrar;
+import com.geckolib.animation.AnimationController;
+import com.geckolib.animation.RawAnimation;
 
 public class HollowWardenBoss extends MysticalBoss {
    private static final BossSounds SOUNDS = BossSounds.of("hollow_warden");
@@ -55,13 +55,13 @@ public class HollowWardenBoss extends MysticalBoss {
    private static final int MAX_ADDS = 6;
    private static final int PHASE_LEAD = 27;
    private static final String[] ENRAGE_HASTE = new String[]{"soul_volley", "grasping_dark", "soul_pyre", "penance"};
-   private static final TrackedData<Integer> FORM = DataTracker.registerData(HollowWardenBoss.class, TrackedDataHandlerRegistry.INTEGER);
+   private static final EntityDataAccessor<Integer> FORM = SynchedEntityData.defineId(HollowWardenBoss.class, EntityDataSerializers.INT);
    private static final RawAnimation[] FORMS = new RawAnimation[4];
    public static final float WIDTH = 1.4F;
    public static final float HEIGHT = 4.2F;
    public static final boolean FIRE_IMMUNE = false;
    private final List<HollowWardenBoss.Spot> spots = new ArrayList<>();
-   private final List<Vec3d> points = new ArrayList<>();
+   private final List<Vec3> points = new ArrayList<>();
    private final List<HollowWardenBoss.Cell> cells = new ArrayList<>();
    private final Map<UUID, LivingEntity> tethers = new HashMap<>();
    private final List<HollowWardenBoss.Line> plan = new ArrayList<>();
@@ -69,19 +69,19 @@ public class HollowWardenBoss extends MysticalBoss {
    private final List<HollowWardenBoss.Strike> restless = new ArrayList<>();
    private final List<HollowWardenBoss.Zone> zones = new ArrayList<>();
    private final Map<UUID, Integer> thornsAt = new HashMap<>();
-   private final List<Vec3d> verdictCells = new ArrayList<>();
+   private final List<Vec3> verdictCells = new ArrayList<>();
    private final List<BossBolt> piercing = new ArrayList<>();
-   private @Nullable Vec3d spot;
+   private @Nullable Vec3 spot;
    private @Nullable LivingEntity condemned;
    private @Nullable LivingEntity hooked;
    private int hookStart;
-   private Vec3d aimFrom = Vec3d.ZERO;
-   private Vec3d aimDir = new Vec3d(0.0, 0.0, 1.0);
+   private Vec3 aimFrom = Vec3.ZERO;
+   private Vec3 aimDir = new Vec3(0.0, 0.0, 1.0);
    private double passLen;
-   private Vec3d passStart = Vec3d.ZERO;
-   private Vec3d passEnd = Vec3d.ZERO;
-   private Vec3d nightCenter = Vec3d.ZERO;
-   private Vec3d verdictCenter = Vec3d.ZERO;
+   private Vec3 passStart = Vec3.ZERO;
+   private Vec3 passEnd = Vec3.ZERO;
+   private Vec3 nightCenter = Vec3.ZERO;
+   private Vec3 verdictCenter = Vec3.ZERO;
    private double verdictRot;
    private double burstAngle;
    private int lastUlt = -100000;
@@ -94,14 +94,14 @@ public class HollowWardenBoss extends MysticalBoss {
    private int lonely;
    private boolean wasDodging;
    private int dodgeWake;
-   private Vec3d dodgeFrom = Vec3d.ZERO;
+   private Vec3 dodgeFrom = Vec3.ZERO;
 
    public static Builder attributes() {
       return MysticalBoss.bossAttributes(780.0, 14.0, 0.3, 6.0);
    }
 
-   public HollowWardenBoss(EntityType<? extends HostileEntity> type, World level) {
-      super(type, level, "hollow_warden", Color.PURPLE);
+   public HollowWardenBoss(EntityType<? extends Monster> type, Level level) {
+      super(type, level, "hollow_warden", BossBarColor.PURPLE);
    }
 
    @Override
@@ -181,12 +181,12 @@ public class HollowWardenBoss extends MysticalBoss {
 
    @Override
    protected String moveAnim() {
-      return this.getVelocity().horizontalLengthSquared() > 0.09 ? "run" : "walk";
+      return this.getDeltaMovement().horizontalDistanceSqr() > 0.09 ? "run" : "walk";
    }
 
    @Override
-   protected boolean minionsAlive(ServerWorld level) {
-      return super.minionsAlive(level) || !level.getEntitiesByClass(WardenShade.class, this.getBoundingBox().expand(24.0), LivingEntity::isAlive).isEmpty();
+   protected boolean minionsAlive(ServerLevel level) {
+      return super.minionsAlive(level) || !level.getEntitiesOfClass(WardenShade.class, this.getBoundingBox().inflate(24.0), LivingEntity::isAlive).isEmpty();
    }
 
    @Override
@@ -207,26 +207,26 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    @Override
-   protected void initDataTracker(net.minecraft.entity.data.DataTracker.Builder builder) {
-      super.initDataTracker(builder);
-      builder.add(FORM, 0);
+   protected void defineSynchedData(net.minecraft.network.syncher.SynchedEntityData.Builder builder) {
+      super.defineSynchedData(builder);
+      builder.define(FORM, 0);
    }
 
    public int form() {
-      return (Integer)this.dataTracker.get(FORM);
+      return (Integer)this.entityData.get(FORM);
    }
 
    private void setForm(int f) {
-      int n = MathHelper.clamp(f, 0, 3);
+      int n = Mth.clamp(f, 0, 3);
       if (n != this.form()) {
-         this.dataTracker.set(FORM, n);
+         this.entityData.set(FORM, n);
       }
    }
 
    @Override
    public void registerControllers(ControllerRegistrar controllers) {
       super.registerControllers(controllers);
-      controllers.add(new AnimationController("form", 8, test -> test.setAndContinue(FORMS[MathHelper.clamp(this.form(), 0, 3)])));
+      controllers.add(new AnimationController("form", 8, test -> test.setAndContinue(FORMS[Mth.clamp(this.form(), 0, 3)])));
    }
 
    @Override
@@ -252,10 +252,10 @@ public class HollowWardenBoss extends MysticalBoss {
                }
             })
             .hit((b, level, target, i) -> {
-               this.rake(level, 5.0, 70.0F, 0.0F, 14.0F, 0.5, new StatusEffectInstance(StatusEffects.WITHER, 40, 0), i > 0);
-               Vfx.slashArc(level, this.chest(), this.getYaw(), 10.0F, i == 0 ? 45.0F : (i == 1 ? -45.0F : 90.0F), 4.6, PAL, 150.0F);
+               this.rake(level, 5.0, 70.0F, 0.0F, 14.0F, 0.5, new MobEffectInstance(MobEffects.WITHER, 40, 0), i > 0);
+               Vfx.slashArc(level, this.chest(), this.getYRot(), 10.0F, i == 0 ? 45.0F : (i == 1 ? -45.0F : 90.0F), 4.6, PAL, 150.0F);
                if (i == 2) {
-                  Vfx.claw(level, this.chest(), this.getYaw(), 20.0F, 4.2, PAL);
+                  Vfx.claw(level, this.chest(), this.getYRot(), 20.0F, 4.2, PAL);
                }
             })
       );
@@ -283,10 +283,10 @@ public class HollowWardenBoss extends MysticalBoss {
             })
             .hit((b, level, target, i) -> {
                this.rake(level, 5.8, 100.0F, 0.0F, 22.0F, 1.1, null, false);
-               Vfx.slashArc(level, this.chest(), this.getYaw(), 5.0F, 0.0F, 5.8, PAL, 210.0F);
+               Vfx.slashArc(level, this.chest(), this.getYRot(), 5.0F, 0.0F, 5.8, PAL, 210.0F);
                Vfx.sparks(level, this.at(5.0, -0.7, 2.5), SOUL.glow(), 10, 0.35, 0.18);
                this.schedule(4, () -> {
-                  Vec3d g = this.at(1.35, 2.9, 2.3);
+                  Vec3 g = this.at(1.35, 2.9, 2.3);
                   Vfx.glint(level, g, SOUL.core(), 1.4);
                   Vfx.sparks(level, g, SOUL.core(), 8, 0.25, 0.16);
                });
@@ -325,16 +325,16 @@ public class HollowWardenBoss extends MysticalBoss {
             .utility((b, t, c) -> (1.0F + 0.6F * Math.max(0, c.surroundCount - 1)) * (c.dist > 4.0 ? 0.5F : 1.0F))
             .tick((b, level, target, t) -> {
                if (t == 1) {
-                  tele(level, floor(level, this.getEntityPos()), 5.0, 13, SOUL);
+                  tele(level, floor(level, this.position()), 5.0, 13, SOUL);
                } else if (t == 15 || t == 21) {
-                  tele(level, floor(level, this.getEntityPos()), 5.0, 5, SOUL);
+                  tele(level, floor(level, this.position()), 5.0, 5, SOUL);
                }
             })
             .hit((b, level, target, i) -> {
-               this.rake(level, 5.0, 180.0F, 0.0F, 16.0F, 0.9, new StatusEffectInstance(StatusEffects.WITHER, 40, 0), i > 0);
-               Vfx.slashArc(level, this.at(0.0, 0.0, 2.2), this.getYaw() + 120 * i, 0.0F, 5.0, SOUL, 360.0F);
+               this.rake(level, 5.0, 180.0F, 0.0F, 16.0F, 0.9, new MobEffectInstance(MobEffects.WITHER, 40, 0), i > 0);
+               Vfx.slashArc(level, this.at(0.0, 0.0, 2.2), this.getYRot() + 120 * i, 0.0F, 5.0, SOUL, 360.0F);
                if (i == 2) {
-                  Vfx.wisps(level, this.getEntityPos(), SOUL, 4);
+                  Vfx.wisps(level, this.position(), SOUL, 4);
                }
             })
       );
@@ -355,7 +355,7 @@ public class HollowWardenBoss extends MysticalBoss {
             })
             .hit((b, level, target, i) -> {
                this.rake(level, 5.0, 80.0F, 180.0F, 20.0F, 1.3, null, false);
-               Vfx.slashArc(level, this.chest(), this.getYaw() + 180.0F, 10.0F, 30.0F, 4.8, PAL, 170.0F);
+               Vfx.slashArc(level, this.chest(), this.getYRot() + 180.0F, 10.0F, 30.0F, 4.8, PAL, 170.0F);
             })
       );
       out.add(
@@ -371,8 +371,8 @@ public class HollowWardenBoss extends MysticalBoss {
             .tick((b, level, target, t) -> {
                if (t == 4) {
                   this.aimFrom = this.chest();
-                  this.aimDir = target != null ? this.flatDir(this.predict(target, 10.0).subtract(this.getEntityPos())) : this.facing();
-                  Vfx.telegraphLine(level, floor(level, this.getEntityPos()), this.aimDir, 16.0, 1.4, 10, SOUL);
+                  this.aimDir = target != null ? this.flatDir(this.predict(target, 10.0).subtract(this.position())) : this.facing();
+                  Vfx.telegraphLine(level, floor(level, this.position()), this.aimDir, 16.0, 1.4, 10, SOUL);
                }
 
                if (t >= 4 && t <= 13 && t % 3 == 1) {
@@ -471,18 +471,18 @@ public class HollowWardenBoss extends MysticalBoss {
                   tele(level, this.spot, 1.4, 8, PAL);
                } else if (t == 5) {
                   this.immuneTicks = 6;
-                  Vfx.smoke(level, this.getEntityPos().add(0.0, 0.2, 0.0), PAL.smoke(), 10, 1.0, 1.6);
+                  Vfx.smoke(level, this.position().add(0.0, 0.2, 0.0), PAL.smoke(), 10, 1.0, 1.6);
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d dest = this.spot != null ? this.spot : floor(level, this.at(4.0, 0.0, 0.0));
-               Vec3d from = this.getEntityPos();
+               Vec3 dest = this.spot != null ? this.spot : floor(level, this.at(4.0, 0.0, 0.0));
+               Vec3 from = this.position();
                if (this.blinkTo(dest.add(0.0, 0.6, 0.0))) {
                   if (target != null) {
                      this.faceTarget(target, 360.0F);
                   }
 
-                  Vfx.dashTrail(level, from.add(0.0, 1.4, 0.0), this.getEntityPos().add(0.0, 1.4, 0.0), PAL);
+                  Vfx.dashTrail(level, from.add(0.0, 1.4, 0.0), this.position().add(0.0, 1.4, 0.0), PAL);
                }
             })
       );
@@ -516,10 +516,10 @@ public class HollowWardenBoss extends MysticalBoss {
                if (t == 12) {
                   this.points.clear();
                   int n = Math.min(6 - this.countMinions(level), this.rollcallSize());
-                  Vec3d around = target != null ? target.getEntityPos() : this.getEntityPos();
+                  Vec3 around = target != null ? target.position() : this.position();
 
                   for (int k = 0; k < n; k++) {
-                     Vec3d s = BossFx.around(level, this, around, 4.0, 7.0);
+                     Vec3 s = BossFx.around(level, this, around, 4.0, 7.0);
                      this.points.add(s);
                      tele(level, s, 1.2, 14, PAL);
                   }
@@ -547,7 +547,7 @@ public class HollowWardenBoss extends MysticalBoss {
                   tele(level, this.spot, 4.0, 23, PAL);
                   Vfx.chargeUp(level, this.keyRaised(), SOUL, 13);
                } else if (t == 19) {
-                  Vec3d key = this.at(0.5, -0.3, 5.0);
+                  Vec3 key = this.at(0.5, -0.3, 5.0);
                   Vfx.sparks(level, key, SOUL.core(), 10, 0.3, 0.16);
                   Vfx.flare(level, key, SOUL.glow(), 1.2, 4);
                }
@@ -569,11 +569,11 @@ public class HollowWardenBoss extends MysticalBoss {
             .tick((b, level, target, t) -> {
                if (this.spot == null && t >= 4 && t <= 16) {
                   int left = 30 - t;
-                  Vec3d land = floor(level, target != null ? this.predict(target, left) : this.at(8.0, 0.0, 0.0));
-                  Vec3d dir = this.flatDir(land.subtract(this.getEntityPos()));
-                  double hd = land.subtract(this.getEntityPos()).horizontalLength();
-                  Vec3d body = floor(level, land.subtract(dir.multiply(Math.min(4.2, Math.max(0.0, hd - 2.0)))));
-                  int len = MathHelper.clamp((int)Math.round(12.0 + body.subtract(this.getEntityPos()).horizontalLength() * 0.6), 14, 26);
+                  Vec3 land = floor(level, target != null ? this.predict(target, left) : this.at(8.0, 0.0, 0.0));
+                  Vec3 dir = this.flatDir(land.subtract(this.position()));
+                  double hd = land.subtract(this.position()).horizontalDistance();
+                  Vec3 body = floor(level, land.subtract(dir.scale(Math.min(4.2, Math.max(0.0, hd - 2.0)))));
+                  int len = Mth.clamp((int)Math.round(12.0 + body.subtract(this.position()).horizontalDistance() * 0.6), 14, 26);
                   if (len > left || t == 16) {
                      this.spot = land;
                      tele(level, land, 4.5, left, PAL);
@@ -582,7 +582,7 @@ public class HollowWardenBoss extends MysticalBoss {
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d land = this.spot != null ? this.spot : floor(level, this.getEntityPos());
+               Vec3 land = this.spot != null ? this.spot : floor(level, this.position());
                this.blast(level, land, 4.5, 38.0F, 1.5, true, null);
                Vfx.heavyImpact(level, land, PAL, 1.5);
                Vfx.groundCrack(level, land, 4.5, PAL);
@@ -622,13 +622,13 @@ public class HollowWardenBoss extends MysticalBoss {
                }
             })
             .hit((b, level, target, i) -> {
-               Vec3d lantern = this.at(2.6, 1.1, 0.65);
+               Vec3 lantern = this.at(2.6, 1.1, 0.65);
 
-               for (Vec3d p : this.points) {
+               for (Vec3 p : this.points) {
                   Vfx.beam(level, lantern, p, SOUL, 0.35, 6);
                   Vfx.pillar(level, p, SOUL, 3.0, 0.9);
                   this.blast(level, p, 2.2, 16.0F, 0.3, false, null);
-                  this.zones.add(new HollowWardenBoss.Zone(p, 2.2, this.age + 100));
+                  this.zones.add(new HollowWardenBoss.Zone(p, 2.2, this.tickCount + 100));
                }
 
                this.points.clear();
@@ -645,7 +645,7 @@ public class HollowWardenBoss extends MysticalBoss {
             .anyTarget()
             .telegraph(0.05, 3.4)
             .utility((b, t, c) -> this.ultGate())
-            .start((b, level, target, i) -> this.lastUlt = this.age)
+            .start((b, level, target, i) -> this.lastUlt = this.tickCount)
             .tick((b, level, target, t) -> {
                if (t <= 28) {
                   this.rise(0.09);
@@ -654,13 +654,13 @@ public class HollowWardenBoss extends MysticalBoss {
                }
 
                if (t == 1) {
-                  this.nightCenter = floor(level, this.getEntityPos());
+                  this.nightCenter = floor(level, this.position());
                   Vfx.chargeUp(level, this.chest(), SOUL, 39);
                   Vfx.ward(level, this.nightCenter, 5.5, SOUL, 40);
                   Vfx.runeCircle(level, this.nightCenter, 5.5, SOUL, 40, 0.05F, Vfx.Rune.SOLAR);
                   tele(level, this.nightCenter, 24.0, 39, PAL);
                } else if (t == 30) {
-                  Vfx.screen(level, this.getEntityPos(), 32.0, 0.6, 10, 656914, 0.4F);
+                  Vfx.screen(level, this.position(), 32.0, 0.6, 10, 656914, 0.4F);
                } else if (t == 41) {
                   tele(level, this.nightCenter, 5.5, 17, PAL);
                } else if (t == 62) {
@@ -682,13 +682,13 @@ public class HollowWardenBoss extends MysticalBoss {
             .combo("backhand_rake", 0.55F)
             .tick((b, level, target, t) -> {
                if (t == 2) {
-                  this.aimFrom = this.getEntityPos();
+                  this.aimFrom = this.position();
                   this.aimDir = target != null ? this.flatDir(this.predict(target, 10.0).subtract(this.aimFrom)) : this.facing();
-                  this.passLen = MathHelper.clamp(this.ctx().hDist + 4.0, 6.0, 18.0);
+                  this.passLen = Mth.clamp(this.ctx().hDist + 4.0, 6.0, 18.0);
                   float yaw = yawOf(this.aimDir);
-                  this.setYaw(yaw);
-                  this.setBodyYaw(yaw);
-                  this.setHeadYaw(yaw);
+                  this.setYRot(yaw);
+                  this.setYBodyRot(yaw);
+                  this.setYHeadRot(yaw);
                   Vfx.telegraphLine(level, floor(level, this.aimFrom), this.aimDir, this.passLen, 2.4, 10, PAL);
                }
             })
@@ -734,7 +734,7 @@ public class HollowWardenBoss extends MysticalBoss {
             })
             .hit((b, level, target, i) -> {
                this.rake(level, 8.0, 60.0F, i == 0 ? -20.0F : 20.0F, 24.0F, 1.4, null, i > 0);
-               Vfx.slashArc(level, this.at(0.0, 0.0, 3.2), this.getYaw(), 20.0F, i == 0 ? 50.0F : -50.0F, 8.0, PAL, 160.0F);
+               Vfx.slashArc(level, this.at(0.0, 0.0, 3.2), this.getYRot(), 20.0F, i == 0 ? 50.0F : -50.0F, 8.0, PAL, 160.0F);
                Vfx.streaks(level, this.at(1.5, 0.0, 1.6), this.facing(), PAL, 10);
             })
       );
@@ -750,22 +750,22 @@ public class HollowWardenBoss extends MysticalBoss {
             .telegraph(0.05, 4.0)
             .utility((b, t, c) -> this.ultGate() * (c.engagedPlayers >= 2 ? 1.3F : 1.0F))
             .start((b, level, target, i) -> {
-               this.lastUlt = this.age;
+               this.lastUlt = this.tickCount;
                this.tethers.clear();
             })
             .tick((b, level, target, t) -> {
                if (t == 1) {
                   Vfx.chargeUp(level, this.chest(), SOUL, 23);
-                  Vec3d f = floor(level, this.getEntityPos());
+                  Vec3 f = floor(level, this.position());
 
-                  for (ServerPlayerEntity p : this.engaged()) {
-                     double d = flatDist(p.getEntityPos(), f);
+                  for (ServerPlayer p : this.engaged()) {
+                     double d = flatDist(p.position(), f);
                      if (d <= 24.0 && d > 0.5) {
-                        Vfx.telegraphLine(level, f, p.getEntityPos().subtract(f), d, 0.8, 23, SOUL);
+                        Vfx.telegraphLine(level, f, p.position().subtract(f), d, 0.8, 23, SOUL);
                      }
                   }
                } else if (t == 50) {
-                  tele(level, floor(level, this.getEntityPos()), 6.0, 30, SOUL);
+                  tele(level, floor(level, this.position()), 6.0, 30, SOUL);
                }
 
                if (t >= 25 && t <= 79) {
@@ -786,7 +786,7 @@ public class HollowWardenBoss extends MysticalBoss {
             .anyTarget()
             .when((b, t) -> false)
             .telegraph(0.05, 5.0)
-            .start((b, level, target, i) -> this.lastUlt = this.age)
+            .start((b, level, target, i) -> this.lastUlt = this.tickCount)
             .tick((b, level, target, t) -> {
                if (t <= 20) {
                   this.rise(0.12);
@@ -808,11 +808,11 @@ public class HollowWardenBoss extends MysticalBoss {
       );
    }
 
-   private void lockSlam(ServerWorld level, float base, double push, boolean feint) {
-      Vec3d tip = this.spot != null ? this.spot : floor(level, this.at(4.0, -0.3, 0.0));
+   private void lockSlam(ServerLevel level, float base, double push, boolean feint) {
+      Vec3 tip = this.spot != null ? this.spot : floor(level, this.at(4.0, -0.3, 0.0));
 
-      for (ServerPlayerEntity p : this.engaged()) {
-         if (flatDist(p.getEntityPos(), this.getEntityPos()) <= 7.0) {
+      for (ServerPlayer p : this.engaged()) {
+         if (flatDist(p.position(), this.position()) <= 7.0) {
             this.guardBreak(level, p, 100);
          }
       }
@@ -820,7 +820,7 @@ public class HollowWardenBoss extends MysticalBoss {
       this.blast(level, tip, 4.0, base, push, true, null);
       if (!feint) {
          for (LivingEntity e : this.foes(level, tip, 4.0, 1.5, 3.0)) {
-            e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 40, 1), this);
+            e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 40, 1), this);
          }
       }
 
@@ -828,54 +828,54 @@ public class HollowWardenBoss extends MysticalBoss {
       Vfx.groundCrack(level, tip, 4.5, PAL);
       Vfx.runeCircle(level, tip, 2.0, SOUL, 40, 0.06F, Vfx.Rune.GLYPH);
       if (feint) {
-         this.wave(level, floor(level, this.getEntityPos()), 8.0, 10, 16.0F, 1.0, SOUL);
+         this.wave(level, floor(level, this.position()), 8.0, 10, 16.0F, 1.0, SOUL);
          Vfx.shake(level, tip, 20.0, 0.5, 8);
       }
    }
 
-   private void shackle(ServerWorld level) {
-      Vec3d a = this.aimFrom;
-      Vec3d end = a.add(this.aimDir.multiply(16.0));
+   private void shackle(ServerLevel level) {
+      Vec3 a = this.aimFrom;
+      Vec3 end = a.add(this.aimDir.scale(16.0));
       LivingEntity best = null;
       double bestD = Double.MAX_VALUE;
 
-      for (LivingEntity e : this.foesOnSegment(level, a, end, 1.3, this.getY() - 3.5, this.getY() + this.getHeight())) {
-         double d = flatDist(e.getEntityPos(), a);
+      for (LivingEntity e : this.foesOnSegment(level, a, end, 1.3, this.getY() - 3.5, this.getY() + this.getBbHeight())) {
+         double d = flatDist(e.position(), a);
          if (d < bestD) {
             bestD = d;
             best = e;
          }
       }
 
-      Vec3d hand = this.at(2.5, 0.2, 2.25);
+      Vec3 hand = this.at(2.5, 0.2, 2.25);
       if (best == null) {
          Vfx.beam(level, hand, end, SOUL, 0.35, 8);
          Vfx.sparks(level, end, SOUL.core(), 8, 0.3, 0.16);
       } else {
-         Vec3d m = mid(best);
+         Vec3 m = mid(best);
          Vfx.beam(level, hand, m, SOUL, 0.35, 8);
          Vfx.impact(level, m, SOUL, 0.8);
-         if (best.damage(level, this.getDamageSources().mobAttack(this), this.dmg(14.0F))) {
-            Vec3d pull = this.getEntityPos().subtract(best.getEntityPos()).getHorizontal().multiply(0.16);
+         if (best.hurtServer(level, this.damageSources().mobAttack(this), this.dmg(14.0F))) {
+            Vec3 pull = this.position().subtract(best.position()).horizontal().scale(0.16);
             if (pull.length() > 2.2) {
-               pull = pull.normalize().multiply(2.2);
+               pull = pull.normalize().scale(2.2);
             }
 
-            best.setVelocity(pull.x, 0.35, pull.z);
-            best.knockedBack = true;
-            best.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 30, 1), this);
-            if (pull.lengthSquared() > 1.0E-4) {
+            best.setDeltaMovement(pull.x, 0.35, pull.z);
+            best.syncVelocity = true;
+            best.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 1), this);
+            if (pull.lengthSqr() > 1.0E-4) {
                Vfx.streaks(level, m, pull.normalize(), SOUL, 10);
             }
          }
       }
    }
 
-   private void volley(ServerWorld level, @Nullable LivingEntity target, int i) {
-      Vec3d from = this.volleyHand(i);
-      Vec3d dir;
+   private void volley(ServerLevel level, @Nullable LivingEntity target, int i) {
+      Vec3 from = this.volleyHand(i);
+      Vec3 dir;
       if (target != null) {
-         double flight = from.distanceTo(target.getEyePos()) / 0.8;
+         double flight = from.distanceTo(target.getEyePosition()) / 0.8;
          dir = this.predict(target, flight).add(0.0, 1.1, 0.0).subtract(from).normalize();
       } else {
          dir = this.facing();
@@ -883,16 +883,16 @@ public class HollowWardenBoss extends MysticalBoss {
 
       Vfx.flare(level, from, SOUL.glow(), 1.4, 5);
       this.pierce(
-         BossBolt.shoot(level, this, BossBolt.Style.SHADOW, from, dir.multiply(0.8), this.dmg(9.0F))
+         BossBolt.shoot(level, this, BossBolt.Style.SHADOW, from, dir.scale(0.8), this.dmg(9.0F))
             .homing(target, 0.03)
-            .effect(new StatusEffectInstance(StatusEffects.WITHER, 60, 0))
+            .effect(new MobEffectInstance(MobEffects.WITHER, 60, 0))
             .life(80)
       );
       if (this.phase() >= 2) {
          for (int s = -1; s <= 1; s += 2) {
             this.pierce(
-               BossBolt.shoot(level, this, BossBolt.Style.SHADOW, from, rotY(dir, 8 * s).multiply(0.8), this.dmg(9.0F))
-                  .effect(new StatusEffectInstance(StatusEffects.WITHER, 60, 0))
+               BossBolt.shoot(level, this, BossBolt.Style.SHADOW, from, rotY(dir, 8 * s).scale(0.8), this.dmg(9.0F))
+                  .effect(new MobEffectInstance(MobEffects.WITHER, 60, 0))
                   .life(80)
             );
          }
@@ -900,8 +900,8 @@ public class HollowWardenBoss extends MysticalBoss {
 
       if (this.enraged()) {
          this.pierce(
-            BossBolt.shoot(level, this, BossBolt.Style.SHADOW, from, rotY(dir, i % 2 == 0 ? 4.0 : -4.0).multiply(0.8), this.dmg(9.0F))
-               .effect(new StatusEffectInstance(StatusEffects.WITHER, 60, 0))
+            BossBolt.shoot(level, this, BossBolt.Style.SHADOW, from, rotY(dir, i % 2 == 0 ? 4.0 : -4.0).scale(0.8), this.dmg(9.0F))
+               .effect(new MobEffectInstance(MobEffects.WITHER, 60, 0))
                .life(80)
          );
       }
@@ -911,21 +911,21 @@ public class HollowWardenBoss extends MysticalBoss {
       this.piercing.add(bolt);
    }
 
-   private void tickPiercing(ServerWorld level) {
+   private void tickPiercing(ServerLevel level) {
       if (!this.piercing.isEmpty()) {
          Iterator<BossBolt> it = this.piercing.iterator();
 
          while (it.hasNext()) {
             BossBolt bolt = it.next();
-            if (!bolt.isRemoved() && bolt.getEntityWorld() == level) {
-               Vec3d from = bolt.getEntityPos();
-               Vec3d to = from.add(bolt.getVelocity().multiply(1.2));
+            if (!bolt.isRemoved() && bolt.level() == level) {
+               Vec3 from = bolt.position();
+               Vec3 to = from.add(bolt.getDeltaMovement().scale(1.2));
 
-               for (LivingEntity e : level.getEntitiesByClass(LivingEntity.class, new Box(from, to).expand(1.0), this::foe)) {
-                  if (e.timeUntilRegen > 10) {
-                     Box box = e.getBoundingBox().expand(0.35);
-                     if (box.contains(from) || box.raycast(from, to).isPresent()) {
-                        e.timeUntilRegen = 0;
+               for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, new AABB(from, to).inflate(1.0), this::foe)) {
+                  if (e.getInvulnerableTime() > 10) {
+                     AABB box = e.getBoundingBox().inflate(0.35);
+                     if (box.contains(from) || box.clip(from, to).isPresent()) {
+                        e.setInvulnerableTime(0);
                      }
                   }
                }
@@ -936,51 +936,51 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void condemn(ServerWorld level) {
-      Vec3d s = this.spot != null ? this.spot : floor(level, this.at(6.0, 0.0, 0.0));
+   private void condemn(ServerLevel level) {
+      Vec3 s = this.spot != null ? this.spot : floor(level, this.at(6.0, 0.0, 0.0));
       Vfx.lightning(level, s.add(0.0, 11.0, 0.0), s, SOUL, 3);
       Vfx.impact(level, s, SOUL, 1.0);
-      DamageSource src = this.getDamageSources().indirectMagic(this, this);
+      DamageSource src = this.damageSources().indirectMagic(this, this);
 
       for (LivingEntity e : this.foes(level, s, 2.0, 1.5, 3.0)) {
-         e.damage(level, src, this.dmg(12.0F));
-         e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 50, 2), this);
-         e.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, 60, 0), this);
-         e.clearActiveItem();
+         e.hurtServer(level, src, this.dmg(12.0F));
+         e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 50, 2), this);
+         e.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 60, 0), this);
+         e.stopUsingItem();
       }
 
       this.condemned = null;
    }
 
-   private void hook(ServerWorld level, @Nullable LivingEntity target) {
-      Vec3d hand = this.hookHand();
-      if (target != null && target.isAlive() && !(this.squaredDistanceTo(target) > 784.0) && this.canSee(target)) {
-         Vec3d m = mid(target);
+   private void hook(ServerLevel level, @Nullable LivingEntity target) {
+      Vec3 hand = this.hookHand();
+      if (target != null && target.isAlive() && !(this.distanceToSqr(target) > 784.0) && this.hasLineOfSight(target)) {
+         Vec3 m = mid(target);
          Vfx.beam(level, hand, m, SOUL, 0.4, 10);
          Vfx.impact(level, m, SOUL, 0.8);
-         target.damage(level, this.getDamageSources().indirectMagic(this, this), this.dmg(12.0F));
-         if (target.isGliding()) {
-            target.stopGliding();
+         target.hurtServer(level, this.damageSources().indirectMagic(this, this), this.dmg(12.0F));
+         if (target.isFallFlying()) {
+            target.stopFallFlying();
          }
 
-         Vec3d h = this.getEntityPos().subtract(target.getEntityPos()).getHorizontal().multiply(0.12);
+         Vec3 h = this.position().subtract(target.position()).horizontal().scale(0.12);
          if (h.length() > 1.6) {
-            h = h.normalize().multiply(1.6);
+            h = h.normalize().scale(1.6);
          }
 
-         target.setVelocity(h.x, -1.4, h.z);
-         target.knockedBack = true;
+         target.setDeltaMovement(h.x, -1.4, h.z);
+         target.syncVelocity = true;
          this.hooked = target;
-         this.hookStart = this.age;
+         this.hookStart = this.tickCount;
       } else {
-         Vfx.sparks(level, hand.add(this.facing().multiply(2.0)), SOUL.core(), 10, 0.35, 0.16);
+         Vfx.sparks(level, hand.add(this.facing().scale(2.0)), SOUL.core(), 10, 0.35, 0.16);
          Vfx.flare(level, hand, SOUL.glow(), 1.0, 4);
       }
    }
 
-   private void planGrasp(ServerWorld level, @Nullable LivingEntity target) {
+   private void planGrasp(ServerLevel level, @Nullable LivingEntity target) {
       this.spots.clear();
-      Vec3d c0 = floor(level, target != null ? this.predict(target, 18.0) : this.at(5.0, 0.0, 0.0));
+      Vec3 c0 = floor(level, target != null ? this.predict(target, 18.0) : this.at(5.0, 0.0, 0.0));
       this.spots.add(new HollowWardenBoss.Spot(c0, 2.6, true));
       if (this.phase() >= 1) {
          for (int k = 0; k < 2; k++) {
@@ -990,7 +990,7 @@ public class HollowWardenBoss extends MysticalBoss {
 
       int extra = 0;
 
-      for (ServerPlayerEntity p : this.engaged()) {
+      for (ServerPlayer p : this.engaged()) {
          if (p != target && extra < 3) {
             this.spots.add(new HollowWardenBoss.Spot(floor(level, this.predict(p, 18.0)), 2.0, true));
             extra++;
@@ -1003,19 +1003,19 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void grasp(ServerWorld level) {
-      DamageSource src = this.getDamageSources().mobAttack(this);
+   private void grasp(ServerLevel level) {
+      DamageSource src = this.damageSources().mobAttack(this);
       Set<Integer> hit = new HashSet<>();
 
       for (HollowWardenBoss.Spot s : this.spots) {
          for (LivingEntity e : this.foes(level, s.at(), s.r(), 1.5, 3.0)) {
             if (hit.add(e.getId())) {
-               if (e.damage(level, src, this.dmg(22.0F))) {
-                  e.addVelocity(0.0, 0.6, 0.0);
-                  e.knockedBack = true;
+               if (e.hurtServer(level, src, this.dmg(22.0F))) {
+                  e.push(0.0, 0.6, 0.0);
+                  e.syncVelocity = true;
                }
 
-               e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 30, 3), this);
+               e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 3), this);
             }
          }
 
@@ -1026,34 +1026,34 @@ public class HollowWardenBoss extends MysticalBoss {
          }
 
          Vfx.pillar(level, s.at(), PAL, 3.5, 0.9);
-         Vfx.claw(level, s.at().add(0.0, 0.5, 0.0), this.getYaw(), -60.0F, 2.5, PAL);
+         Vfx.claw(level, s.at().add(0.0, 0.5, 0.0), this.getYRot(), -60.0F, 2.5, PAL);
       }
 
       this.spots.clear();
    }
 
-   private Vec3d flankSpot(ServerWorld level, @Nullable LivingEntity target) {
+   private Vec3 flankSpot(ServerLevel level, @Nullable LivingEntity target) {
       if (target == null) {
          return floor(level, this.at(4.0, 0.0, 0.0));
       }
 
-      Vec3d facing = Vec3d.fromPolar(0.0F, target.getYaw());
-      Vec3d left = Vec3d.fromPolar(0.0F, target.getYaw() - 90.0F);
-      Vec3d[] tries = new Vec3d[]{facing.multiply(-3.5), left.multiply(3.5), left.multiply(-3.5)};
+      Vec3 facing = Vec3.directionFromRotation(0.0F, target.getYRot());
+      Vec3 left = Vec3.directionFromRotation(0.0F, target.getYRot() - 90.0F);
+      Vec3[] tries = new Vec3[]{facing.scale(-3.5), left.scale(3.5), left.scale(-3.5)};
 
-      for (Vec3d off : tries) {
-         Vec3d p = target.getEntityPos().add(off);
+      for (Vec3 off : tries) {
+         Vec3 p = target.position().add(off);
          if (BossFx.safeGround(level, p, 3.0)) {
             return floor(level, p);
          }
       }
 
-      return floor(level, target.getEntityPos().add(facing.multiply(3.5)));
+      return floor(level, target.position().add(facing.scale(3.5)));
    }
 
-   private void vigilFx(ServerWorld level) {
+   private void vigilFx(ServerLevel level) {
       Vfx.shieldBubble(level, this.chest(), 2.2, PAL, 40);
-      Vfx.ward(level, floor(level, this.getEntityPos()), 2.5, SOUL, 40);
+      Vfx.ward(level, floor(level, this.position()), 2.5, SOUL, 40);
    }
 
    private int rollcallSize() {
@@ -1064,13 +1064,13 @@ public class HollowWardenBoss extends MysticalBoss {
       };
    }
 
-   private void rollcall(ServerWorld level, @Nullable LivingEntity target) {
+   private void rollcall(ServerLevel level, @Nullable LivingEntity target) {
       int room = 6 - this.countMinions(level);
       int n = Math.min(room, this.points.size());
       int p = this.phase();
 
       for (int k = 0; k < n; k++) {
-         Vec3d at = this.points.get(k);
+         Vec3 at = this.points.get(k);
          if (p != 0 && (p >= 3 || k >= 2) && (p < 3 || k >= 3)) {
             this.spawnRealm(level, p >= 3 ? "shade_wraith" : "gloom_hound", at, target);
          } else {
@@ -1081,9 +1081,9 @@ public class HollowWardenBoss extends MysticalBoss {
       this.minionCount = this.minionCount + Math.max(0, n);
       this.points.clear();
       if (this.engaged().size() >= 2) {
-         List<ServerPlayerEntity> others = new ArrayList<>();
+         List<ServerPlayer> others = new ArrayList<>();
 
-         for (ServerPlayerEntity sp : this.engaged()) {
+         for (ServerPlayer sp : this.engaged()) {
             if (sp != target) {
                others.add(sp);
             }
@@ -1095,10 +1095,10 @@ public class HollowWardenBoss extends MysticalBoss {
       }
 
       Vfx.nova(level, this.chest(), SOUL, 6.0);
-      Vfx.wisps(level, this.getEntityPos(), SOUL, 8);
+      Vfx.wisps(level, this.position(), SOUL, 8);
    }
 
-   private void planPenance(ServerWorld level, @Nullable LivingEntity target) {
+   private void planPenance(ServerLevel level, @Nullable LivingEntity target) {
       this.points.clear();
       int n = Math.min(Math.max(1, this.engaged().size()), 1 + this.phase());
       List<LivingEntity> who = new ArrayList<>();
@@ -1106,34 +1106,34 @@ public class HollowWardenBoss extends MysticalBoss {
          who.add(target);
       }
 
-      for (ServerPlayerEntity p : this.engaged()) {
+      for (ServerPlayer p : this.engaged()) {
          if (p != target && who.size() < n) {
             who.add(p);
          }
       }
 
       for (LivingEntity p : who) {
-         Vec3d c = floor(level, this.predict(p, 20.0));
+         Vec3 c = floor(level, this.predict(p, 20.0));
          this.points.add(c);
          tele(level, c, 2.2, 20, PAL);
          Vfx.runeCircle(level, c, 2.2, PAL, 20, 0.05F, Vfx.Rune.GLYPH);
       }
    }
 
-   private void penance(ServerWorld level) {
-      DamageSource src = this.getDamageSources().mobAttack(this);
+   private void penance(ServerLevel level) {
+      DamageSource src = this.damageSources().mobAttack(this);
 
-      for (Vec3d c : this.points) {
+      for (Vec3 c : this.points) {
          for (LivingEntity e : this.foes(level, c, 2.2, 1.5, 3.0)) {
-            e.damage(level, src, this.dmg(18.0F));
+            e.hurtServer(level, src, this.dmg(18.0F));
             if (e.isAlive() && !this.imprisoned(e)) {
-               this.cells.add(new HollowWardenBoss.Cell(c, e, this.age + 60));
+               this.cells.add(new HollowWardenBoss.Cell(c, e, this.tickCount + 60));
             }
          }
 
          for (int k = 0; k < 10; k++) {
             double a = k * Math.PI * 2.0 / 10.0;
-            Vec3d bar = c.add(Math.cos(a) * 2.2, 0.0, Math.sin(a) * 2.2);
+            Vec3 bar = c.add(Math.cos(a) * 2.2, 0.0, Math.sin(a) * 2.2);
             Vfx.beam(level, bar, bar.add(0.0, 3.2, 0.0), PAL, 0.18, 60);
          }
 
@@ -1154,9 +1154,9 @@ public class HollowWardenBoss extends MysticalBoss {
       return false;
    }
 
-   private void planPyre(ServerWorld level, @Nullable LivingEntity target) {
+   private void planPyre(ServerLevel level, @Nullable LivingEntity target) {
       this.points.clear();
-      Vec3d c0 = floor(level, target != null ? this.predict(target, 14.0) : this.at(5.0, 0.0, 0.0));
+      Vec3 c0 = floor(level, target != null ? this.predict(target, 14.0) : this.at(5.0, 0.0, 0.0));
       this.points.add(c0);
       int total = this.phase() >= 2 ? 6 : 4;
 
@@ -1167,7 +1167,7 @@ public class HollowWardenBoss extends MysticalBoss {
       if (this.phase() >= 2) {
          int extra = 0;
 
-         for (ServerPlayerEntity p : this.engaged()) {
+         for (ServerPlayer p : this.engaged()) {
             if (p != target && extra < 3) {
                this.points.add(floor(level, this.predict(p, 14.0)));
                extra++;
@@ -1175,33 +1175,33 @@ public class HollowWardenBoss extends MysticalBoss {
          }
       }
 
-      for (Vec3d p : this.points) {
+      for (Vec3 p : this.points) {
          tele(level, p, 2.2, 14, SOUL);
       }
    }
 
-   private void longNight(ServerWorld level, int i) {
-      Vec3d c = this.nightCenter;
-      DamageSource src = this.getDamageSources().mobAttack(this);
+   private void longNight(ServerLevel level, int i) {
+      Vec3 c = this.nightCenter;
+      DamageSource src = this.damageSources().mobAttack(this);
       if (i == 0) {
-         for (ServerPlayerEntity p : this.engaged()) {
-            double d = flatDist(p.getEntityPos(), c);
+         for (ServerPlayer p : this.engaged()) {
+            double d = flatDist(p.position(), c);
             if (d > 5.5 && d <= 32.0) {
                this.guardBreak(level, p, 100);
-               p.damage(level, src, this.dmg(52.0F));
-               p.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 160, 0), this);
-               p.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 60, 0), this);
+               p.hurtServer(level, src, this.dmg(52.0F));
+               p.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 160, 0), this);
+               p.addEffect(new MobEffectInstance(MobEffects.WITHER, 60, 0), this);
             }
          }
 
          Vfx.nova(level, this.chest(), PAL, 24.0);
-         Vfx.screen(level, this.getEntityPos(), 32.0, 0.8, 14, 656914, 0.7F);
+         Vfx.screen(level, this.position(), 32.0, 0.8, 14, 656914, 0.7F);
       } else if (i == 1) {
          for (LivingEntity e : this.foes(level, c, 5.5, 1.5, 5.0)) {
-            if (e.damage(level, src, this.dmg(34.0F))) {
-               Vec3d away = this.flatDir(e.getEntityPos().subtract(c));
-               e.addVelocity(away.x * 1.8, 0.4, away.z * 1.8);
-               e.knockedBack = true;
+            if (e.hurtServer(level, src, this.dmg(34.0F))) {
+               Vec3 away = this.flatDir(e.position().subtract(c));
+               e.push(away.x * 1.8, 0.4, away.z * 1.8);
+               e.syncVelocity = true;
             }
          }
 
@@ -1219,57 +1219,57 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void nightBolts(ServerWorld level, Vec3d c, int n, double offsetDeg) {
+   private void nightBolts(ServerLevel level, Vec3 c, int n, double offsetDeg) {
       if (this.isAlive()) {
          for (int k = 0; k < n; k++) {
-            Vec3d d = ray(offsetDeg + k * 360.0 / n);
-            Vec3d from = c.add(d.multiply(1.6)).add(0.0, 1.3, 0.0);
+            Vec3 d = ray(offsetDeg + k * 360.0 / n);
+            Vec3 from = c.add(d.scale(1.6)).add(0.0, 1.3, 0.0);
             this.pierce(
-               BossBolt.shoot(level, this, BossBolt.Style.SHADOW, from, d.multiply(0.7), this.dmg(8.0F))
-                  .effect(new StatusEffectInstance(StatusEffects.WITHER, 40, 0))
+               BossBolt.shoot(level, this, BossBolt.Style.SHADOW, from, d.scale(0.7), this.dmg(8.0F))
+                  .effect(new MobEffectInstance(MobEffects.WITHER, 40, 0))
                   .life(40)
             );
          }
       }
    }
 
-   private void passage(ServerWorld level, int i) {
+   private void passage(ServerLevel level, int i) {
       if (i == 0) {
-         Vec3d from = this.aimFrom;
-         Vec3d dest = from.add(this.aimDir.multiply(this.passLen));
-         Vec3d g = BossFx.ground(level, dest.x, dest.y, dest.z);
+         Vec3 from = this.aimFrom;
+         Vec3 dest = from.add(this.aimDir.scale(this.passLen));
+         Vec3 g = BossFx.ground(level, dest.x, dest.y, dest.z);
          if (g != null) {
-            dest = new Vec3d(dest.x, g.y + 0.6, dest.z);
+            dest = new Vec3(dest.x, g.y + 0.6, dest.z);
          }
 
-         Vec3d start = this.getEntityPos();
+         Vec3 start = this.position();
          this.passStart = start;
-         this.passEnd = this.blinkTo(dest) ? this.getEntityPos() : start;
+         this.passEnd = this.blinkTo(dest) ? this.position() : start;
          double travelled = flatDist(start, this.passEnd);
          if (!(travelled < 1.0)) {
             Vfx.dashTrail(level, start.add(0.0, 1.4, 0.0), this.passEnd.add(0.0, 1.4, 0.0), PAL);
             Vfx.streaks(level, start.lerp(this.passEnd, 0.5).add(0.0, 1.4, 0.0), this.aimDir, PAL, 12);
-            DamageSource src = this.getDamageSources().mobAttack(this);
+            DamageSource src = this.damageSources().mobAttack(this);
             double lo = Math.min(start.y, this.passEnd.y) - 3.5;
-            double hi = Math.max(start.y, this.passEnd.y) + this.getHeight();
+            double hi = Math.max(start.y, this.passEnd.y) + this.getBbHeight();
 
             for (LivingEntity e : this.foesOnSegment(level, start, this.passEnd, 1.6, lo, hi)) {
-               e.damage(level, src, this.dmg(20.0F));
-               e.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 40, 1), this);
+               e.hurtServer(level, src, this.dmg(20.0F));
+               e.addEffect(new MobEffectInstance(MobEffects.WITHER, 40, 1), this);
             }
 
             Vfx.telegraphLine(level, floor(level, start), this.aimDir, travelled, 2.0, 10, PAL);
          }
       } else {
-         Vec3d a = floor(level, this.passStart);
-         Vec3d b = floor(level, this.passEnd);
+         Vec3 a = floor(level, this.passStart);
+         Vec3 b = floor(level, this.passEnd);
          if (!(flatDist(a, b) < 1.0)) {
-            DamageSource src = this.getDamageSources().mobAttack(this);
+            DamageSource src = this.damageSources().mobAttack(this);
 
             for (LivingEntity e : this.foesOnSegment(level, a, b, 1.2, Math.min(a.y, b.y) - 1.5, Math.max(a.y, b.y) + 3.0)) {
-               if (e.damage(level, src, this.dmg(14.0F))) {
-                  e.addVelocity(0.0, 0.7, 0.0);
-                  e.knockedBack = true;
+               if (e.hurtServer(level, src, this.dmg(14.0F))) {
+                  e.push(0.0, 0.7, 0.0);
+                  e.syncVelocity = true;
                }
             }
 
@@ -1282,9 +1282,9 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void planChains(ServerWorld level, @Nullable LivingEntity target) {
+   private void planChains(ServerLevel level, @Nullable LivingEntity target) {
       this.plan.clear();
-      Vec3d c = floor(level, this.getEntityPos());
+      Vec3 c = floor(level, this.position());
       int n = this.phase() >= 3 ? 8 : 6;
       double base;
       if (target != null) {
@@ -1299,26 +1299,26 @@ public class HollowWardenBoss extends MysticalBoss {
 
       for (int k = 0; k < n; k++) {
          double a = base + k * Math.PI * 2.0 / n;
-         Vec3d dir = new Vec3d(Math.cos(a), 0.0, Math.sin(a));
-         this.plan.add(new HollowWardenBoss.Line(c, c.add(dir.multiply(18.0)), 0, 0));
+         Vec3 dir = new Vec3(Math.cos(a), 0.0, Math.sin(a));
+         this.plan.add(new HollowWardenBoss.Line(c, c.add(dir.scale(18.0)), 0, 0));
          Vfx.telegraphLine(level, c, dir, 18.0, 1.4, 28, PAL);
       }
    }
 
-   private void chains(ServerWorld level) {
-      DamageSource src = this.getDamageSources().mobAttack(this);
+   private void chains(ServerLevel level) {
+      DamageSource src = this.damageSources().mobAttack(this);
       Set<Integer> hit = new HashSet<>();
-      Vec3d chest = this.chest();
+      Vec3 chest = this.chest();
 
       for (HollowWardenBoss.Line l : this.plan) {
          for (LivingEntity e : this.foesOnSegment(level, l.a(), l.b(), 0.6, l.a().y - 1.5, l.a().y + 3.0)) {
             if (hit.add(e.getId())) {
-               e.damage(level, src, this.dmg(22.0F));
-               e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 40, 1), this);
+               e.hurtServer(level, src, this.dmg(22.0F));
+               e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 40, 1), this);
             }
          }
 
-         this.lines.add(new HollowWardenBoss.Line(l.a(), l.b(), this.age, this.age + 100));
+         this.lines.add(new HollowWardenBoss.Line(l.a(), l.b(), this.tickCount, this.tickCount + 100));
          Vfx.beam(level, chest, l.b().add(0.0, 0.4, 0.0), PAL, 0.3, 8);
          Vfx.beam(level, l.a().add(0.0, 0.3, 0.0), l.b().add(0.0, 0.3, 0.0), PAL, 0.25, 22);
          Vfx.sparks(level, l.b().add(0.0, 0.3, 0.0), PAL.core(), 8, 0.3, 0.16);
@@ -1328,26 +1328,26 @@ public class HollowWardenBoss extends MysticalBoss {
       this.plan.clear();
    }
 
-   private void haul(ServerWorld level, int t) {
+   private void haul(ServerLevel level, int t) {
       if (!this.tethers.isEmpty()) {
-         Vec3d chest = this.chest();
+         Vec3 chest = this.chest();
          Iterator<LivingEntity> it = this.tethers.values().iterator();
 
          while (it.hasNext()) {
             LivingEntity e = it.next();
-            if (e.isAlive() && !e.isRemoved() && e.getEntityWorld() == level && !(this.squaredDistanceTo(e) > 1600.0)) {
+            if (e.isAlive() && !e.isRemoved() && e.level() == level && !(this.distanceToSqr(e) > 1600.0)) {
                if (t % 2 == 1) {
                   Vfx.beam(level, chest, mid(e), SOUL, 0.3);
                }
 
-               Vec3d to = this.getEntityPos().subtract(e.getEntityPos()).getHorizontal();
+               Vec3 to = this.position().subtract(e.position()).horizontal();
                double d = to.length();
                if (d > 1.5) {
                   drag(e, to.x / d * 0.07, to.z / d * 0.07);
                }
 
                if (t % 10 == 5) {
-                  e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 20, 0), this);
+                  e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 20, 0), this);
                }
             } else {
                it.remove();
@@ -1356,46 +1356,46 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void sentence(ServerWorld level, int i) {
-      Vec3d chest = this.chest();
+   private void sentence(ServerLevel level, int i) {
+      Vec3 chest = this.chest();
       if (i == 0) {
          this.tethers.clear();
-         DamageSource magic = this.getDamageSources().indirectMagic(this, this);
+         DamageSource magic = this.damageSources().indirectMagic(this, this);
 
-         for (ServerPlayerEntity p : this.engaged()) {
-            if (!(flatDist(p.getEntityPos(), this.getEntityPos()) > 24.0)) {
-               p.damage(level, magic, this.dmg(10.0F));
-               this.tethers.put(p.getUuid(), p);
+         for (ServerPlayer p : this.engaged()) {
+            if (!(flatDist(p.position(), this.position()) > 24.0)) {
+               p.hurtServer(level, magic, this.dmg(10.0F));
+               this.tethers.put(p.getUUID(), p);
                Vfx.beam(level, chest, mid(p), SOUL, 0.4, 6);
                Vfx.impact(level, mid(p), SOUL, 0.6);
             }
          }
       } else {
-         DamageSource src = this.getDamageSources().mobAttack(this);
+         DamageSource src = this.damageSources().mobAttack(this);
 
          for (LivingEntity e : new ArrayList<>(this.tethers.values())) {
             if (e.isAlive()) {
-               if (e instanceof PlayerEntity pl) {
+               if (e instanceof Player pl) {
                   this.guardBreak(level, pl, 100);
                }
 
-               e.damage(level, src, this.dmg(58.0F));
-               Vec3d to = this.getEntityPos().subtract(e.getEntityPos()).getHorizontal();
-               Vec3d v = to.lengthSquared() > 1.0E-4 ? to.normalize().multiply(1.6) : Vec3d.ZERO;
-               e.setVelocity(v.x, 0.3, v.z);
-               e.knockedBack = true;
-               e.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 60, 1), this);
+               e.hurtServer(level, src, this.dmg(58.0F));
+               Vec3 to = this.position().subtract(e.position()).horizontal();
+               Vec3 v = to.lengthSqr() > 1.0E-4 ? to.normalize().scale(1.6) : Vec3.ZERO;
+               e.setDeltaMovement(v.x, 0.3, v.z);
+               e.syncVelocity = true;
+               e.addEffect(new MobEffectInstance(MobEffects.WITHER, 60, 1), this);
                Vfx.beam(level, chest, mid(e), SOUL, 0.5, 6);
             }
          }
 
-         Vec3d f = floor(level, this.getEntityPos());
+         Vec3 f = floor(level, this.position());
 
          for (LivingEntity e : this.foes(level, f, 6.0, 1.5, 6.0)) {
-            if (!this.tethers.containsKey(e.getUuid()) && e.damage(level, src, this.dmg(30.0F))) {
-               Vec3d away = this.flatDir(e.getEntityPos().subtract(f));
-               e.addVelocity(away.x * 1.6, 0.4, away.z * 1.6);
-               e.knockedBack = true;
+            if (!this.tethers.containsKey(e.getUUID()) && e.hurtServer(level, src, this.dmg(30.0F))) {
+               Vec3 away = this.flatDir(e.position().subtract(f));
+               e.push(away.x * 1.6, 0.4, away.z * 1.6);
+               e.syncVelocity = true;
             }
          }
 
@@ -1406,14 +1406,14 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void planVerdict(ServerWorld level) {
-      this.verdictCenter = floor(level, this.getEntityPos());
+   private void planVerdict(ServerLevel level) {
+      this.verdictCenter = floor(level, this.position());
       this.verdictRot = this.getRandom().nextDouble() * 360.0;
       this.verdictCells.clear();
 
       for (int k = 0; k < 4; k++) {
-         Vec3d p = this.verdictCenter.add(ray(this.verdictRot + 22.5 + 90 * k).multiply(9.0 + this.getRandom().nextDouble() * 2.0));
-         Vec3d cell = floor(level, p);
+         Vec3 p = this.verdictCenter.add(ray(this.verdictRot + 22.5 + 90 * k).scale(9.0 + this.getRandom().nextDouble() * 2.0));
+         Vec3 cell = floor(level, p);
          this.verdictCells.add(cell);
          Vfx.ward(level, cell, 2.0, SOUL, 100);
          Vfx.runeCircle(level, cell, 2.0, SOUL, 100, 0.04F, Vfx.Rune.GLYPH);
@@ -1423,9 +1423,9 @@ public class HollowWardenBoss extends MysticalBoss {
       Vfx.chargeUp(level, this.chest(), SOUL, 39);
    }
 
-   private void verdict(ServerWorld level, int i) {
-      Vec3d c = this.verdictCenter;
-      DamageSource src = this.getDamageSources().mobAttack(this);
+   private void verdict(ServerLevel level, int i) {
+      Vec3 c = this.verdictCenter;
+      DamageSource src = this.damageSources().mobAttack(this);
       switch (i) {
          case 0:
             this.wave(level, c, 20.0, 16, 26.0F, 1.2, PAL);
@@ -1433,14 +1433,14 @@ public class HollowWardenBoss extends MysticalBoss {
             break;
          case 1:
             Set<Integer> hit = new HashSet<>();
-            Vec3d chest = this.chest();
+            Vec3 chest = this.chest();
 
             for (int k = 0; k < 8; k++) {
-               Vec3d end = c.add(ray(this.verdictRot + 45 * k).multiply(20.0));
+               Vec3 end = c.add(ray(this.verdictRot + 45 * k).scale(20.0));
 
                for (LivingEntity e : this.foesOnSegment(level, c, end, 0.8, c.y - 1.5, c.y + 3.0)) {
                   if (hit.add(e.getId())) {
-                     e.damage(level, src, this.dmg(30.0F));
+                     e.hurtServer(level, src, this.dmg(30.0F));
                   }
                }
 
@@ -1448,12 +1448,12 @@ public class HollowWardenBoss extends MysticalBoss {
             }
             break;
          case 2:
-            for (ServerPlayerEntity p : this.engaged()) {
-               if (!(flatDist(p.getEntityPos(), c) > 32.0)) {
+            for (ServerPlayer p : this.engaged()) {
+               if (!(flatDist(p.position(), c) > 32.0)) {
                   boolean spared = false;
 
-                  for (Vec3d cell : this.verdictCells) {
-                     if (flatDist(p.getEntityPos(), cell) <= 2.0 && Math.abs(p.getY() - cell.y) <= 3.0) {
+                  for (Vec3 cell : this.verdictCells) {
+                     if (flatDist(p.position(), cell) <= 2.0 && Math.abs(p.getY() - cell.y) <= 3.0) {
                         spared = true;
                         break;
                      }
@@ -1461,12 +1461,12 @@ public class HollowWardenBoss extends MysticalBoss {
 
                   if (spared) {
                      Vfx.glint(level, mid(p), SOUL.core(), 1.4);
-                     Vfx.auraRing(level, p.getEntityPos(), SOUL);
+                     Vfx.auraRing(level, p.position(), SOUL);
                   } else {
                      this.guardBreak(level, p, 100);
-                     p.damage(level, src, this.dmg(66.0F));
-                     p.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 100, 1), this);
-                     Vfx.lightning(level, p.getEntityPos().add(0.0, 12.0, 0.0), p.getEntityPos(), SOUL, 4);
+                     p.hurtServer(level, src, this.dmg(66.0F));
+                     p.addEffect(new MobEffectInstance(MobEffects.WITHER, 100, 1), this);
+                     Vfx.lightning(level, p.position().add(0.0, 12.0, 0.0), p.position(), SOUL, 4);
                   }
                }
             }
@@ -1481,10 +1481,10 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onPhaseChange(ServerWorld level, int phase) {
+   protected void onPhaseChange(ServerLevel level, int phase) {
       this.clearHazards();
       BossFx.current(this);
-      Vec3d f = floor(level, this.getEntityPos());
+      Vec3 f = floor(level, this.position());
       if (phase <= 1) {
          Vfx.chargeUp(level, this.chest(), SOUL, 27);
          tele(level, f, 7.0, 27, SOUL);
@@ -1502,11 +1502,11 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    @Override
-   protected void phaseBurst(ServerWorld level, int phase) {
+   protected void phaseBurst(ServerLevel level, int phase) {
       this.setForm(phase);
       BossFx.current(this);
-      Vec3d f = floor(level, this.getEntityPos());
-      Vec3d c = this.chest();
+      Vec3 f = floor(level, this.position());
+      Vec3 c = this.chest();
       if (phase <= 1) {
          Vfx.nova(level, c, SOUL, 7.0);
          this.blast(level, f, 7.0, 12.0F, 1.6, true, null);
@@ -1517,25 +1517,25 @@ public class HollowWardenBoss extends MysticalBoss {
       } else if (phase == 2) {
          Vfx.shards(level, c.add(0.0, 0.6, 0.0), 5920868, 24, 0.6);
          Vfx.debris(level, c, Vfx.Debris.ASH, PAL.smoke(), 20, 0.4);
-         DamageSource src = this.getDamageSources().mobAttack(this);
+         DamageSource src = this.damageSources().mobAttack(this);
          Set<Integer> hit = new HashSet<>();
 
          for (int k = 0; k < 8; k++) {
-            Vec3d dir = ray(this.burstAngle + 45 * k);
-            Vec3d end = f.add(dir.multiply(14.0));
+            Vec3 dir = ray(this.burstAngle + 45 * k);
+            Vec3 end = f.add(dir.scale(14.0));
 
             for (LivingEntity e : this.foesOnSegment(level, f, end, 0.7, f.y - 1.5, f.y + 3.0)) {
-               if (hit.add(e.getId()) && e.damage(level, src, this.dmg(20.0F))) {
-                  e.addVelocity(dir.x * 1.2, 0.35, dir.z * 1.2);
-                  e.knockedBack = true;
+               if (hit.add(e.getId()) && e.hurtServer(level, src, this.dmg(20.0F))) {
+                  e.push(dir.x * 1.2, 0.35, dir.z * 1.2);
+                  e.syncVelocity = true;
                }
             }
 
             Vfx.beam(level, c, end.add(0.0, 0.4, 0.0), PAL, 0.3, 8);
          }
 
-         Vec3d back = this.facing().multiply(-1.0);
-         Vec3d left = this.left();
+         Vec3 back = this.facing().scale(-1.0);
+         Vec3 left = this.left();
          Vfx.streaks(level, c, back.add(left).normalize(), PAL, 12);
          Vfx.streaks(level, c, back.subtract(left).normalize(), PAL, 12);
          this.spawnRealms(level, "gloom_hound", 2, this.getTarget());
@@ -1544,8 +1544,8 @@ public class HollowWardenBoss extends MysticalBoss {
          Vfx.nova(level, c, VIOLET, 10.0);
          this.slam(level, f, 10.0, 16.0F, 2.0);
 
-         for (ServerPlayerEntity p : this.engaged()) {
-            p.addStatusEffect(new StatusEffectInstance(StatusEffects.DARKNESS, 100, 0), this);
+         for (ServerPlayer p : this.engaged()) {
+            p.addEffect(new MobEffectInstance(MobEffects.DARKNESS, 100, 0), this);
          }
 
          this.spawnRealms(level, "shade_wraith", 2, this.getTarget());
@@ -1554,15 +1554,15 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onStagger(ServerWorld level) {
+   protected void onStagger(ServerLevel level) {
       this.clearHazards();
       Vfx.flare(level, this.chest(), SOUL.glow(), 1.0, 6);
       Vfx.debris(level, this.chest(), Vfx.Debris.ASH, PAL.smoke(), 10, 0.25);
    }
 
    @Override
-   protected void onEnrage(ServerWorld level) {
-      Vfx.auraRing(level, this.getEntityPos(), PAL, 3.5);
+   protected void onEnrage(ServerLevel level) {
+      Vfx.auraRing(level, this.position(), PAL, 3.5);
       Vfx.wisps(level, this.chest(), SOUL, 8);
       this.shades(level, 2, this.getTarget());
 
@@ -1572,7 +1572,7 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    @Override
-   protected void desperation(ServerWorld level) {
+   protected void desperation(ServerLevel level) {
       BossAction m = this.currentMove();
       if (m != null && m.anim().startsWith("phase_")) {
          this.verdictPending = true;
@@ -1594,33 +1594,33 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    @Override
-   public boolean damage(ServerWorld world, DamageSource source, float amount) {
-      boolean bypass = source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY);
+   public boolean hurtServer(ServerLevel world, DamageSource source, float amount) {
+      boolean bypass = source.is(DamageTypeTags.BYPASSES_INVULNERABILITY);
       if (this.immuneTicks > 0 && !bypass) {
          return false;
       }
 
       boolean thorns = this.vigilTicks > 0 && this.warded();
-      boolean hit = super.damage(world, source, amount);
-      if (hit && source.getAttacker() instanceof LivingEntity attacker && attacker != this) {
-         if (this.tethers.remove(attacker.getUuid()) != null) {
-            Vec3d m = this.chest().lerp(mid(attacker), 0.5);
+      boolean hit = super.hurtServer(world, source, amount);
+      if (hit && source.getEntity() instanceof LivingEntity attacker && attacker != this) {
+         if (this.tethers.remove(attacker.getUUID()) != null) {
+            Vec3 m = this.chest().lerp(mid(attacker), 0.5);
             Vfx.shards(world, m, SOUL.glow(), 14, 0.45);
             Vfx.flare(world, m, SOUL.glow(), 1.6, 6);
          }
 
          if (thorns
-            && attacker instanceof PlayerEntity p
+            && attacker instanceof Player p
             && !p.isCreative()
             && !p.isSpectator()
-            && flatDist(p.getEntityPos(), this.getEntityPos()) <= 4.5 + this.getWidth() * 0.5) {
-            int last = this.thornsAt.getOrDefault(p.getUuid(), -100);
-            if (this.age - last >= 10) {
-               this.thornsAt.put(p.getUuid(), this.age);
-               p.damage(world, this.getDamageSources().indirectMagic(this, this), this.dmg(6.0F));
-               Vec3d away = this.flatDir(p.getEntityPos().subtract(this.getEntityPos()));
-               p.addVelocity(away.x, 0.3, away.z);
-               p.knockedBack = true;
+            && flatDist(p.position(), this.position()) <= 4.5 + this.getBbWidth() * 0.5) {
+            int last = this.thornsAt.getOrDefault(p.getUUID(), -100);
+            if (this.tickCount - last >= 10) {
+               this.thornsAt.put(p.getUUID(), this.tickCount);
+               p.hurtServer(world, this.damageSources().indirectMagic(this, this), this.dmg(6.0F));
+               Vec3 away = this.flatDir(p.position().subtract(this.position()));
+               p.push(away.x, 0.3, away.z);
+               p.syncVelocity = true;
                Vfx.sparks(world, mid(p), SOUL.core(), 8, 0.3, 0.16);
             }
          }
@@ -1630,8 +1630,8 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    @Override
-   protected void mobTick(ServerWorld world) {
-      super.mobTick(world);
+   protected void customServerAiStep(ServerLevel world) {
+      super.customServerAiStep(world);
       if (this.isAlive() && !this.inIntro()) {
          BossFx.current(this);
          if (this.immuneTicks > 0) {
@@ -1670,30 +1670,30 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void tickCells(ServerWorld level) {
+   private void tickCells(ServerLevel level) {
       if (!this.cells.isEmpty()) {
          Iterator<HollowWardenBoss.Cell> it = this.cells.iterator();
 
          while (it.hasNext()) {
             HollowWardenBoss.Cell c = it.next();
             LivingEntity e = c.who;
-            if (this.age < c.until && e.isAlive() && !e.isRemoved() && e.getEntityWorld() == level) {
-               double d = flatDist(e.getEntityPos(), c.center);
+            if (this.tickCount < c.until && e.isAlive() && !e.isRemoved() && e.level() == level) {
+               double d = flatDist(e.position(), c.center);
                if (d > 2.2) {
-                  Vec3d to = new Vec3d(c.center.x - e.getX(), 0.0, c.center.z - e.getZ()).multiply(0.6 / d);
-                  e.setVelocity(to.x, Math.min(0.1, known(e).y), to.z);
-                  e.knockedBack = true;
+                  Vec3 to = new Vec3(c.center.x - e.getX(), 0.0, c.center.z - e.getZ()).scale(0.6 / d);
+                  e.setDeltaMovement(to.x, Math.min(0.1, known(e).y), to.z);
+                  e.syncVelocity = true;
                   if (++c.tries % 10 == 0) {
-                     e.damage(level, this.getDamageSources().indirectMagic(this, this), this.dmg(4.0F));
+                     e.hurtServer(level, this.damageSources().indirectMagic(this, this), this.dmg(4.0F));
                      sound(level, c.center, "penance.hit", 2.0F);
                      Vfx.sparks(level, mid(e), PAL.core(), 8, 0.3, 0.16);
                   }
-               } else if (this.age % 10 == 0) {
-                  e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 15, 0), this);
+               } else if (this.tickCount % 10 == 0) {
+                  e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 15, 0), this);
                }
             } else {
                it.remove();
-               if (this.age >= c.until) {
+               if (this.tickCount >= c.until) {
                   Vfx.shards(level, c.center.add(0.0, 1.2, 0.0), PAL.glow(), 14, 0.45);
                }
             }
@@ -1701,25 +1701,25 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void tickLines(ServerWorld level) {
+   private void tickLines(ServerLevel level) {
       if (!this.lines.isEmpty()) {
-         this.lines.removeIf(lx -> this.age >= lx.until());
+         this.lines.removeIf(lx -> this.tickCount >= lx.until());
 
          for (HollowWardenBoss.Line l : this.lines) {
-            int age = this.age - l.born();
+            int age = this.tickCount - l.born();
             if (age > 0 && age % 20 == 0) {
                Vfx.beam(level, l.a().add(0.0, 0.3, 0.0), l.b().add(0.0, 0.3, 0.0), PAL, 0.25, 22);
             }
          }
 
-         if (this.age % 10 == 0 && !this.lines.isEmpty()) {
-            DamageSource magic = this.getDamageSources().indirectMagic(this, this);
+         if (this.tickCount % 10 == 0 && !this.lines.isEmpty()) {
+            DamageSource magic = this.damageSources().indirectMagic(this, this);
 
-            for (ServerPlayerEntity p : this.engaged()) {
+            for (ServerPlayer p : this.engaged()) {
                for (HollowWardenBoss.Line l : this.lines) {
-                  if (Math.abs(p.getY() - l.a().y) <= 2.5 && segDist(p.getEntityPos(), l.a(), l.b()) <= 0.8) {
-                     p.damage(level, magic, this.dmg(6.0F));
-                     p.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 20, 0), this);
+                  if (Math.abs(p.getY() - l.a().y) <= 2.5 && segDist(p.position(), l.a(), l.b()) <= 0.8) {
+                     p.hurtServer(level, magic, this.dmg(6.0F));
+                     p.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 20, 0), this);
                      break;
                   }
                }
@@ -1728,27 +1728,27 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void tickZones(ServerWorld level) {
+   private void tickZones(ServerLevel level) {
       if (!this.zones.isEmpty()) {
-         DamageSource magic = this.getDamageSources().indirectMagic(this, this);
+         DamageSource magic = this.damageSources().indirectMagic(this, this);
          Iterator<HollowWardenBoss.Zone> it = this.zones.iterator();
 
          while (it.hasNext()) {
             HollowWardenBoss.Zone z = it.next();
-            int left = z.until() - this.age;
+            int left = z.until() - this.tickCount;
             if (left <= 0) {
                it.remove();
             } else {
-               if (this.age % 5 == 0) {
-                  level.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, z.at().x, z.at().y + 0.3, z.at().z, 5, z.r() * 0.6, 0.15, z.r() * 0.6, 0.01);
+               if (this.tickCount % 5 == 0) {
+                  level.sendParticles(ParticleTypes.SOUL_FIRE_FLAME, z.at().x, z.at().y + 0.3, z.at().z, 5, z.r() * 0.6, 0.15, z.r() * 0.6, 0.01);
                }
 
                if (left % 20 == 10) {
                   Vfx.aura(level, z.at(), SOUL, z.r());
 
                   for (LivingEntity e : this.foes(level, z.at(), z.r(), 1.0, 3.0)) {
-                     e.damage(level, magic, this.dmg(4.0F));
-                     e.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 40, 0), this);
+                     e.hurtServer(level, magic, this.dmg(4.0F));
+                     e.addEffect(new MobEffectInstance(MobEffects.WITHER, 40, 0), this);
                   }
                }
             }
@@ -1756,14 +1756,14 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void tickRestless(ServerWorld level, @Nullable BossAction move, boolean phaseClip) {
+   private void tickRestless(ServerLevel level, @Nullable BossAction move, boolean phaseClip) {
       if (!this.restless.isEmpty()) {
-         Vec3d struck = null;
+         Vec3 struck = null;
          Iterator<HollowWardenBoss.Strike> it = this.restless.iterator();
 
          while (it.hasNext()) {
             HollowWardenBoss.Strike s = it.next();
-            if (this.age >= s.when()) {
+            if (this.tickCount >= s.when()) {
                it.remove();
                this.restlessStrike(level, s.at());
                struck = s.at();
@@ -1787,46 +1787,46 @@ public class HollowWardenBoss extends MysticalBoss {
                this.restlessTimer = interval;
                int n = 0;
 
-               for (ServerPlayerEntity p : this.engaged()) {
+               for (ServerPlayer p : this.engaged()) {
                   if (n++ >= 3) {
                      break;
                   }
 
-                  Vec3d s = floor(level, this.predict(p, 30.0));
+                  Vec3 s = floor(level, this.predict(p, 30.0));
                   tele(level, s, 2.0, 30, PAL);
-                  this.restless.add(new HollowWardenBoss.Strike(s, this.age + 30));
+                  this.restless.add(new HollowWardenBoss.Strike(s, this.tickCount + 30));
                }
             }
          }
       }
    }
 
-   private void restlessStrike(ServerWorld level, Vec3d s) {
-      DamageSource src = this.getDamageSources().mobAttack(this);
+   private void restlessStrike(ServerLevel level, Vec3 s) {
+      DamageSource src = this.damageSources().mobAttack(this);
 
       for (LivingEntity e : this.foes(level, s, 2.0, 1.5, 3.0)) {
-         if (e.damage(level, src, this.dmg(16.0F))) {
-            e.addVelocity(0.0, 0.5, 0.0);
-            e.knockedBack = true;
+         if (e.hurtServer(level, src, this.dmg(16.0F))) {
+            e.push(0.0, 0.5, 0.0);
+            e.syncVelocity = true;
          }
 
-         e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 40, 1), this);
+         e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 40, 1), this);
       }
 
       Vfx.pillar(level, s, PAL, 4.0, 0.8);
       Vfx.groundCrack(level, s, 2.0, PAL);
    }
 
-   private void tickHook(ServerWorld level) {
+   private void tickHook(ServerLevel level) {
       LivingEntity e = this.hooked;
       if (e != null) {
-         if (e.isAlive() && !e.isRemoved() && e.getEntityWorld() == level && this.age <= this.hookStart + 30) {
-            if (this.age >= this.hookStart + 2 && e.isOnGround()) {
+         if (e.isAlive() && !e.isRemoved() && e.level() == level && this.tickCount <= this.hookStart + 30) {
+            if (this.tickCount >= this.hookStart + 2 && e.onGround()) {
                this.hooked = null;
-               Vec3d land = floor(level, e.getEntityPos());
-               e.timeUntilRegen = 0;
+               Vec3 land = floor(level, e.position());
+               e.setInvulnerableTime(0);
                this.blast(level, land, 2.5, 20.0F, 0.8, true, null);
-               e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 40, 1), this);
+               e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 40, 1), this);
                Vfx.heavyImpact(level, land, PAL, 1.0);
                sound(level, land, "headsmans_drop.hit", 3.0F);
             }
@@ -1836,18 +1836,18 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void tickVigil(ServerWorld level) {
+   private void tickVigil(ServerLevel level) {
       if (this.vigilTicks > 0) {
          if (!this.warded()) {
             this.vigilTicks = 0;
          } else {
             this.vigilTicks--;
             if (this.vigilTicks == 30) {
-               tele(level, floor(level, this.getEntityPos()), 7.0, 30, SOUL);
+               tele(level, floor(level, this.position()), 7.0, 30, SOUL);
             }
 
             if (this.vigilTicks == 0) {
-               Vec3d f = floor(level, this.getEntityPos());
+               Vec3 f = floor(level, this.position());
                this.slam(level, f, 7.0, 26.0F, 1.6);
                Vfx.nova(level, this.chest(), SOUL, 7.0);
                this.thornsAt.clear();
@@ -1858,14 +1858,14 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void ambient(ServerWorld level) {
-      int t = this.age;
+   private void ambient(ServerLevel level) {
+      int t = this.tickCount;
       if (t % 4 == 0) {
-         Vfx.smoke(level, this.getEntityPos().add(0.0, 0.2, 0.0), PAL.smoke(), 2, 0.6, 1.4);
+         Vfx.smoke(level, this.position().add(0.0, 0.2, 0.0), PAL.smoke(), 2, 0.6, 1.4);
       }
 
       if (t % 20 == 0) {
-         Vfx.embers(level, this.getEntityPos().add(0.0, 1.5, 0.0), PAL.glow(), 3, 0.9);
+         Vfx.embers(level, this.position().add(0.0, 1.5, 0.0), PAL.glow(), 3, 0.9);
       }
 
       int f = this.form();
@@ -1882,10 +1882,10 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void dodgeWake(ServerWorld level) {
+   private void dodgeWake(ServerLevel level) {
       boolean d = this.dodging();
       if (d && !this.wasDodging) {
-         this.dodgeFrom = this.getEntityPos();
+         this.dodgeFrom = this.position();
          this.dodgeWake = 0;
       }
 
@@ -1893,21 +1893,21 @@ public class HollowWardenBoss extends MysticalBoss {
       if (d) {
          this.dodgeWake++;
          if (this.dodgeWake == 5 || this.dodgeWake == 8) {
-            Vfx.dashTrail(level, this.dodgeFrom.add(0.0, 1.6, 0.0), this.getEntityPos().add(0.0, 1.6, 0.0), PAL);
-            this.dodgeFrom = this.getEntityPos();
+            Vfx.dashTrail(level, this.dodgeFrom.add(0.0, 1.6, 0.0), this.position().add(0.0, 1.6, 0.0), PAL);
+            this.dodgeFrom = this.position();
          }
       }
    }
 
    @Override
-   protected void onIntroTick(ServerWorld level, int left) {
+   protected void onIntroTick(ServerLevel level, int left) {
       BossFx.current(this);
-      Vec3d f = floor(level, this.getEntityPos());
+      Vec3 f = floor(level, this.position());
       switch (left) {
          case 14:
             Vfx.nova(level, this.chest(), PAL, 6.0);
             Vfx.runeCircle(level, this.at(4.4, 0.9, 3.3), 0.9, SOUL, 20, 0.1F, Vfx.Rune.GLYPH);
-            Vfx.shake(level, this.getEntityPos(), 24.0, 0.35, 8);
+            Vfx.shake(level, this.position(), 24.0, 0.35, 8);
             break;
          case 44:
             Vfx.glint(level, this.at(1.5, -1.55, 1.8), SOUL.core(), 1.6);
@@ -1920,7 +1920,7 @@ public class HollowWardenBoss extends MysticalBoss {
             break;
          case 116:
             for (int k = 0; k < 4; k++) {
-               Vec3d p = f.add(ray(45 + 90 * k).multiply(3.0));
+               Vec3 p = f.add(ray(45 + 90 * k).scale(3.0));
                Vfx.beam(level, p, p.add(0.0, 5.0, 0.0), SOUL, 0.3, 50);
             }
             break;
@@ -1941,10 +1941,10 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    @Override
-   protected void onDeathTick(ServerWorld level, int tick) {
+   protected void onDeathTick(ServerLevel level, int tick) {
       BossFx.current(this);
       if (tick <= 60) {
-         Vec3d g = BossFx.ground(level, this.getX(), this.getY(), this.getZ());
+         Vec3 g = BossFx.ground(level, this.getX(), this.getY(), this.getZ());
          if (g != null && g.y <= this.getY() + 0.5) {
             this.sink(g.y + this.hoverHeight(), Math.max(2, 30 - tick));
          }
@@ -1961,30 +1961,30 @@ public class HollowWardenBoss extends MysticalBoss {
          case 14:
          case 20:
          case 26:
-            Vec3d p = tick == 14 ? this.at(-0.8, 0.5, 1.4) : (tick == 20 ? this.at(-0.8, -0.5, 1.4) : this.at(0.5, 0.7, 1.1));
+            Vec3 p = tick == 14 ? this.at(-0.8, 0.5, 1.4) : (tick == 20 ? this.at(-0.8, -0.5, 1.4) : this.at(0.5, 0.7, 1.1));
             Vfx.sparks(level, p, SOUL.core(), 10, 0.35, 0.16);
             Vfx.shards(level, p, 5920868, 8, 0.4);
             break;
          case 48:
-            Vec3d l = this.at(-0.35, 0.4, 0.0);
+            Vec3 l = this.at(-0.35, 0.4, 0.0);
             Vfx.explosion(level, l, SOUL, 1.5);
             Vfx.debris(level, l, Vfx.Debris.ASH, SOUL.glow(), 12, 0.35);
             break;
          case 60:
-            Vec3d tip = floor(level, this.at(2.75, -0.85, 0.0));
+            Vec3 tip = floor(level, this.at(2.75, -0.85, 0.0));
             Vfx.heavyImpact(level, tip, PAL, 0.8);
             Vfx.groundCrack(level, tip, 2.0, PAL);
             break;
          case 104:
-            Vec3d c = this.chest();
+            Vec3 c = this.chest();
             Vfx.wisps(level, c, SOUL, 12, 3.0, 80);
             Vfx.nova(level, c, SOUL, 5.0);
-            Vfx.pillar(level, this.getEntityPos(), SOUL, 8.0, 1.2);
+            Vfx.pillar(level, this.position(), SOUL, 8.0, 1.2);
             Vfx.radialFlash(level, c, 24.0, 10285055, 0.5F);
             break;
          default:
             if (tick >= 80 && tick <= 100 && tick % 6 == 2 || tick >= 120 && tick % 5 == 0) {
-               Vfx.smoke(level, this.getEntityPos().add(0.0, 0.4, 0.0), PAL.smoke(), 6, 1.2, 1.6);
+               Vfx.smoke(level, this.position().add(0.0, 0.4, 0.0), PAL.smoke(), 6, 1.2, 1.6);
             }
       }
    }
@@ -1997,66 +1997,66 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private int countMinions(ServerWorld level) {
-      this.minionCount = level.getEntitiesByClass(LivingEntity.class, this.getBoundingBox().expand(32.0), HollowWardenBoss::isAdd).size();
-      this.minionsAt = this.age;
+   private int countMinions(ServerLevel level) {
+      this.minionCount = level.getEntitiesOfClass(LivingEntity.class, this.getBoundingBox().inflate(32.0), HollowWardenBoss::isAdd).size();
+      this.minionsAt = this.tickCount;
       return this.minionCount;
    }
 
    private int minions() {
-      if (this.age - this.minionsAt >= 20 && this.getEntityWorld() instanceof ServerWorld level) {
+      if (this.tickCount - this.minionsAt >= 20 && this.level() instanceof ServerLevel level) {
          this.countMinions(level);
       }
 
       return this.minionCount;
    }
 
-   private void shades(ServerWorld level, int n, @Nullable LivingEntity target) {
+   private void shades(ServerLevel level, int n, @Nullable LivingEntity target) {
       int k = Math.min(n, 6 - this.countMinions(level));
 
       for (int i = 0; i < k; i++) {
-         this.spawnShade(level, BossFx.around(level, this, this.getEntityPos(), 3.0, 6.0), target);
+         this.spawnShade(level, BossFx.around(level, this, this.position(), 3.0, 6.0), target);
       }
 
       this.minionCount = this.minionCount + Math.max(0, k);
    }
 
-   private void spawnRealms(ServerWorld level, String id, int n, @Nullable LivingEntity target) {
+   private void spawnRealms(ServerLevel level, String id, int n, @Nullable LivingEntity target) {
       int k = Math.min(n, 6 - this.countMinions(level));
 
       for (int i = 0; i < k; i++) {
-         this.spawnRealm(level, id, BossFx.around(level, this, this.getEntityPos(), 3.0, 7.0), target);
+         this.spawnRealm(level, id, BossFx.around(level, this, this.position(), 3.0, 7.0), target);
       }
 
       this.minionCount = this.minionCount + Math.max(0, k);
    }
 
-   private void spawnShade(ServerWorld level, Vec3d at, @Nullable LivingEntity target) {
-      WardenShade shade = (WardenShade)BossEntities.WARDEN_SHADE.create(level, SpawnReason.MOB_SUMMONED);
+   private void spawnShade(ServerLevel level, Vec3 at, @Nullable LivingEntity target) {
+      WardenShade shade = (WardenShade)BossEntities.WARDEN_SHADE.create(level, EntitySpawnReason.MOB_SUMMONED);
       if (shade != null) {
-         shade.refreshPositionAndAngles(at.x, at.y + 0.6, at.z, this.getYaw(), 0.0F);
+         shade.snapTo(at.x, at.y + 0.6, at.z, this.getYRot(), 0.0F);
          if (target != null) {
             shade.setTarget(target);
          }
 
-         level.spawnEntity(shade);
+         level.addFreshEntity(shade);
          Vfx.pillar(level, at, PAL, 4.0, 0.9);
          Vfx.smoke(level, at.add(0.0, 1.0, 0.0), PAL.smoke(), 6, 0.8, 2.0);
       }
    }
 
-   private void spawnRealm(ServerWorld level, String id, Vec3d at, @Nullable LivingEntity target) {
+   private void spawnRealm(ServerLevel level, String id, Vec3 at, @Nullable LivingEntity target) {
       EntityType<RealmMob> type = RealmMobs.type(id);
       if (type != null) {
-         RealmMob mob = (RealmMob)type.create(level, SpawnReason.MOB_SUMMONED);
+         RealmMob mob = (RealmMob)type.create(level, EntitySpawnReason.MOB_SUMMONED);
          if (mob != null) {
             double up = "shade_wraith".equals(id) ? 1.5 : 0.0;
-            mob.refreshPositionAndAngles(at.x, at.y + up, at.z, this.getRandom().nextFloat() * 360.0F, 0.0F);
+            mob.snapTo(at.x, at.y + up, at.z, this.getRandom().nextFloat() * 360.0F, 0.0F);
             if (target != null) {
                mob.setTarget(target);
             }
 
-            level.spawnEntity(mob);
+            level.addFreshEntity(mob);
             Vfx.pillar(level, at, PAL, 3.0, 0.8);
             Vfx.smoke(level, at.add(0.0, 0.8, 0.0), PAL.smoke(), 5, 0.6, 1.6);
          }
@@ -2064,16 +2064,16 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    private float ultGate() {
-      return this.age - this.lastUlt < 400 ? 0.0F : 1.0F;
+      return this.tickCount - this.lastUlt < 400 ? 0.0F : 1.0F;
    }
 
    private static int usingKind(LivingEntity e) {
       if (!e.isUsingItem()) {
          return 0;
       } else {
-         UseAction u = e.getActiveItem().getUseAction();
-         if (u != UseAction.EAT && u != UseAction.DRINK) {
-            return u != UseAction.BOW && u != UseAction.CROSSBOW && u != UseAction.TRIDENT && u != UseAction.SPEAR ? 0 : 1;
+         ItemUseAnimation u = e.getUseItem().getUseAnimation();
+         if (u != ItemUseAnimation.EAT && u != ItemUseAnimation.DRINK) {
+            return u != ItemUseAnimation.BOW && u != ItemUseAnimation.CROSSBOW && u != ItemUseAnimation.TRIDENT && u != ItemUseAnimation.SPEAR ? 0 : 1;
          } else {
             return 2;
          }
@@ -2081,7 +2081,7 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    private boolean anyUsing() {
-      for (ServerPlayerEntity p : this.engaged()) {
+      for (ServerPlayer p : this.engaged()) {
          if (usingKind(p) > 0) {
             return true;
          }
@@ -2093,7 +2093,7 @@ public class HollowWardenBoss extends MysticalBoss {
    private @Nullable LivingEntity pickCondemned(@Nullable LivingEntity target) {
       LivingEntity aiming = null;
 
-      for (ServerPlayerEntity p : this.engaged()) {
+      for (ServerPlayer p : this.engaged()) {
          int k = usingKind(p);
          if (k == 2) {
             return p;
@@ -2107,48 +2107,48 @@ public class HollowWardenBoss extends MysticalBoss {
       return aiming != null ? aiming : target;
    }
 
-   private void guardBreak(ServerWorld level, PlayerEntity p, int ticks) {
-      ItemStack s = p.getBlockingItem();
+   private void guardBreak(ServerLevel level, Player p, int ticks) {
+      ItemStack s = p.getItemBlockingWith();
       if (s != null) {
-         p.getItemCooldownManager().set(s, ticks);
-         p.clearActiveItem();
-         Vec3d m = mid(p).add(Vec3d.fromPolar(0.0F, p.getYaw()).multiply(0.4));
+         p.getCooldowns().addCooldown(s, ticks);
+         p.stopUsingItem();
+         Vec3 m = mid(p).add(Vec3.directionFromRotation(0.0F, p.getYRot()).scale(0.4));
          Vfx.shards(level, m, 5920868, 12, 0.45);
          Vfx.sparks(level, m, SOUL.core(), 10, 0.35, 0.16);
       }
    }
 
-   private Vec3d at(double fwd, double left, double up) {
-      Vec3d f = this.facing();
-      Vec3d l = this.left();
-      return this.getEntityPos().add(f.x * fwd + l.x * left, up, f.z * fwd + l.z * left);
+   private Vec3 at(double fwd, double left, double up) {
+      Vec3 f = this.facing();
+      Vec3 l = this.left();
+      return this.position().add(f.x * fwd + l.x * left, up, f.z * fwd + l.z * left);
    }
 
-   private Vec3d facing() {
-      return Vec3d.fromPolar(0.0F, this.getYaw());
+   private Vec3 facing() {
+      return Vec3.directionFromRotation(0.0F, this.getYRot());
    }
 
-   private Vec3d left() {
-      return Vec3d.fromPolar(0.0F, this.getYaw() - 90.0F);
+   private Vec3 left() {
+      return Vec3.directionFromRotation(0.0F, this.getYRot() - 90.0F);
    }
 
-   private Vec3d chest() {
+   private Vec3 chest() {
       return this.at(0.1, 0.0, 2.7);
    }
 
-   private Vec3d head() {
+   private Vec3 head() {
       return this.at(0.35, 0.0, 3.6);
    }
 
-   private Vec3d keyRaised() {
+   private Vec3 keyRaised() {
       return this.at(1.0, -0.2, 4.6);
    }
 
-   private Vec3d hookHand() {
+   private Vec3 hookHand() {
       return this.at(1.2, -0.4, 4.4);
    }
 
-   private Vec3d volleyHand(int i) {
+   private Vec3 volleyHand(int i) {
       return switch (i) {
          case 0 -> this.at(2.2, 1.1, 2.45);
          case 1 -> this.at(2.3, -1.1, 2.45);
@@ -2156,78 +2156,78 @@ public class HollowWardenBoss extends MysticalBoss {
       };
    }
 
-   private static Vec3d mid(LivingEntity e) {
-      return e.getEntityPos().add(0.0, e.getHeight() * 0.5, 0.0);
+   private static Vec3 mid(LivingEntity e) {
+      return e.position().add(0.0, e.getBbHeight() * 0.5, 0.0);
    }
 
-   private static Vec3d floor(ServerWorld level, Vec3d p) {
-      Vec3d g = BossFx.ground(level, p.x, p.y, p.z);
+   private static Vec3 floor(ServerLevel level, Vec3 p) {
+      Vec3 g = BossFx.ground(level, p.x, p.y, p.z);
       return g != null ? g : p;
    }
 
-   private static Vec3d ray(double deg) {
+   private static Vec3 ray(double deg) {
       double a = Math.toRadians(deg);
-      return new Vec3d(Math.cos(a), 0.0, Math.sin(a));
+      return new Vec3(Math.cos(a), 0.0, Math.sin(a));
    }
 
-   private static Vec3d rotY(Vec3d v, double deg) {
-      return v.rotateY((float)Math.toRadians(deg));
+   private static Vec3 rotY(Vec3 v, double deg) {
+      return v.yRot((float)Math.toRadians(deg));
    }
 
-   private Vec3d flatDir(Vec3d v) {
-      Vec3d h = new Vec3d(v.x, 0.0, v.z);
-      return h.lengthSquared() < 1.0E-6 ? this.facing() : h.normalize();
+   private Vec3 flatDir(Vec3 v) {
+      Vec3 h = new Vec3(v.x, 0.0, v.z);
+      return h.lengthSqr() < 1.0E-6 ? this.facing() : h.normalize();
    }
 
-   private static float yawOf(Vec3d dir) {
-      return (float)(MathHelper.atan2(dir.z, dir.x) * 180.0F / (float)Math.PI) - 90.0F;
+   private static float yawOf(Vec3 dir) {
+      return (float)(Mth.atan2(dir.z, dir.x) * 180.0F / (float)Math.PI) - 90.0F;
    }
 
-   private static double flatDist(Vec3d a, Vec3d b) {
+   private static double flatDist(Vec3 a, Vec3 b) {
       double dx = a.x - b.x;
       double dz = a.z - b.z;
       return Math.sqrt(dx * dx + dz * dz);
    }
 
-   private static double segDist(Vec3d p, Vec3d a, Vec3d b) {
+   private static double segDist(Vec3 p, Vec3 a, Vec3 b) {
       double abx = b.x - a.x;
       double abz = b.z - a.z;
       double len2 = abx * abx + abz * abz;
-      double s = len2 < 1.0E-6 ? 0.0 : MathHelper.clamp(((p.x - a.x) * abx + (p.z - a.z) * abz) / len2, 0.0, 1.0);
+      double s = len2 < 1.0E-6 ? 0.0 : Mth.clamp(((p.x - a.x) * abx + (p.z - a.z) * abz) / len2, 0.0, 1.0);
       double dx = p.x - (a.x + abx * s);
       double dz = p.z - (a.z + abz * s);
       return Math.sqrt(dx * dx + dz * dz);
    }
 
-   private static Vec3d known(LivingEntity e) {
-      return e instanceof ServerPlayerEntity sp ? sp.getMovement() : e.getVelocity();
+   private static Vec3 known(LivingEntity e) {
+      return e instanceof ServerPlayer sp ? sp.getKnownMovement() : e.getDeltaMovement();
    }
 
    private static void drag(LivingEntity e, double x, double z) {
-      if (e instanceof ServerPlayerEntity sp) {
-         if (sp.hasVehicle()) {
+      if (e instanceof ServerPlayer sp) {
+         if (sp.isPassenger()) {
             return;
          }
 
-         Vec3d k = sp.getMovement();
-         double f = sp.isGliding() ? 0.99 : (sp.isTouchingWater() ? 0.8 : (sp.isOnGround() ? 0.546 : 0.91));
-         double y = sp.isOnGround() ? -0.0784 : (sp.isGliding() ? k.y * 0.98 : (k.y - 0.08) * 0.98);
-         sp.setVelocity(k.x * f + x, y, k.z * f + z);
+         Vec3 k = sp.getKnownMovement();
+         double f = sp.isFallFlying() ? 0.99 : (sp.isInWater() ? 0.8 : (sp.onGround() ? 0.546 : 0.91));
+         double y = sp.onGround() ? -0.0784 : (sp.isFallFlying() ? k.y * 0.98 : (k.y - 0.08) * 0.98);
+         sp.setDeltaMovement(k.x * f + x, y, k.z * f + z);
       } else {
-         e.addVelocity(x, 0.0, z);
+         e.push(x, 0.0, z);
       }
 
-      e.knockedBack = true;
+      e.syncVelocity = true;
    }
 
    private void rise(double vy) {
-      Vec3d v = this.getVelocity();
-      this.setVelocity(v.x, vy, v.z);
+      Vec3 v = this.getDeltaMovement();
+      this.setDeltaMovement(v.x, vy, v.z);
    }
 
    private void sink(double y, int ticksLeft) {
-      Vec3d v = this.getVelocity();
-      this.setVelocity(v.x, MathHelper.clamp((y - this.getY()) / Math.max(2, ticksLeft), -0.35, 0.2), v.z);
+      Vec3 v = this.getDeltaMovement();
+      this.setDeltaMovement(v.x, Mth.clamp((y - this.getY()) / Math.max(2, ticksLeft), -0.35, 0.2), v.z);
    }
 
    private void descend(@Nullable LivingEntity target, int ticksLeft) {
@@ -2236,15 +2236,15 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private static void tele(ServerWorld level, Vec3d c, double r, int ticks, Vfx.Palette p) {
+   private static void tele(ServerLevel level, Vec3 c, double r, int ticks, Vfx.Palette p) {
       Vfx.telegraphCircle(level, c, r, Math.max(1, ticks), p);
    }
 
-   private void cone(ServerWorld level, float yawOffset, float halfAngle, double range, int ticks) {
-      Vfx.telegraphCone(level, floor(level, this.getEntityPos()), this.getYaw() + yawOffset, halfAngle, range, ticks, PAL);
+   private void cone(ServerLevel level, float yawOffset, float halfAngle, double range, int ticks) {
+      Vfx.telegraphCone(level, floor(level, this.position()), this.getYRot() + yawOffset, halfAngle, range, ticks, PAL);
    }
 
-   private static void sound(ServerWorld level, Vec3d at, String key, float volume) {
+   private static void sound(ServerLevel level, Vec3 at, String key, float volume) {
       BossSounds.play(level, at, "boss.hollow_warden." + key, volume, 0.94F + level.getRandom().nextFloat() * 0.12F);
    }
 
@@ -2253,50 +2253,50 @@ public class HollowWardenBoss extends MysticalBoss {
          && e.isAlive()
          && !(e instanceof MysticalBoss)
          && !(e instanceof WardenShade)
-         && !(e instanceof PlayerEntity p && (p.isCreative() || p.isSpectator()));
+         && !(e instanceof Player p && (p.isCreative() || p.isSpectator()));
    }
 
-   private List<LivingEntity> foes(ServerWorld level, Vec3d c, double r, double below, double above) {
-      return level.getEntitiesByClass(
+   private List<LivingEntity> foes(ServerLevel level, Vec3 c, double r, double below, double above) {
+      return level.getEntitiesOfClass(
          LivingEntity.class,
-         new Box(c.x - r - 1.0, c.y - below, c.z - r - 1.0, c.x + r + 1.0, c.y + above, c.z + r + 1.0),
-         e -> this.foe(e) && e.getY() >= c.y - below && e.getY() <= c.y + above && flatDist(e.getEntityPos(), c) <= r + e.getWidth() * 0.5
+         new AABB(c.x - r - 1.0, c.y - below, c.z - r - 1.0, c.x + r + 1.0, c.y + above, c.z + r + 1.0),
+         e -> this.foe(e) && e.getY() >= c.y - below && e.getY() <= c.y + above && flatDist(e.position(), c) <= r + e.getBbWidth() * 0.5
       );
    }
 
-   private List<LivingEntity> foesOnSegment(ServerWorld level, Vec3d a, Vec3d b, double width, double yLo, double yHi) {
-      Box box = new Box(
+   private List<LivingEntity> foesOnSegment(ServerLevel level, Vec3 a, Vec3 b, double width, double yLo, double yHi) {
+      AABB box = new AABB(
          Math.min(a.x, b.x) - width - 1.0, yLo, Math.min(a.z, b.z) - width - 1.0, Math.max(a.x, b.x) + width + 1.0, yHi + 0.1, Math.max(a.z, b.z) + width + 1.0
       );
-      return level.getEntitiesByClass(
-         LivingEntity.class, box, e -> this.foe(e) && e.getY() >= yLo && e.getY() <= yHi && segDist(e.getEntityPos(), a, b) <= width + e.getWidth() * 0.5
+      return level.getEntitiesOfClass(
+         LivingEntity.class, box, e -> this.foe(e) && e.getY() >= yLo && e.getY() <= yHi && segDist(e.position(), a, b) <= width + e.getBbWidth() * 0.5
       );
    }
 
    private void rake(
-      ServerWorld level, double reach, float halfAngle, float yawOffset, float base, double push, @Nullable StatusEffectInstance fx, boolean pierce
+      ServerLevel level, double reach, float halfAngle, float yawOffset, float base, double push, @Nullable MobEffectInstance fx, boolean pierce
    ) {
-      DamageSource src = this.getDamageSources().mobAttack(this);
-      Vec3d f = Vec3d.fromPolar(0.0F, this.getYaw() + yawOffset);
+      DamageSource src = this.damageSources().mobAttack(this);
+      Vec3 f = Vec3.directionFromRotation(0.0F, this.getYRot() + yawOffset);
 
-      for (LivingEntity e : level.getEntitiesByClass(LivingEntity.class, this.getBoundingBox().expand(reach, 4.0, reach), this::foe)) {
-         if (!(e.getY() < this.getY() - 3.5) && !(e.getY() > this.getY() + this.getHeight())) {
+      for (LivingEntity e : level.getEntitiesOfClass(LivingEntity.class, this.getBoundingBox().inflate(reach, 4.0, reach), this::foe)) {
+         if (!(e.getY() < this.getY() - 3.5) && !(e.getY() > this.getY() + this.getBbHeight())) {
             double dx = e.getX() - this.getX();
             double dz = e.getZ() - this.getZ();
             double d = Math.sqrt(dx * dx + dz * dz);
-            if (!(d > reach + e.getWidth() * 0.5)
-               && (!(d > 1.2) || !(halfAngle < 180.0F) || !(Math.toDegrees(Math.acos(MathHelper.clamp((dx * f.x + dz * f.z) / d, -1.0, 1.0))) > halfAngle))) {
+            if (!(d > reach + e.getBbWidth() * 0.5)
+               && (!(d > 1.2) || !(halfAngle < 180.0F) || !(Math.toDegrees(Math.acos(Mth.clamp((dx * f.x + dz * f.z) / d, -1.0, 1.0))) > halfAngle))) {
                if (pierce) {
-                  e.timeUntilRegen = 0;
+                  e.setInvulnerableTime(0);
                }
 
-               if (e.damage(level, src, this.dmg(base))) {
-                  Vec3d away = d > 0.001 ? new Vec3d(dx / d, 0.0, dz / d) : f;
-                  e.addVelocity(away.x * push, 0.25, away.z * push);
-                  e.knockedBack = true;
+               if (e.hurtServer(level, src, this.dmg(base))) {
+                  Vec3 away = d > 0.001 ? new Vec3(dx / d, 0.0, dz / d) : f;
+                  e.push(away.x * push, 0.25, away.z * push);
+                  e.syncVelocity = true;
                   Vfx.impact(level, mid(e), PAL, 0.6);
                   if (fx != null) {
-                     e.addStatusEffect(new StatusEffectInstance(fx), this);
+                     e.addEffect(new MobEffectInstance(fx), this);
                   }
                }
             }
@@ -2304,30 +2304,30 @@ public class HollowWardenBoss extends MysticalBoss {
       }
    }
 
-   private void blast(ServerWorld level, Vec3d c, double r, float base, double push, boolean falloff, @Nullable StatusEffectInstance fx) {
-      DamageSource src = this.getDamageSources().mobAttack(this);
+   private void blast(ServerLevel level, Vec3 c, double r, float base, double push, boolean falloff, @Nullable MobEffectInstance fx) {
+      DamageSource src = this.damageSources().mobAttack(this);
 
       for (LivingEntity e : this.foes(level, c, r, 1.5, 3.5)) {
-         double k = falloff ? MathHelper.clamp(1.0 - flatDist(e.getEntityPos(), c) / r, 0.0, 1.0) : 1.0;
-         if (e.damage(level, src, this.dmg(base) * (float)(falloff ? 0.4 + 0.6 * k : 1.0))) {
-            Vec3d away = this.flatDir(e.getEntityPos().subtract(c));
+         double k = falloff ? Mth.clamp(1.0 - flatDist(e.position(), c) / r, 0.0, 1.0) : 1.0;
+         if (e.hurtServer(level, src, this.dmg(base) * (float)(falloff ? 0.4 + 0.6 * k : 1.0))) {
+            Vec3 away = this.flatDir(e.position().subtract(c));
             double s = push * (falloff ? 0.5 + k : 1.0);
-            e.addVelocity(away.x * s, 0.3 + 0.3 * k, away.z * s);
-            e.knockedBack = true;
+            e.push(away.x * s, 0.3 + 0.3 * k, away.z * s);
+            e.syncVelocity = true;
          }
 
          if (fx != null) {
-            e.addStatusEffect(new StatusEffectInstance(fx), this);
+            e.addEffect(new MobEffectInstance(fx), this);
          }
       }
    }
 
-   private void slam(ServerWorld level, Vec3d c, double r, float base, double push) {
+   private void slam(ServerLevel level, Vec3 c, double r, float base, double push) {
       this.blast(level, c, r, base, push, true, null);
       Vfx.shockwave(level, c, PAL, r);
    }
 
-   private void wave(ServerWorld level, Vec3d c, double maxR, int ticks, float base, double push, Vfx.Palette p) {
+   private void wave(ServerLevel level, Vec3 c, double maxR, int ticks, float base, double push, Vfx.Palette p) {
       Set<Integer> hit = new HashSet<>();
       Vfx.ring(level, c, p.glow(), maxR, (int)(ticks * 1.3));
       Vfx.flare(level, c.add(0.0, 0.4, 0.0), p.core(), 2.5, 6);
@@ -2341,13 +2341,13 @@ public class HollowWardenBoss extends MysticalBoss {
                   Vfx.ring(level, c, p.core(), r, 4);
                }
 
-               DamageSource src = this.getDamageSources().mobAttack(this);
+               DamageSource src = this.damageSources().mobAttack(this);
 
                for (LivingEntity e : this.foes(level, c, r + 1.0, 1.0, 2.0)) {
-                  if (Math.abs(flatDist(e.getEntityPos(), c) - r) < 1.0 && e.isOnGround() && hit.add(e.getId()) && e.damage(level, src, this.dmg(base))) {
-                     Vec3d away = this.flatDir(e.getEntityPos().subtract(c));
-                     e.addVelocity(away.x * push, 0.4, away.z * push);
-                     e.knockedBack = true;
+                  if (Math.abs(flatDist(e.position(), c) - r) < 1.0 && e.onGround() && hit.add(e.getId()) && e.hurtServer(level, src, this.dmg(base))) {
+                     Vec3 away = this.flatDir(e.position().subtract(c));
+                     e.push(away.x * push, 0.4, away.z * push);
+                     e.syncVelocity = true;
                   }
                }
             }
@@ -2362,27 +2362,27 @@ public class HollowWardenBoss extends MysticalBoss {
    }
 
    private static final class Cell {
-      final Vec3d center;
+      final Vec3 center;
       final LivingEntity who;
       final int until;
       int tries;
 
-      Cell(Vec3d center, LivingEntity who, int until) {
+      Cell(Vec3 center, LivingEntity who, int until) {
          this.center = center;
          this.who = who;
          this.until = until;
       }
    }
 
-   private record Line(Vec3d a, Vec3d b, int born, int until) {
+   private record Line(Vec3 a, Vec3 b, int born, int until) {
    }
 
-   private record Spot(Vec3d at, double r, boolean major) {
+   private record Spot(Vec3 at, double r, boolean major) {
    }
 
-   private record Strike(Vec3d at, int when) {
+   private record Strike(Vec3 at, int when) {
    }
 
-   private record Zone(Vec3d at, double r, int until) {
+   private record Zone(Vec3 at, double r, int until) {
    }
 }

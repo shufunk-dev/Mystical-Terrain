@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.Map.Entry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import org.jspecify.annotations.Nullable;
 
 public final class GearState {
@@ -29,16 +29,16 @@ public final class GearState {
    private GearState() {
    }
 
-   public static GearState of(PlayerEntity player) {
-      return ALL.computeIfAbsent(player.getUuid(), id -> new GearState());
+   public static GearState of(Player player) {
+      return ALL.computeIfAbsent(player.getUUID(), id -> new GearState());
    }
 
-   static @Nullable GearState peek(PlayerEntity player) {
-      return ALL.get(player.getUuid());
+   static @Nullable GearState peek(Player player) {
+      return ALL.get(player.getUUID());
    }
 
-   static void forget(PlayerEntity player) {
-      ALL.remove(player.getUuid());
+   static void forget(Player player) {
+      ALL.remove(player.getUUID());
    }
 
    static void clear() {
@@ -129,8 +129,8 @@ public final class GearState {
       this.chargeLevel = level;
    }
 
-   void tick(ServerPlayerEntity player) {
-      if (this.charging != null && (!player.isUsingItem() || !(player.getActiveItem().getItem() instanceof MysticWeapon w && w.gearId().equals(this.charging)))
+   void tick(ServerPlayer player) {
+      if (this.charging != null && (!player.isUsingItem() || !(player.getUseItem().getItem() instanceof MysticWeapon w && w.gearId().equals(this.charging)))
          )
        {
          MysticWeapon weapon = MysticGear.WEAPONS.get(this.charging);
