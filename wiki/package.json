@@ -1,0 +1,17 @@
+{
+  "name": "mystical-terrain-wiki",
+  "version": "1.0.0",
+  "description": "Official documentation wiki for Mystical Terrain",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node scripts/sync_assets.js && node scripts/sync_vanilla_assets.js && node scripts/sync_data.js",
+    "dev": "npm run sync && vitepress dev docs",
+    "build": "npm run sync && vitepress build docs",
+    "preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3",
+    "vue": "^3.5.13"
+  }
+}

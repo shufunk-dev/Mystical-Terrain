@@ -33,5 +33,14 @@ AGENTS.md
 Thumbs.db
 *.log
 *.tmp
-*.bak
 *.swp
+
+# VitePress Documentation Engine
+wiki/node_modules/
+wiki/docs/.vitepress/dist/
+wiki/docs/.vitepress/cache/
+wiki/docs/.vitepress/data/
+wiki/docs/public/textures/
+wiki/docs/public/data/
+wiki/docs/public/icon.png
+wiki/scripts/cache/
