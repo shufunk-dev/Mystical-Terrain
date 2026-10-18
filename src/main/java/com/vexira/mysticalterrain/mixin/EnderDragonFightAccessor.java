@@ -22,7 +22,7 @@ public interface EnderDragonFightAccessor {
    @Accessor("dragonKilled")
    void mysticalterrain$setDragonKilled(boolean var1);
 
-   @Accessor("portalLocation")
+   @Accessor("exitPortalLocation")
    BlockPos mysticalterrain$portalLocation();
 
    @Accessor("origin")

@@ -4,8 +4,7 @@ import com.vexira.mysticalterrain.client.vfx.VfxClient;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.Camera;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.Level;
+import net.minecraft.client.DeltaTracker;
 import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -28,8 +27,9 @@ public abstract class CameraShakeMixin {
    @Shadow
    protected abstract void setRotation(float yaw, float pitch);
 
-   @Inject(method = "setup", at = @At("TAIL"))
-   private void mysticalterrain$shake(Level level, Entity entity, boolean detached, boolean mirrored, float partial, CallbackInfo ci) {
+   @Inject(method = "update", at = @At("TAIL"))
+   private void mysticalterrain$shake(DeltaTracker deltaTracker, CallbackInfo ci) {
+      float partial = deltaTracker.getGameTimeDeltaPartialTick(false);
       float[] o = VfxClient.cameraOffset(partial);
       if (o != null) {
          this.setRotation(this.yRot + o[0], this.xRot + o[1]);
