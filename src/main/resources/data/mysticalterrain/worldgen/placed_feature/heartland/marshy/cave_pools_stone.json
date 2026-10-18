@@ -29,15 +29,15 @@
       "type": "minecraft:offset",
       "x": {
         "type": "minecraft:trapezoid",
-        "min": 8,
-        "max": -8,
+        "min": -8,
+        "max": 8,
         "plateau": 0
       },
       "y": 0,
       "z": {
         "type": "minecraft:trapezoid",
-        "min": 8,
-        "max": -8,
+        "min": -8,
+        "max": 8,
         "plateau": 0
       }
     },

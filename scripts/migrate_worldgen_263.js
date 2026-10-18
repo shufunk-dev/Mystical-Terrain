@@ -64,9 +64,9 @@ function transformNode(node) {
     const y = node.y_spread ?? 0;
     delete node.xz_spread;
     delete node.y_spread;
-    node.x = xz === 0 ? 0 : { type: 'minecraft:trapezoid', min: -xz, max: xz, plateau: 0 };
-    node.y = y === 0 ? 0 : { type: 'minecraft:trapezoid', min: -y, max: y, plateau: 0 };
-    node.z = xz === 0 ? 0 : { type: 'minecraft:trapezoid', min: -xz, max: xz, plateau: 0 };
+    node.x = xz === 0 ? 0 : { type: 'minecraft:trapezoid', min: -Math.abs(xz), max: Math.abs(xz), plateau: 0 };
+    node.y = y === 0 ? 0 : { type: 'minecraft:trapezoid', min: -Math.abs(y), max: Math.abs(y), plateau: 0 };
+    node.z = xz === 0 ? 0 : { type: 'minecraft:trapezoid', min: -Math.abs(xz), max: Math.abs(xz), plateau: 0 };
   }
 
   // 4. Feature renames: forest_rock -> block_blob
@@ -133,9 +133,9 @@ function transformPlacedFeatureFile(data) {
         });
         data.placement.push({
           type: 'minecraft:offset',
-          x: xz === 0 ? 0 : { type: 'minecraft:trapezoid', min: -xz, max: xz, plateau: 0 },
-          y: y === 0 ? 0 : { type: 'minecraft:trapezoid', min: -y, max: y, plateau: 0 },
-          z: xz === 0 ? 0 : { type: 'minecraft:trapezoid', min: -xz, max: xz, plateau: 0 }
+          x: xz === 0 ? 0 : { type: 'minecraft:trapezoid', min: -Math.abs(xz), max: Math.abs(xz), plateau: 0 },
+          y: y === 0 ? 0 : { type: 'minecraft:trapezoid', min: -Math.abs(y), max: Math.abs(y), plateau: 0 },
+          z: xz === 0 ? 0 : { type: 'minecraft:trapezoid', min: -Math.abs(xz), max: Math.abs(xz), plateau: 0 }
         });
         if (Array.isArray(innerPlacement)) {
           for (const p of innerPlacement) {
