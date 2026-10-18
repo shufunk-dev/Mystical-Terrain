@@ -8,11 +8,11 @@
           "type": "minecraft:item",
           "name": "mysticalterrain:ginkgo_door",
           "condition": {
-            "block": "mysticalterrain:ginkgo_door",
-            "properties": {
+            "type": "minecraft:match_block",
+            "blocks": "mysticalterrain:ginkgo_door",
+            "state": {
               "half": "lower"
-            },
-            "type": "minecraft:block_state_property"
+            }
           }
         }
       ],

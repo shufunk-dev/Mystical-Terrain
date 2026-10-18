@@ -8,11 +8,11 @@
           "type": "minecraft:item",
           "name": "mysticalterrain:gloamwood_door",
           "condition": {
-            "block": "mysticalterrain:gloamwood_door",
-            "properties": {
+            "type": "minecraft:match_block",
+            "blocks": "mysticalterrain:gloamwood_door",
+            "state": {
               "half": "lower"
-            },
-            "type": "minecraft:block_state_property"
+            }
           }
         }
       ],

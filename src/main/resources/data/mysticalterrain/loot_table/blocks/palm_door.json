@@ -8,11 +8,11 @@
           "type": "minecraft:item",
           "name": "mysticalterrain:palm_door",
           "condition": {
-            "block": "mysticalterrain:palm_door",
-            "properties": {
+            "type": "minecraft:match_block",
+            "blocks": "mysticalterrain:palm_door",
+            "state": {
               "half": "lower"
-            },
-            "type": "minecraft:block_state_property"
+            }
           }
         }
       ],

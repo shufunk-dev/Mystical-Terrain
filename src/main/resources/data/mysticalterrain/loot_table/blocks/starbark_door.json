@@ -8,11 +8,11 @@
           "type": "minecraft:item",
           "name": "mysticalterrain:starbark_door",
           "condition": {
-            "block": "mysticalterrain:starbark_door",
-            "properties": {
+            "type": "minecraft:match_block",
+            "blocks": "mysticalterrain:starbark_door",
+            "state": {
               "half": "lower"
-            },
-            "type": "minecraft:block_state_property"
+            }
           }
         }
       ],

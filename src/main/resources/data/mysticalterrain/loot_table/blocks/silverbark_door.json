@@ -8,11 +8,11 @@
           "type": "minecraft:item",
           "name": "mysticalterrain:silverbark_door",
           "condition": {
-            "block": "mysticalterrain:silverbark_door",
-            "properties": {
+            "type": "minecraft:match_block",
+            "blocks": "mysticalterrain:silverbark_door",
+            "state": {
               "half": "lower"
-            },
-            "type": "minecraft:block_state_property"
+            }
           }
         }
       ],

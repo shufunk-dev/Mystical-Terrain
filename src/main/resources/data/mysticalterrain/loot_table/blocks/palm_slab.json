@@ -13,11 +13,11 @@
               "count": 2,
               "type": "minecraft:set_count",
               "condition": {
-                "block": "mysticalterrain:palm_slab",
-                "properties": {
+                "type": "minecraft:match_block",
+                "blocks": "mysticalterrain:palm_slab",
+                "state": {
                   "type": "double"
-                },
-                "type": "minecraft:block_state_property"
+                }
               }
             },
             {
